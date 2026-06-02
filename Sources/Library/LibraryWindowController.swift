@@ -529,10 +529,23 @@ final class ZoomableScrollView: NSScrollView {
             super.scrollWheel(with: event)
             return
         }
+        let dy = event.scrollingDeltaY
+        guard dy != 0, let document = documentView else { return }   // 0 델타(관성 꼬리)는 무시
         isFitMode = false
-        let point = contentView.convert(event.locationInWindow, from: nil)
-        let factor = exp(event.scrollingDeltaY * 0.01)        // 위로 스크롤 → 확대
-        setMagnification(magnification * factor, centeredAt: point)
+        // 배율을 먼저 [min,max]로 클램프해 둔다(시스템 클램프 후 앵커가 튀는 것 방지).
+        let newMag = max(minMagnification, min(magnification * exp(dy * 0.01), maxMagnification))
+        setMagnification(newMag, centeredAt: zoomAnchor(for: newMag, document: document, event: event))
+    }
+
+    /// 확대 후 이미지가 뷰보다 작으면 '중앙' 기준(센터링과 충돌해 떨리는 것 방지),
+    /// 뷰보다 크면 '커서' 기준으로 줌한다.
+    private func zoomAnchor(for mag: CGFloat, document: NSView, event: NSEvent) -> CGPoint {
+        let scaledW = document.bounds.width * mag
+        let scaledH = document.bounds.height * mag
+        if scaledW <= contentView.frame.width && scaledH <= contentView.frame.height {
+            return CGPoint(x: contentView.bounds.midX, y: contentView.bounds.midY)
+        }
+        return contentView.convert(event.locationInWindow, from: nil)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -559,7 +572,10 @@ final class ZoomableScrollView: NSScrollView {
     func zoomToFit() {
         isFitMode = true
         guard let document = documentView, document.bounds.width > 0, document.bounds.height > 0 else { return }
-        let available = contentView.bounds.size
+        // 가용 영역은 클립뷰의 '프레임'(화면 point) — 배율과 무관해 반복 호출에도 결과가 안정적이다.
+        // (bounds.size 는 현재 배율로 스케일된 값이라, 그걸 쓰면 호출할 때마다 값이 진동한다.)
+        let available = contentView.frame.size
+        guard available.width > 0, available.height > 0 else { return }
         let fit = min(available.width / document.bounds.width,
                       available.height / document.bounds.height)
         magnification = max(minMagnification, min(fit, maxMagnification))
