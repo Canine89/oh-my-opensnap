@@ -1,4 +1,4 @@
-name: oh-my-snap
+name: oh-my-opensnap
 options:
   bundleIdPrefix: com.goldenrabbit
   deploymentTarget:
@@ -15,7 +15,7 @@ settings:
     DEAD_CODE_STRIPPING: YES
 
 targets:
-  oh-my-snap:
+  oh-my-opensnap:
     type: application
     platform: macOS
     deploymentTarget: "26.0"
@@ -24,12 +24,12 @@ targets:
       - path: Resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.goldenrabbit.ohmysnap
-        PRODUCT_NAME: oh-my-snap
+        PRODUCT_BUNDLE_IDENTIFIER: com.goldenrabbit.ohmyopensnap
+        PRODUCT_NAME: oh-my-opensnap
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_LSUIElement: YES                 # 메뉴바 상주, Dock 아이콘 숨김
-        INFOPLIST_KEY_CFBundleDisplayName: oh-my-snap
+        INFOPLIST_KEY_CFBundleDisplayName: oh-my-opensnap
         INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Golden Rabbit"
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_APP_SANDBOX: NO

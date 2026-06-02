@@ -10,7 +10,7 @@ extension Notification.Name {
     static let libraryDidChange = Notification.Name("com.goldenrabbit.appresizer.libraryDidChange")
 }
 
-/// 캡처본을 바탕화면 `oh-my-snap` 폴더에 영구 보관하고 목록을 제공한다.
+/// 캡처본을 바탕화면 `oh-my-opensnap` 폴더에 영구 보관하고 목록을 제공한다.
 /// 사용자의 '저장 폴더' 옵션과는 별개의 라이브러리 저장소.
 ///
 /// ⚠️ macOS 26(Tahoe)에서 바탕화면은 TCC 보호 폴더라, 첫 접근 시 "바탕화면 접근"
@@ -24,7 +24,7 @@ final class CaptureLibrary {
     /// thumbnailCache 는 메인 스레드에서만 읽고 쓴다.
     private var thumbnailCache: [URL: NSImage] = [:]
     /// 바탕화면(TCC 보호) 디스크 I/O를 메인 런루프 밖에서 직렬 수행.
-    private let ioQueue = DispatchQueue(label: "com.goldenrabbit.ohmysnap.library.io", qos: .userInitiated)
+    private let ioQueue = DispatchQueue(label: "com.goldenrabbit.ohmyopensnap.library.io", qos: .userInitiated)
 
     private init() {
         // URL 계산은 디스크 접근이 아니므로 메인에서 안전.
@@ -86,6 +86,7 @@ final class CaptureLibrary {
         }
         if let desktop = fm.urls(for: .desktopDirectory, in: .userDomainMask).first {
             legacyDirs.append(desktop.appendingPathComponent("AppResizer", isDirectory: true))
+            legacyDirs.append(desktop.appendingPathComponent("oh-my-snap", isDirectory: true))   // 구 앱 이름 폴더
         }
 
         for legacy in legacyDirs {

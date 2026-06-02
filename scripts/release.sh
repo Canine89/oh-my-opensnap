@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# oh-my-snap 무료 배포용 DMG 빌더.
+# oh-my-opensnap 무료 배포용 DMG 빌더.
 #
-#   ./scripts/release.sh              # dist/oh-my-snap-<버전>.dmg 생성
+#   ./scripts/release.sh              # dist/oh-my-opensnap-<버전>.dmg 생성
 #   ./scripts/release.sh --publish    # 위 + GitHub Release 생성/업로드(gh 필요)
 #
 # 하는 일:
@@ -19,10 +19,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."          # 리포 루트로 이동
 ROOT="$(pwd)"
 
-SCHEME="oh-my-snap"
-PROJECT="oh-my-snap.xcodeproj"
-APP_NAME="oh-my-snap.app"
-VOL_NAME="oh-my-snap"
+SCHEME="oh-my-opensnap"
+PROJECT="oh-my-opensnap.xcodeproj"
+APP_NAME="oh-my-opensnap.app"
+VOL_NAME="oh-my-opensnap"
 DD="$ROOT/build/dd"             # 파생 데이터(빌드 산출물)
 DIST="$ROOT/dist"
 
@@ -54,7 +54,7 @@ mkdir -p "$DIST"
 STAGING="$(mktemp -d)"
 cp -R "$APP" "$STAGING/"
 ln -s /Applications "$STAGING/Applications"   # 드래그-투-Applications
-DMG="$DIST/oh-my-snap-$VERSION.dmg"
+DMG="$DIST/oh-my-opensnap-$VERSION.dmg"
 hdiutil create -volname "$VOL_NAME" -srcfolder "$STAGING" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGING"
 
@@ -70,7 +70,7 @@ if [ "${1:-}" = "--publish" ]; then
     gh release upload "$TAG" "$DMG" --clobber
   else
     gh release create "$TAG" "$DMG" \
-      --title "oh-my-snap $VERSION" \
+      --title "oh-my-opensnap $VERSION" \
       --notes "설치 방법은 저장소의 INSTALL.md 를 참고하세요. (처음 한 번 Gatekeeper 우회 필요)"
   fi
   echo "✅ 릴리스 업로드 완료: $TAG"
