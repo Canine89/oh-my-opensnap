@@ -6,13 +6,13 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.3</title>
-      <pubDate>Tue, 02 Jun 2026 13:19:46 +0000</pubDate>
-      <sparkle:version>4</sparkle:version>
-      <sparkle:shortVersionString>1.0.3</sparkle:shortVersionString>
+      <title>1.0.4</title>
+      <pubDate>Tue, 02 Jun 2026 13:25:24 +0000</pubDate>
+      <sparkle:version>5</sparkle:version>
+      <sparkle:shortVersionString>1.0.4</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<p>oh-my-opensnap 1.0.3</p>]]></description>
-      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.3/oh-my-opensnap-1.0.3.zip" type="application/octet-stream" sparkle:edSignature="Jpe5pFZOyuebBqkZsTbSTdrrJpiSZKofUPkKllbKSm00/0MoD2DGltdiqRMk4Vs3pmUUeeGGd0pUp4+74DwGCw==" length="1399345" />
+      <description><![CDATA[<p>oh-my-opensnap 1.0.4</p>]]></description>
+      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.4/oh-my-opensnap-1.0.4.zip" type="application/octet-stream" sparkle:edSignature="chN5RrfQLVJBx2R0TllNaaN4nc/204998SDA2rjlyE09OWQbx0aQhgLtYR0jMmPjklQ8Xnjw2SQ/CicDJFZAAQ==" length="1399350" />
     </item>
   </channel>
 </rss>
