@@ -30,6 +30,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     /// 캡처 직후 새로 저장된 항목을 자동으로 보여주기 위한 1회성 플래그.
     private var selectLatestPending = false
 
+    /// 다음 이미지 로드 시 창 크기를 이미지에 맞게 조절할지(캡처 직후 1회성).
+    private var fitWindowOnNextImage = false
+
     private let itemIdentifier = NSUserInterfaceItemIdentifier("ThumbnailItem")
 
     /// 캡처 직후 호출: 창을 (숨겨져 있었다면 다시) 띄우고, 방금 저장된 최신 항목을 선택해 보여준다.
@@ -302,9 +305,10 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         collectionView.reloadData()
         countLabel.stringValue = "\(items.count)개 항목"
 
-        // 캡처 직후: 이전 선택을 무시하고 방금 저장된 최신(0번) 항목을 선택.
+        // 캡처 직후: 이전 선택을 무시하고 방금 저장된 최신(0번) 항목을 선택 + 창 크기 맞춤.
         if selectLatestPending, !items.isEmpty {
             selectLatestPending = false
+            fitWindowOnNextImage = true
             select(0)
             return
         }
@@ -335,7 +339,45 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         CaptureLibrary.shared.loadImage(at: item.url) { [weak self] image in
             guard let self, self.selectedItem?.url == item.url else { return }
             self.editorView.image = image   // setter가 맞춤/first responder 처리
+            // 캡처 직후라면 이미지 크기에 맞춰 창 크기를 조절(너무 크거나 작을 때).
+            if self.fitWindowOnNextImage {
+                self.fitWindowOnNextImage = false
+                if let size = image?.size { self.resizeWindowToFit(imageSize: size) }
+            }
         }
+    }
+
+    /// 캡처 직후, 미리보기 영역이 이미지를 100%로 담도록 창 크기를 조절한다.
+    /// 너무 크면 화면 안으로, 너무 작으면 최소 크기로 클램프하고, 좌상단 위치는 유지한다.
+    private func resizeWindowToFit(imageSize: NSSize) {
+        guard let window, imageSize.width > 0, imageSize.height > 0,
+              let screen = window.screen ?? NSScreen.main else { return }
+
+        let thumbStripWidth: CGFloat = 264   // 좌측 썸네일 패널
+        let toolbarHeight: CGFloat = 48      // 상단 도구 막대
+        let visible = screen.visibleFrame
+        let screenMargin: CGFloat = 40
+
+        // 콘텐츠 = 미리보기(이미지 크기, point) + 좌측 패널/상단 막대
+        var contentW = imageSize.width + thumbStripWidth
+        var contentH = imageSize.height + toolbarHeight
+        let minSize = window.contentMinSize
+        contentW = min(max(contentW, minSize.width), visible.width - screenMargin)
+        contentH = min(max(contentH, minSize.height), visible.height - screenMargin)
+
+        let oldFrame = window.frame
+        var newFrame = window.frameRect(forContentRect:
+            NSRect(x: oldFrame.minX, y: oldFrame.minY, width: contentW, height: contentH))
+        newFrame.origin.y = oldFrame.maxY - newFrame.height    // 좌상단(시각적 위) 고정
+
+        // 화면 안으로 위치 보정
+        if newFrame.maxX > visible.maxX { newFrame.origin.x = visible.maxX - newFrame.width }
+        if newFrame.minX < visible.minX { newFrame.origin.x = visible.minX }
+        if newFrame.maxY > visible.maxY { newFrame.origin.y = visible.maxY - newFrame.height }
+        if newFrame.minY < visible.minY { newFrame.origin.y = visible.minY }
+
+        window.setFrame(newFrame, display: true, animate: true)
+        previewScroll.zoomToFit()
     }
 
     // MARK: NSCollectionView

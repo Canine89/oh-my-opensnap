@@ -121,6 +121,20 @@ SIG_ATTRS="$("$SIGN_UPDATE" "$ZIP")"
 ZIP_URL="https://github.com/$REPO/releases/download/v$VERSION/oh-my-opensnap-$VERSION.zip"
 PUBDATE="$(date -u "+%a, %d %b %Y %H:%M:%S +0000")"
 
+# 릴리스 노트: CHANGELOG.md 의 "## <버전>" 섹션을 읽어
+#  - Sparkle 업데이트 창(appcast description, HTML)
+#  - GitHub 릴리스 노트(markdown)
+# 양쪽에 보여준다.
+NOTES_MD=""
+if [ -f CHANGELOG.md ]; then
+  NOTES_MD="$(awk -v v="$VERSION" '$0 ~ ("^## " v "( |$)"){f=1;next} /^## /{f=0} f' CHANGELOG.md)"
+fi
+[ -n "$NOTES_MD" ] || NOTES_MD="- 개선 및 버그 수정"
+# appcast 용 HTML (불릿 → <li>, XML 특수문자 이스케이프)
+NOTES_HTML="$(printf '%s\n' "$NOTES_MD" \
+  | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' \
+  | awk 'BEGIN{print "<ul>"} {line=$0; sub(/^[[:space:]]*[-*][[:space:]]+/,"",line); if(line!="") print "<li>"line"</li>"} END{print "</ul>"}')"
+
 cat > "$APPCAST" <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -135,7 +149,8 @@ cat > "$APPCAST" <<XML
       <sparkle:version>$BUILD</sparkle:version>
       <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>$MINOS</sparkle:minimumSystemVersion>
-      <description><![CDATA[<p>oh-my-opensnap $VERSION</p>]]></description>
+      <description><![CDATA[<h2>oh-my-opensnap $VERSION</h2>
+$NOTES_HTML]]></description>
       <enclosure url="$ZIP_URL" type="application/octet-stream" $SIG_ATTRS />
     </item>
   </channel>
@@ -158,7 +173,10 @@ if [ "$PUBLISH" = "1" ]; then
   else
     gh release create "$TAG" "$DMG" "$ZIP" \
       --title "oh-my-opensnap $VERSION" \
-      --notes "설치: INSTALL.md 참고. 이미 설치한 사용자는 앱이 자동으로 업데이트를 확인합니다."
+      --notes "$NOTES_MD
+
+---
+설치: [INSTALL.md](https://github.com/$REPO/blob/main/INSTALL.md) 참고. 이미 설치한 사용자는 앱이 자동으로 업데이트합니다."
   fi
   echo "✅ 게시 완료: $TAG"
 else
