@@ -6,13 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.4</title>
-      <pubDate>Tue, 02 Jun 2026 13:25:24 +0000</pubDate>
-      <sparkle:version>5</sparkle:version>
-      <sparkle:shortVersionString>1.0.4</sparkle:shortVersionString>
+      <title>1.0.5</title>
+      <pubDate>Tue, 02 Jun 2026 13:33:14 +0000</pubDate>
+      <sparkle:version>6</sparkle:version>
+      <sparkle:shortVersionString>1.0.5</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<p>oh-my-opensnap 1.0.4</p>]]></description>
-      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.4/oh-my-opensnap-1.0.4.zip" type="application/octet-stream" sparkle:edSignature="chN5RrfQLVJBx2R0TllNaaN4nc/204998SDA2rjlyE09OWQbx0aQhgLtYR0jMmPjklQ8Xnjw2SQ/CicDJFZAAQ==" length="1399350" />
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.5</h2>
+<ul>
+<li>캡처 후 이미지 크기에 맞춰 라이브러리 창 크기를 자동 조절 (너무 크거나 작을 때)</li>
+<li>업데이트 알림 창에 변경 내용(릴리스 노트) 표시</li>
+</ul>]]></description>
+      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.5/oh-my-opensnap-1.0.5.zip" type="application/octet-stream" sparkle:edSignature="8ytF2xjAHhleyQHMls9rPPfBmfyp2q+3Kpg6lcBB4Bq1zsvDO+2y0jFvYvDtmO0hoCIZtTwQ0zk9dStmJW25Dg==" length="1400221" />
     </item>
   </channel>
 </rss>
