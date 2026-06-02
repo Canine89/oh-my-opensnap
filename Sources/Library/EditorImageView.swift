@@ -23,6 +23,7 @@ final class EditorImageView: NSView {
         let image: NSImage?
         let annotations: [Annotation]
         let nextNumber: Int
+        let cropRect: CGRect?      // 크롭 범위도 되돌림 대상
     }
 
     // MARK: 공개 상태
@@ -124,7 +125,15 @@ final class EditorImageView: NSView {
 
     // MARK: Undo
     private func pushUndo() {
-        undoStack.append(Snapshot(image: backingImage, annotations: annotations, nextNumber: nextNumber))
+        undoStack.append(Snapshot(image: backingImage, annotations: annotations,
+                                  nextNumber: nextNumber, cropRect: cropRect))
+        if undoStack.count > 50 { undoStack.removeFirst() }
+    }
+
+    /// 명시한 크롭 범위로 되돌아가는 스냅샷을 쌓는다(크롭 핸들 드래그 직전 상태 보존용).
+    private func pushCropSnapshot(_ rect: CGRect) {
+        undoStack.append(Snapshot(image: backingImage, annotations: annotations,
+                                  nextNumber: nextNumber, cropRect: rect))
         if undoStack.count > 50 { undoStack.removeFirst() }
     }
 
@@ -132,8 +141,19 @@ final class EditorImageView: NSView {
         guard let snapshot = undoStack.popLast() else { return }
         // 이미지 인스턴스가 달라지면(=크롭 적용/해제) 디스크 파일도 되돌려야 한다.
         let imageChanged = snapshot.image !== backingImage
-        replaceImage(snapshot.image, annotations: snapshot.annotations, nextNumber: snapshot.nextNumber)
-        if imageChanged { onEditCommitted?() }
+        backingImage = snapshot.image
+        annotations = snapshot.annotations
+        nextNumber = snapshot.nextNumber
+        cropRect = snapshot.cropRect      // 크롭 범위 조정도 되돌린다
+        activeHandle = nil
+        cropLoupePoint = nil
+        if imageChanged {
+            if let size = snapshot.image?.size { setFrameSize(size) }
+            onImageChanged?()             // 이미지 자체가 바뀐 경우만 맞춤/포커스 갱신
+            onEditCommitted?()            // 디스크 파일도 되돌림
+        }
+        notifyCropProgress()
+        needsDisplay = true
     }
 
     // MARK: 마우스
@@ -187,7 +207,10 @@ final class EditorImageView: NSView {
         switch tool {
         case .crop:
             activeHandle = nil
-            if cropLoupePoint != nil { cropLoupePoint = nil; needsDisplay = true }
+            cropLoupePoint = nil
+            // 범위가 실제로 바뀌었으면 드래그 직전 상태를 기록 → Cmd+Z로 범위 되돌리기
+            if let cr = cropRect, cr != cropStartRect { pushCropSnapshot(cropStartRect) }
+            needsDisplay = true
         case .arrow, .rectangle, .ellipse:
             defer { dragStart = nil; dragCurrent = nil }
             guard let start = dragStart else { return }
@@ -505,9 +528,9 @@ final class EditorImageView: NSView {
         NSColor.white.setStroke()
         border.stroke()
 
-        // 9개 선택점
+        // 모서리·변 선택점 (가운데 점은 표시하지 않음 — 안쪽을 드래그하면 이동은 그대로 됨)
         let handleSize = 12 / zoomScale
-        for (_, position) in handlePoints(rect) {
+        for (handle, position) in handlePoints(rect) where handle != .center {
             let dot = CGRect(x: position.x - handleSize / 2, y: position.y - handleSize / 2,
                              width: handleSize, height: handleSize)
             NSColor.white.setFill()
