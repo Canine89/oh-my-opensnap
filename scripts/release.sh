@@ -71,10 +71,23 @@ VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/
 BUILD="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Contents/Info.plist")"
 MINOS="$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$APP/Contents/Info.plist")"
 
-echo "▸ ad-hoc 재서명 (개인 인증서 제거, 하드닝 런타임 해제 → 임베드 프레임워크 로드 보장)"
+# 자체서명 인증서로 재서명.
+#  - ad-hoc 는 빌드마다 cdhash 가 바뀌어 macOS 26 에서 화면 녹화 권한이 업데이트마다 풀린다.
+#  - 이 앱 전용 자체서명 인증서로 서명하면 Designated Requirement 가 인증서에 고정되어,
+#    같은 인증서로 서명한 모든 업데이트에서 권한이 유지된다.
+#  - 팀ID 없는 인증서라 하드닝 런타임은 끈다(라이브러리 검증이 임베드 프레임워크를 막지 않도록).
+SIGN_ID="oh-my-opensnap"
+echo "▸ 자체서명 인증서로 재서명 ($SIGN_ID)"
+if ! security find-identity 2>/dev/null | grep -q "\"$SIGN_ID\""; then
+  echo "✗ '$SIGN_ID' 코드서명 인증서가 키체인에 없습니다."
+  echo "  백업해 둔 .p12 를 import 하거나, scripts/make-signing-cert.sh 로 (재)생성하세요."
+  echo "  ⚠️ 재생성하면 DR 이 바뀌어 기존 사용자가 화면 녹화 권한을 한 번 다시 켜야 합니다."
+  exit 1
+fi
 codesign --remove-signature "$APP" 2>/dev/null || true
-codesign --force --deep --sign - "$APP"
+codesign --force --deep --sign "$SIGN_ID" "$APP"
 codesign --verify --deep --strict "$APP" && echo "  서명 확인 ✓"
+codesign -d --requirements - "$APP" 2>&1 | grep -i designated || true
 
 echo "▸ 패키징 (DMG + ZIP)"
 mkdir -p "$DIST"
