@@ -591,6 +591,17 @@ final class ZoomableScrollView: NSScrollView {
 
 /// documentView가 클립뷰보다 작을 때 가운데로 정렬한다.
 final class CenteringClipView: NSClipView {
+    /// 이미지 바깥 여백을 클릭했을 때(=문서뷰 밖, 클립뷰 안), 크롭 중이면 그 클릭을
+    /// 문서뷰(에디터)로 넘긴다. 에디터는 좌표를 가장자리로 clamp 해 가까운 크롭 핸들을 잡는다.
+    /// → 핸들이 뷰 경계에 걸려 "눌렀는데 안 잡히던" 문제를 해결.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        if hit === self, let editor = documentView as? EditorImageView, editor.wantsMarginClicks {
+            return editor
+        }
+        return hit
+    }
+
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
         var rect = super.constrainBoundsRect(proposedBounds)
         guard let documentView else { return rect }

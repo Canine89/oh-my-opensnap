@@ -84,6 +84,10 @@ final class EditorImageView: NSView {
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
+    /// 크롭 중에는 이미지 바깥 여백을 클릭해도 핸들을 잡을 수 있도록,
+    /// 클립뷰가 여백 클릭 이벤트를 이 뷰로 넘겨준다. (핸들이 뷰 경계에 걸려 안 눌리던 문제 해결)
+    var wantsMarginClicks: Bool { tool == .crop }
+
     private var zoomScale: CGFloat { enclosingScrollView?.magnification ?? 1 }
 
     // MARK: 이미지 로드/교체
