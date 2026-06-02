@@ -574,8 +574,10 @@ final class ZoomableScrollView: NSScrollView {
         guard let document = documentView, document.bounds.width > 0, document.bounds.height > 0 else { return }
         // 가용 영역은 클립뷰의 '프레임'(화면 point) — 배율과 무관해 반복 호출에도 결과가 안정적이다.
         // (bounds.size 는 현재 배율로 스케일된 값이라, 그걸 쓰면 호출할 때마다 값이 진동한다.)
-        let available = contentView.frame.size
-        guard available.width > 0, available.height > 0 else { return }
+        // 가장자리에 여백을 둬서 크롭 꼭지점 핸들을 잡기 편하게 한다.
+        let inset: CGFloat = 36
+        let available = CGSize(width: max(1, contentView.frame.width - inset * 2),
+                               height: max(1, contentView.frame.height - inset * 2))
         let fit = min(available.width / document.bounds.width,
                       available.height / document.bounds.height)
         magnification = max(minMagnification, min(fit, maxMagnification))

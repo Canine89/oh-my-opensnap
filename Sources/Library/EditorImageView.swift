@@ -30,6 +30,7 @@ final class EditorImageView: NSView {
         didSet {
             cropRect = (tool == .crop) ? bounds : nil
             activeHandle = nil
+            cropLoupePoint = nil
             // 번호 도구로 바꾸면 현재 커서 위치에서 스탬프 미리보기를 즉시 띄운다.
             if tool == .number, let window {
                 let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
@@ -76,6 +77,8 @@ final class EditorImageView: NSView {
     private var activeHandle: Handle?
     private var dragOrigin: CGPoint = .zero
     private var cropStartRect: CGRect = .zero
+    /// 크롭 핸들을 드래그하는 동안 확대경을 띄울 지점(이미지 좌표). nil이면 표시 안 함.
+    private var cropLoupePoint: CGPoint?
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -150,6 +153,9 @@ final class EditorImageView: NSView {
             activeHandle = handle(at: point) ?? ((cropRect ?? .zero).contains(point) ? .center : nil)
             dragOrigin = point
             cropStartRect = cropRect ?? bounds
+            // 변/모서리 핸들을 잡으면 그 지점에 확대경을 띄운다(가운데 이동은 제외).
+            cropLoupePoint = (activeHandle != nil && activeHandle != .center) ? point : nil
+            needsDisplay = true
         case .arrow, .rectangle, .ellipse:
             dragStart = point
             dragCurrent = point
@@ -164,6 +170,7 @@ final class EditorImageView: NSView {
         case .crop:
             guard let handle = activeHandle else { return }
             cropRect = adjustedCropRect(handle: handle, point: point)
+            cropLoupePoint = (handle != .center) ? point : nil
             notifyCropProgress()
             needsDisplay = true
         case .arrow, .rectangle, .ellipse:
@@ -180,6 +187,7 @@ final class EditorImageView: NSView {
         switch tool {
         case .crop:
             activeHandle = nil
+            if cropLoupePoint != nil { cropLoupePoint = nil; needsDisplay = true }
         case .arrow, .rectangle, .ellipse:
             defer { dragStart = nil; dragCurrent = nil }
             guard let start = dragStart else { return }
@@ -371,6 +379,57 @@ final class EditorImageView: NSView {
         }
 
         if tool == .crop, let rect = cropRect { drawCropOverlay(rect) }
+
+        // 크롭 핸들 드래그 중: 커서 주변을 확대해 보여주는 루페(정밀 조정 보조)
+        if tool == .crop, let point = cropLoupePoint {
+            drawCropLoupe(around: point)
+        }
+    }
+
+    /// 크롭 중 커서(핸들) 주변 픽셀을 확대해 보여주는 루페.
+    /// 스크롤 배율(m)과 무관하게 화면상 일정 크기로 보이도록 1/m 로 보정해 그린다.
+    private func drawCropLoupe(around p: CGPoint) {
+        guard let image = backingImage else { return }
+        let m = max(zoomScale, 0.0001)
+        let screenDiameter: CGFloat = 150     // 화면상 루페 지름
+        let pixelZoom: CGFloat = 6            // 화면상 이미지 확대율
+        let d = screenDiameter / m            // 이미지 좌표계 지름
+        let gap = 28 / m
+
+        // 커서 우상단(flipped: y 작을수록 위)에 띄우되, 가장자리면 반대편으로 + 안쪽으로 클램프
+        var c = CGPoint(x: p.x + gap + d / 2, y: p.y - gap - d / 2)
+        if c.x + d / 2 > bounds.maxX { c.x = p.x - gap - d / 2 }
+        if c.y - d / 2 < bounds.minY { c.y = p.y + gap + d / 2 }
+        c.x = min(max(c.x, bounds.minX + d / 2), bounds.maxX - d / 2)
+        c.y = min(max(c.y, bounds.minY + d / 2), bounds.maxY - d / 2)
+        let loupe = CGRect(x: c.x - d / 2, y: c.y - d / 2, width: d, height: d)
+
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(ovalIn: loupe).addClip()
+        NSColor(white: 0.12, alpha: 1).setFill()
+        loupe.fill()
+        // 이미지점 p가 루페 중심에 오도록 확대(화면 확대율 = scale*m = pixelZoom)
+        let scale = pixelZoom / m
+        let t = NSAffineTransform()
+        t.translateX(by: c.x, yBy: c.y)
+        t.scaleX(by: scale, yBy: scale)
+        t.translateX(by: -p.x, yBy: -p.y)
+        t.concat()
+        NSGraphicsContext.current?.imageInterpolation = .none
+        image.draw(in: bounds)
+        NSGraphicsContext.restoreGraphicsState()
+
+        // 중앙 십자선(= 잘릴 경계) + 테두리
+        NSColor.white.withAlphaComponent(0.9).setStroke()
+        let cross = NSBezierPath()
+        cross.move(to: CGPoint(x: loupe.minX, y: c.y)); cross.line(to: CGPoint(x: loupe.maxX, y: c.y))
+        cross.move(to: CGPoint(x: c.x, y: loupe.minY)); cross.line(to: CGPoint(x: c.x, y: loupe.maxY))
+        cross.lineWidth = 1 / m
+        cross.stroke()
+        let border = NSBezierPath(ovalIn: loupe)
+        border.lineWidth = 2 / m
+        NSColor.white.withAlphaComponent(0.85).setStroke()
+        border.stroke()
     }
 
     private func draw(_ annotation: Annotation) {
