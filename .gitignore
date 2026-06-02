@@ -1,0 +1,15 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# XcodeGen 생성물 (project.yml 에서 재생성)
+oh-my-snap.xcodeproj/
+
+# 배포 산출물
+dist/
+*.dmg
+
+# macOS
+.DS_Store

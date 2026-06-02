@@ -1,0 +1,41 @@
+name: oh-my-snap
+options:
+  bundleIdPrefix: com.goldenrabbit
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"            # Swift 5 language mode: AppKit/콜백 코드 안정성 우선
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    DEAD_CODE_STRIPPING: YES
+
+targets:
+  oh-my-snap:
+    type: application
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Sources
+      - path: Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.goldenrabbit.ohmysnap
+        PRODUCT_NAME: oh-my-snap
+        GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_LSUIElement: YES                 # 메뉴바 상주, Dock 아이콘 숨김
+        INFOPLIST_KEY_CFBundleDisplayName: oh-my-snap
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Golden Rabbit"
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: M7NU9F8CZN      # 안정 서명 → 화면녹음 권한 유지 (adhoc 방지)
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
