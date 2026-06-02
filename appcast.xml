@@ -6,17 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.9</title>
-      <pubDate>Tue, 02 Jun 2026 15:20:39 +0000</pubDate>
-      <sparkle:version>10</sparkle:version>
-      <sparkle:shortVersionString>1.0.9</sparkle:shortVersionString>
+      <title>1.0.10</title>
+      <pubDate>Tue, 02 Jun 2026 15:28:28 +0000</pubDate>
+      <sparkle:version>11</sparkle:version>
+      <sparkle:shortVersionString>1.0.10</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.9</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.10</h2>
 <ul>
-<li>크롭 범위 조정도 되돌리기(⌘Z) 대상에 포함 — 핸들로 바꾼 범위를 한 단계씩 되돌릴 수 있음</li>
-<li>크롭의 가운데 핸들(점) 제거 (안쪽을 드래그하면 이동은 그대로)</li>
+<li>크롭 꼭지점 핸들이 이미지 가장자리에 걸려 잘 안 눌리던 문제 수정 — 이미지 바깥 여백을 눌러도 가까운 핸들이 잡힘</li>
 </ul>]]></description>
-      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.9/oh-my-opensnap-1.0.9.zip" type="application/octet-stream" sparkle:edSignature="iPPb6gfLdfYm9GhqHRWFMDPhXeu0afQ2b6D8kuVZXBwYUMfaYiAE8EjLG920YiRMifFSJrastSVpEw9BdAL9CA==" length="1401857" />
+      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.10/oh-my-opensnap-1.0.10.zip" type="application/octet-stream" sparkle:edSignature="uaeMOS2gySPGIbBhGJ/ogljwIoSF5OIO8Vf1FmYEh++78wvi5d7SUF8LBhPZYWXN65bQ5Ws0WwxvSyfEsoL+AA==" length="1402082" />
     </item>
   </channel>
 </rss>
