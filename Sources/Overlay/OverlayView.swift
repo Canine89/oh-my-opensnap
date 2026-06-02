@@ -49,8 +49,26 @@ final class OverlayView: NSView {
             owner: self))
     }
 
-    override func mouseEntered(with event: NSEvent) { cursorInside = true; needsDisplay = true }
+    override func mouseEntered(with event: NSEvent) {
+        // 진입 이벤트에도 실제 위치를 반영해야 첫 mouseMoved 전 (0,0) 크로스헤어가 안 보인다.
+        cursor = convert(event.locationInWindow, from: nil)
+        cursorInside = true
+        updateHoveredWindow()
+        needsDisplay = true
+    }
     override func mouseExited(with event: NSEvent) { cursorInside = false; needsDisplay = true }
+
+    /// 오버레이가 막 떠서 아직 마우스 이벤트가 오기 전, 현재 커서 위치로 초기화한다.
+    /// 커서가 이 디스플레이 위에 있을 때만 표시를 켠다(멀티 디스플레이 대응).
+    func primeCursor() {
+        guard let window else { return }
+        let local = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard bounds.contains(local) else { return }
+        cursor = local
+        cursorInside = true
+        updateHoveredWindow()
+        needsDisplay = true
+    }
 
     override func mouseMoved(with event: NSEvent) {
         cursor = convert(event.locationInWindow, from: nil)

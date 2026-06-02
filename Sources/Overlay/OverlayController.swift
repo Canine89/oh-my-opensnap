@@ -82,6 +82,8 @@ final class OverlayController {
             keyWindow.makeKey()
             keyWindow.makeFirstResponder(keyWindow.captureView)   // Esc 등 키 입력을 받기 위해
         }
+        // 이벤트가 오기 전이라도 현재 커서 위치로 크로스헤어를 맞춰 둔다(좌상단 0,0 깜빡임 방지).
+        for window in windows { window.captureView.primeCursor() }
         NSCursor.hide()
         cursorHidden = true
 
