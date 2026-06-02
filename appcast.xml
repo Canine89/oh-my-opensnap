@@ -7,16 +7,15 @@
     <language>ko</language>
     <item>
       <title>1.0.6</title>
-      <pubDate>Tue, 02 Jun 2026 14:07:56 +0000</pubDate>
+      <pubDate>Tue, 02 Jun 2026 14:08:53 +0000</pubDate>
       <sparkle:version>7</sparkle:version>
       <sparkle:shortVersionString>1.0.6</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
       <description><![CDATA[<h2>oh-my-opensnap 1.0.6</h2>
 <ul>
-<li>라이브러리 창 크기는 사용자가 맞춘 그대로 유지하고, 캡처 이미지 크기에 따라</li>
-<li>  줌(확대/축소)을 조절해 항상 창에 일관되게 채워 보이도록 변경</li>
+<li>라이브러리 창 크기는 사용자가 맞춘 그대로 유지하고, 캡처 크기에 따라 줌(확대/축소)을 조절해 항상 창에 일관되게 채워 보이도록 변경</li>
 </ul>]]></description>
-      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.6/oh-my-opensnap-1.0.6.zip" type="application/octet-stream" sparkle:edSignature="ApTNO6ftWOzyC7aqeBRuK9uazWgIH8bzTfFoYc0rOapau7HHia0U9V127YAzNMevdTdrFv1/g4RWxwaZNMlFAw==" length="1399374" />
+      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.6/oh-my-opensnap-1.0.6.zip" type="application/octet-stream" sparkle:edSignature="bL+jSLXuFCNuQEUn/u6j7Azdp6R7lgBadILG/SxErSd/E27CnFzdKlOiRIahzPwCYLJSAOKIlCUErEfX0XI+Ag==" length="1399359" />
     </item>
   </channel>
 </rss>
