@@ -6,17 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.7</title>
-      <pubDate>Tue, 02 Jun 2026 14:20:08 +0000</pubDate>
-      <sparkle:version>8</sparkle:version>
-      <sparkle:shortVersionString>1.0.7</sparkle:shortVersionString>
+      <title>1.0.8</title>
+      <pubDate>Tue, 02 Jun 2026 15:14:37 +0000</pubDate>
+      <sparkle:version>9</sparkle:version>
+      <sparkle:shortVersionString>1.0.8</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.7</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.8</h2>
 <ul>
-<li>큰 캡처가 라이브러리 창에 맞게 제대로 축소되지 않던 문제 수정 (맞춤 배율 계산 안정화)</li>
-<li>이미지 확대/축소 중 화면이 떨리던 현상 개선</li>
+<li>크롭 시 핸들을 드래그하면 커서 주변을 확대해 보여주는 확대경(루페) 추가 — 정밀하게 자르기</li>
+<li>미리보기 가장자리에 여백을 둬 크롭 꼭지점 핸들을 잡기 쉽게 개선</li>
 </ul>]]></description>
-      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.7/oh-my-opensnap-1.0.7.zip" type="application/octet-stream" sparkle:edSignature="17D2ZE+NN9TXn+zK8s2tA7ONhHC8h//jQSmOKU8vu7eUZucdp29sON1bEeAMeJ4XYQ6Ht97fiTWWpHG/rcdbCw==" length="1399879" />
+      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.8/oh-my-opensnap-1.0.8.zip" type="application/octet-stream" sparkle:edSignature="G9k7OFke1DvQBAxdCiebh6zUlKFAM4m3KOSOIp865YKJ4a/570YAdr34ADjoKuvu5E7Od8nw/wMT+FCJoS8WDQ==" length="1400788" />
     </item>
   </channel>
 </rss>
