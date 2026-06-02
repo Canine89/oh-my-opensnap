@@ -25,6 +25,12 @@ final class MenuBarController: NSObject {
         addItem(to: menu, title: "라이브러리…", action: #selector(openLibrary), key: "l")
         menu.addItem(.separator())
         addItem(to: menu, title: "설정…", action: #selector(openPreferences), key: ",")
+        // Sparkle 업데이트 확인 (타깃은 UpdaterController)
+        let updateItem = NSMenuItem(title: "업데이트 확인…",
+                                    action: #selector(UpdaterController.checkForUpdates(_:)),
+                                    keyEquivalent: "")
+        updateItem.target = UpdaterController.shared
+        menu.addItem(updateItem)
         menu.addItem(.separator())
         addItem(to: menu, title: "\(Brand.name) 종료", action: #selector(quit), key: "q")
         statusItem.menu = menu

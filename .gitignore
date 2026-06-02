@@ -6,10 +6,12 @@ xcuserdata/
 
 # XcodeGen 생성물 (project.yml 에서 재생성)
 oh-my-opensnap.xcodeproj/
+Config/Info.plist
 
 # 배포 산출물
 dist/
 *.dmg
+*.zip
 
 # macOS
 .DS_Store
