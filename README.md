@@ -1,4 +1,8 @@
-# oh-my-opensnap 📸
+<p align="center">
+  <img src="assets/logo.png" alt="oh-my-opensnap 로고" width="160">
+</p>
+
+<h1 align="center">oh-my-opensnap 📸</h1>
 
 빠르고 정밀한 **macOS 화면 캡처 도구**. 영역을 픽셀 단위로 집어 캡처하고, 곧바로 클립보드에 복사하고, 캡처본을 라이브러리에 모아 표시·크롭까지 한 곳에서.
 
