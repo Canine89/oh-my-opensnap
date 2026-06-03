@@ -10,6 +10,18 @@
 
 ---
 
+## 🎬 데모 영상
+
+<p align="center">
+  <a href="https://youtu.be/pIil-Nt7zA4">
+    <img src="https://img.youtube.com/vi/pIil-Nt7zA4/maxresdefault.jpg" alt="oh-my-opensnap 데모 영상" width="640">
+  </a>
+</p>
+
+<p align="center">▶️ <a href="https://youtu.be/pIil-Nt7zA4">YouTube에서 보기</a></p>
+
+---
+
 ## 왜 만들었나
 
 저는 **9년째 IT 도서를 기획하고 편집**하는 편집자입니다. 하루에 화면 캡처만 **500장, 많을 땐 1,000장**을 찍습니다. 캡처는 제 일의 절반입니다.
