@@ -4,7 +4,7 @@ import CoreVideo
 
 /// 라이브 확대경(루페)용 프레임 공급자.
 /// 디스플레이 전체를 낮은 지연으로 스트리밍하며 최신 프레임 1장만 캐시한다.
-/// 오버레이 윈도우는 `sharingType = .none`이라 캡처에 찍히지 않는다(자기참조 차단).
+/// 오버레이 윈도우는 `start(display:excluding:)`의 제외 목록으로 캡처에서 빠진다(자기참조 차단).
 final class DisplayStreamProvider: NSObject, SCStreamOutput {
     let displayID: CGDirectDisplayID
     let scale: CGFloat
@@ -21,8 +21,8 @@ final class DisplayStreamProvider: NSObject, SCStreamOutput {
         super.init()
     }
 
-    func start(display: SCDisplay) async {
-        let filter = SCContentFilter(display: display, excludingWindows: [])
+    func start(display: SCDisplay, excluding: [SCWindow] = []) async {
+        let filter = SCContentFilter(display: display, excludingWindows: excluding)
 
         let config = SCStreamConfiguration()
         config.width = Int((CGFloat(display.width) * scale).rounded())

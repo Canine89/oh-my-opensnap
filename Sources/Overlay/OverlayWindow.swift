@@ -21,7 +21,10 @@ final class OverlayWindow: NSWindow {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         ignoresMouseEvents = false
         acceptsMouseMovedEvents = true
-        sharingType = .none            // ScreenCaptureKit 캡처에서 제외 (루페/스크린샷에 안 찍힘)
+        // `.readOnly`(기본값)로 둬서 OBS 등 외부 화면 녹화에는 오버레이(크로스헤어·딤)가 보이게 한다.
+        // 우리 루페/스틸 캡처에 자기 자신이 찍히는 자기참조는 `.none`이 아니라
+        // SCContentFilter의 `excludingWindows`로 이 윈도우만 골라 제외해 막는다.
+        sharingType = .readOnly
         isReleasedWhenClosed = false
 
         contentView = captureView

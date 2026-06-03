@@ -8,8 +8,8 @@ enum StillImageCapturer {
 
     /// 디스플레이 전체를 캡처한다. 선택 영역 crop은 호출 측에서 픽셀 단위로 수행.
     /// (sourceRect 좌표 미묘함을 피하고 정확도를 우선 — 전체 캡처 후 crop)
-    static func capture(display: SCDisplay, scale: CGFloat) async throws -> CGImage {
-        let filter = SCContentFilter(display: display, excludingWindows: [])
+    static func capture(display: SCDisplay, scale: CGFloat, excluding: [SCWindow] = []) async throws -> CGImage {
+        let filter = SCContentFilter(display: display, excludingWindows: excluding)
 
         let config = SCStreamConfiguration()
         config.width = Int((CGFloat(display.width) * scale).rounded())

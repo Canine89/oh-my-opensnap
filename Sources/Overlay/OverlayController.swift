@@ -10,6 +10,9 @@ final class OverlayController {
 
     private var windows: [OverlayWindow] = []
     private var providers: [CGDirectDisplayID: DisplayStreamProvider] = [:]
+    // 우리 오버레이 윈도우들의 SCWindow 매핑. 루페/스틸 캡처에서 이것만 제외해
+    // 자기참조(자기 자신이 캡처에 찍힘)를 막는다. OBS 등 외부 녹화엔 그대로 보인다.
+    private var overlayWindows: [SCWindow] = []
     private var hitTester: WindowHitTester?
     private var refreshTimer: Timer?
     private var active = false
@@ -44,6 +47,10 @@ final class OverlayController {
         let tester = WindowHitTester(content: content)
         hitTester = tester
 
+        // (provider, scDisplay) 쌍. 오버레이를 화면에 올린 뒤에야 SCWindow 매핑이 가능하므로
+        // 루페 스트림 시작은 윈도우 생성 루프가 끝난 뒤로 미룬다.
+        var pending: [(provider: DisplayStreamProvider, display: SCDisplay)] = []
+
         for screen in NSScreen.screens {
             let displayID = screen.displayID
             guard let scDisplay = content.displays.first(where: { $0.displayID == displayID }) else { continue }
@@ -67,8 +74,7 @@ final class OverlayController {
             view.provider = provider
             providers[displayID] = provider
             windows.append(window)
-
-            await provider.start(display: scDisplay)
+            pending.append((provider, scDisplay))
         }
 
         guard !windows.isEmpty else {
@@ -78,6 +84,13 @@ final class OverlayController {
         }
 
         for window in windows { window.orderFrontRegardless() }
+
+        // 오버레이가 화면에 올라온 뒤 SCWindow로 매핑하고, 그 제외 목록으로 루페 스트림을 시작한다.
+        overlayWindows = await Self.resolveOverlayWindows(windows)
+        for item in pending {
+            await item.provider.start(display: item.display, excluding: overlayWindows)
+        }
+
         if let keyWindow = windows.first {
             keyWindow.makeKey()
             keyWindow.makeFirstResponder(keyWindow.captureView)   // Esc 등 키 입력을 받기 위해
@@ -94,6 +107,14 @@ final class OverlayController {
                 self?.windows.forEach { $0.captureView.refreshLoupe() }
             }
         }
+    }
+
+    /// 화면에 올라온 오버레이 NSWindow들을 SCWindow로 매핑한다.
+    /// (NSWindow.windowNumber ↔ SCWindow.windowID). 캡처 제외 목록으로 쓴다.
+    private static func resolveOverlayWindows(_ windows: [OverlayWindow]) async -> [SCWindow] {
+        let ids = Set(windows.compactMap { $0.windowNumber > 0 ? CGWindowID($0.windowNumber) : nil })
+        guard !ids.isEmpty, let content = try? await SCShareableContent.current else { return [] }
+        return content.windows.filter { ids.contains($0.windowID) }
     }
 
     /// 어떤 상황에서도 오버레이를 닫을 수 있도록 보장하는 안전장치.
@@ -119,11 +140,12 @@ final class OverlayController {
     private func finish(viewRect: CGRect, scale: CGFloat, display: SCDisplay) {
         // 너무 작은 선택은 취소로 간주
         guard viewRect.width > 2, viewRect.height > 2 else { cancel(); return }
+        let excluded = overlayWindows        // teardown 전에 제외 목록을 확보
         teardown()
 
         Task {
             do {
-                let full = try await StillImageCapturer.capture(display: display, scale: scale)
+                let full = try await StillImageCapturer.capture(display: display, scale: scale, excluding: excluded)
                 await MainActor.run {
                     // 스틸 픽셀을 다 읽은 뒤에만 라이브러리 창을 되돌린다(자르기 실패 경로 포함).
                     defer { LibraryWindowController.shared.restoreAfterCapture() }
@@ -173,6 +195,7 @@ final class OverlayController {
         escMonitors.removeAll()
         for provider in providers.values { provider.stop() }
         providers.removeAll()
+        overlayWindows.removeAll()
         hitTester = nil
         for window in windows { window.orderOut(nil) }
         windows.removeAll()
