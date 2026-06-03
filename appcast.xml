@@ -6,16 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.11</title>
-      <pubDate>Wed, 03 Jun 2026 11:43:13 +0000</pubDate>
-      <sparkle:version>12</sparkle:version>
-      <sparkle:shortVersionString>1.0.11</sparkle:shortVersionString>
+      <title>1.0.12</title>
+      <pubDate>Wed, 03 Jun 2026 12:22:05 +0000</pubDate>
+      <sparkle:version>13</sparkle:version>
+      <sparkle:shortVersionString>1.0.12</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.11</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.12</h2>
 <ul>
-<li>앱 아이콘(로고) 새 디자인으로 교체</li>
+<li>캡처 모드의 크로스헤어·화면 어두워짐 오버레이가 OBS 등 외부 화면 녹화에도 보이도록 수정 (앱 자체 캡처 결과에는 여전히 안 찍힘)</li>
 </ul>]]></description>
-      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.11/oh-my-opensnap-1.0.11.zip" type="application/octet-stream" sparkle:edSignature="3Zd7qYO70v/tLPCTGJn1sqIhP9tBXSMGGNSXp/BPz76Q+9IVLMTA/n58EtxvWMu3it/QzTV8M32RukDIcGHKBQ==" length="3307580" />
+      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.12/oh-my-opensnap-1.0.12.zip" type="application/octet-stream" sparkle:edSignature="U0K+u1dXkK0StgYIp3Zt6+JuhJq6kkuu9a0lp5nGjCuxSkxGHLT0a42E55nm6JkuMlz49TlWrjlmu9NuVMPeAA==" length="3310652" />
     </item>
   </channel>
 </rss>
