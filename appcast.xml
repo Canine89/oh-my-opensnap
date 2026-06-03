@@ -6,16 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.10</title>
-      <pubDate>Tue, 02 Jun 2026 15:28:28 +0000</pubDate>
-      <sparkle:version>11</sparkle:version>
-      <sparkle:shortVersionString>1.0.10</sparkle:shortVersionString>
+      <title>1.0.11</title>
+      <pubDate>Wed, 03 Jun 2026 11:43:13 +0000</pubDate>
+      <sparkle:version>12</sparkle:version>
+      <sparkle:shortVersionString>1.0.11</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.10</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.11</h2>
 <ul>
-<li>크롭 꼭지점 핸들이 이미지 가장자리에 걸려 잘 안 눌리던 문제 수정 — 이미지 바깥 여백을 눌러도 가까운 핸들이 잡힘</li>
+<li>앱 아이콘(로고) 새 디자인으로 교체</li>
 </ul>]]></description>
-      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.10/oh-my-opensnap-1.0.10.zip" type="application/octet-stream" sparkle:edSignature="uaeMOS2gySPGIbBhGJ/ogljwIoSF5OIO8Vf1FmYEh++78wvi5d7SUF8LBhPZYWXN65bQ5Ws0WwxvSyfEsoL+AA==" length="1402082" />
+      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.11/oh-my-opensnap-1.0.11.zip" type="application/octet-stream" sparkle:edSignature="3Zd7qYO70v/tLPCTGJn1sqIhP9tBXSMGGNSXp/BPz76Q+9IVLMTA/n58EtxvWMu3it/QzTV8M32RukDIcGHKBQ==" length="3307580" />
     </item>
   </channel>
 </rss>
