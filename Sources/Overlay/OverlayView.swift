@@ -132,6 +132,11 @@ final class OverlayView: NSView {
         if event.keyCode == 53 { onCancel?() }   // Esc
     }
 
+    // 우클릭(또는 트랙패드 두 손가락 클릭)으로 언제든 취소. 키 입력이 오버레이로
+    // 전달되지 않는 상황(앱이 key가 못 된 경우)에도 마우스 이벤트는 항상 도달하므로
+    // 가장 확실한 취소 경로다.
+    override func rightMouseDown(with event: NSEvent) { onCancel?() }
+
     /// 타이머가 호출 — 커서가 멈춰 있어도 루페 픽셀을 갱신.
     func refreshLoupe() {
         guard cursorInside, loupeDirtyFrame != .zero else { return }

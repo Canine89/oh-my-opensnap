@@ -20,22 +20,30 @@ extension Notification.Name {
 final class CaptureLibrary {
     static let shared = CaptureLibrary()
 
-    let directory: URL
+    /// 현재 저장 폴더. 사용자가 설정에서 고른 폴더(기본값: 바탕화면/oh-my-opensnap).
+    var directory: URL { Settings.shared.libraryDirectory }
     /// thumbnailCache 는 메인 스레드에서만 읽고 쓴다.
     private var thumbnailCache: [URL: NSImage] = [:]
     /// 바탕화면(TCC 보호) 디스크 I/O를 메인 런루프 밖에서 직렬 수행.
     private let ioQueue = DispatchQueue(label: "com.goldenrabbit.ohmyopensnap.library.io", qos: .userInitiated)
 
     private init() {
-        // URL 계산은 디스크 접근이 아니므로 메인에서 안전.
-        let base = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser
-        directory = base.appendingPathComponent(Brand.folderName, isDirectory: true)
         // 디렉터리 생성 + 레거시 이관은 바탕화면 접근이라 백그라운드에서.
         let dir = directory
         ioQueue.async { [weak self] in
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self?.migrateLegacyIfNeeded()
+        }
+    }
+
+    /// 저장 폴더가 바뀌었을 때 호출 — 새 폴더를 만들고 목록 갱신 알림을 보낸다.
+    func directoryDidChange() {
+        let dir = directory
+        ioQueue.async {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .libraryDidChange, object: nil)
+            }
         }
     }
 

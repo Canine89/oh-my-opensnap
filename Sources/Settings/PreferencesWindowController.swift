@@ -50,30 +50,27 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
                                   target: self, action: #selector(toggleSound(_:)))
         soundCheck.state = Settings.shared.playSound ? .on : .off
 
-        let saveCheck = NSButton(checkboxWithTitle: "클립보드 복사와 함께 파일로 저장",
-                                 target: self, action: #selector(toggleSave(_:)))
-        saveCheck.state = Settings.shared.saveToFile ? .on : .off
-
         let folderRow = NSStackView()
         folderRow.orientation = .horizontal
         folderRow.spacing = 8
         let chooseButton = NSButton(title: "저장 폴더 선택…", target: self, action: #selector(chooseFolder))
-        let label = NSTextField(labelWithString: Settings.shared.saveDirectory.path)
+        let resetButton = NSButton(title: "기본값", target: self, action: #selector(resetFolder))
+        let label = NSTextField(labelWithString: Settings.shared.libraryDirectory.path)
         label.lineBreakMode = .byTruncatingMiddle
         label.textColor = .secondaryLabelColor
         label.font = .systemFont(ofSize: 11)
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         pathLabel = label
         folderRow.addArrangedSubview(chooseButton)
+        folderRow.addArrangedSubview(resetButton)
         folderRow.addArrangedSubview(label)
 
-        let hint = NSTextField(wrappingLabelWithString: "윈도우 위에서 클릭하면 해당 윈도우를, 드래그하면 지정 영역을 캡처합니다. 캡처 후 이미지는 자동으로 클립보드에 복사됩니다.")
+        let hint = NSTextField(wrappingLabelWithString: "윈도우 위에서 클릭하면 해당 윈도우를, 드래그하면 지정 영역을 캡처합니다(취소는 Esc 또는 우클릭). 캡처 이미지는 클립보드에 복사되고 위 저장 폴더에 보관됩니다.")
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
 
         stack.addArrangedSubview(shortcutRow)
         stack.addArrangedSubview(soundCheck)
-        stack.addArrangedSubview(saveCheck)
         stack.addArrangedSubview(folderRow)
         stack.addArrangedSubview(hint)
 
@@ -101,6 +98,9 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         isRecording = true
         recordButton?.title = "키 입력…"
         recordButton?.highlight(true)
+        // 녹화 중에는 기존 전역 단축키를 잠시 끈다 — 안 그러면 현재 단축키(예: ⌘⇧2)를
+        // 누를 때 녹화 대신 캡처가 실행돼 버린다.
+        HotkeyManager.shared.suspend()
         recordingMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self else { return event }
             // Esc → 취소
@@ -110,9 +110,8 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
 
             Settings.shared.hotKeyCode = UInt32(event.keyCode)
             Settings.shared.hotKeyModifiers = HotkeyFormatter.carbonModifiers(from: event.modifierFlags)
-            HotkeyManager.shared.reload()
             NotificationCenter.default.post(name: .hotkeyChanged, object: nil)
-            self.stopRecording()
+            self.stopRecording()   // 새 설정으로 전역 단축키 재등록
             return nil
         }
     }
@@ -125,6 +124,8 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
             NSEvent.removeMonitor(monitor)
             recordingMonitor = nil
         }
+        // 전역 단축키 복구(녹화 중 변경됐으면 새 값으로 재등록).
+        HotkeyManager.shared.reload()
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -135,19 +136,24 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         Settings.shared.playSound = (sender.state == .on)
     }
 
-    @objc private func toggleSave(_ sender: NSButton) {
-        Settings.shared.saveToFile = (sender.state == .on)
-    }
-
     @objc private func chooseFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.directoryURL = Settings.shared.saveDirectory
+        panel.canCreateDirectories = true
+        panel.prompt = "이 폴더에 저장"
+        panel.directoryURL = Settings.shared.libraryDirectory
         if panel.runModal() == .OK, let url = panel.url {
-            Settings.shared.saveDirectory = url
+            Settings.shared.libraryDirectory = url
             pathLabel?.stringValue = url.path
+            CaptureLibrary.shared.directoryDidChange()
         }
+    }
+
+    @objc private func resetFolder() {
+        Settings.shared.resetLibraryDirectory()
+        pathLabel?.stringValue = Settings.shared.libraryDirectory.path
+        CaptureLibrary.shared.directoryDidChange()
     }
 }

@@ -27,6 +27,12 @@ final class HotkeyManager {
         registerCurrent()
     }
 
+    /// 단축키 녹화 중 일시 해제 — 등록된 단축키가 녹화 입력을 가로채지 않도록.
+    /// 녹화 종료 시 `reload()`로 복구한다.
+    func suspend() {
+        unregisterHotKey()
+    }
+
     func stop() {
         unregisterHotKey()
         if let eventHandler { RemoveEventHandler(eventHandler) }

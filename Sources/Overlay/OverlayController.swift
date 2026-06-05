@@ -92,7 +92,10 @@ final class OverlayController {
         }
 
         if let keyWindow = windows.first {
-            keyWindow.makeKey()
+            // 전역 단축키로 떴을 때 앱이 활성/key가 못 돼 ESC가 안 먹는 경우가 있어,
+            // 윈도우가 화면에 올라온 직후 다시 활성화하고 key로 만든다.
+            NSApp.activate(ignoringOtherApps: true)
+            keyWindow.makeKeyAndOrderFront(nil)
             keyWindow.makeFirstResponder(keyWindow.captureView)   // Esc 등 키 입력을 받기 위해
         }
         // 이벤트가 오기 전이라도 현재 커서 위치로 크로스헤어를 맞춰 둔다(좌상단 0,0 깜빡임 방지).
