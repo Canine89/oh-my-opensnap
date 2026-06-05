@@ -6,16 +6,18 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.12</title>
-      <pubDate>Wed, 03 Jun 2026 12:22:05 +0000</pubDate>
-      <sparkle:version>13</sparkle:version>
-      <sparkle:shortVersionString>1.0.12</sparkle:shortVersionString>
+      <title>1.0.13</title>
+      <pubDate>Fri, 05 Jun 2026 09:04:51 +0000</pubDate>
+      <sparkle:version>14</sparkle:version>
+      <sparkle:shortVersionString>1.0.13</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.12</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.13</h2>
 <ul>
-<li>캡처 모드의 크로스헤어·화면 어두워짐 오버레이가 OBS 등 외부 화면 녹화에도 보이도록 수정 (앱 자체 캡처 결과에는 여전히 안 찍힘)</li>
+<li>캡처 화면을 우클릭(또는 Esc)으로 언제든 취소할 수 있도록 개선</li>
+<li>단축키 변경이 잘 안 되던 문제 수정 — 녹화 중에는 기존 단축키를 잠시 꺼서 정상적으로 새 조합을 등록</li>
+<li>저장 폴더를 직접 지정하면 캡처가 그 폴더에 저장되도록 변경 (기본값은 바탕화면/oh-my-opensnap, '기본값' 버튼으로 복귀). 혼동되던 '파일로 저장' 옵션 제거</li>
 </ul>]]></description>
-      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.12/oh-my-opensnap-1.0.12.zip" type="application/octet-stream" sparkle:edSignature="U0K+u1dXkK0StgYIp3Zt6+JuhJq6kkuu9a0lp5nGjCuxSkxGHLT0a42E55nm6JkuMlz49TlWrjlmu9NuVMPeAA==" length="3310652" />
+      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.13/oh-my-opensnap-1.0.13.zip" type="application/octet-stream" sparkle:edSignature="rpgbSZ5iCxS1GMSUHpXLKTHuds6CRQ/dYc2Tag571H1oP6KGZSeoW6dawEH7sREm8Pnb3/Akw5X7bHBrSZE/Ag==" length="3310460" />
     </item>
   </channel>
 </rss>
