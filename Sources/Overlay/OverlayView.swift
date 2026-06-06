@@ -39,6 +39,10 @@ final class OverlayView: NSView {
     override var acceptsFirstResponder: Bool { true }
     override var wantsDefaultClipping: Bool { false }
 
+    /// 오버레이가 막 떠서 아직 창이 활성(key)이 아니어도 첫 클릭을 그대로 받는다.
+    /// (이게 없으면 첫 클릭이 '창 활성화용'으로 먹혀, 두 번 클릭해야 선택이 시작된다.)
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     // MARK: 트래킹
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
