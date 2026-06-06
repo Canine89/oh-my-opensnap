@@ -6,15 +6,17 @@ import AppKit
 /// ⌘Z 되돌리기는 스냅샷 스택으로 크롭 포함 모든 편집에 적용된다.
 final class EditorImageView: NSView {
 
-    enum Tool { case none, crop, number, arrow, rectangle, ellipse }
+    enum Tool { case none, crop, number, arrow, rectangle, ellipse, mosaic }
 
     struct Annotation {
-        enum Kind { case number(Int), arrow, rectangle, ellipse }
+        enum Kind { case number(Int), arrow, rectangle, ellipse, mosaic }
         let kind: Kind
         let start: CGPoint
         let end: CGPoint
         let color: NSColor
         let width: CGFloat
+        /// 모자이크 전용: 영역을 다운샘플한 작은 이미지(그릴 때 보간 없이 확대 → 블록).
+        var mosaicImage: CGImage? = nil
     }
 
     private enum Handle { case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left, center }
@@ -62,7 +64,9 @@ final class EditorImageView: NSView {
     }
 
     // MARK: 내부 상태
-    private var backingImage: NSImage?
+    private var backingImage: NSImage? { didSet { backingCG = nil } }
+    /// 모자이크 샘플링용 backingImage의 CGImage 캐시.
+    private var backingCG: CGImage?
     private var annotations: [Annotation] = []
     private var nextNumber = 1
     private var undoStack: [Snapshot] = []
@@ -180,7 +184,7 @@ final class EditorImageView: NSView {
             // 변/모서리 핸들을 잡으면 그 지점에 확대경을 띄운다(가운데 이동은 제외).
             cropLoupePoint = (activeHandle != nil && activeHandle != .center) ? point : nil
             needsDisplay = true
-        case .arrow, .rectangle, .ellipse:
+        case .arrow, .rectangle, .ellipse, .mosaic:
             dragStart = point
             dragCurrent = point
         case .none:
@@ -201,6 +205,10 @@ final class EditorImageView: NSView {
             guard let start = dragStart else { return }
             // Shift: 사각형/원은 1:1, 화살표는 45° 단위로 반듯하게.
             dragCurrent = event.modifierFlags.contains(.shift) ? constrained(from: start, to: point) : point
+            needsDisplay = true
+        case .mosaic:
+            guard dragStart != nil else { return }
+            dragCurrent = point
             needsDisplay = true
         default:
             break
@@ -225,6 +233,16 @@ final class EditorImageView: NSView {
             pushUndo()
             annotations.append(Annotation(kind: kind, start: start, end: end,
                                           color: strokeColor, width: strokeWidth))
+            needsDisplay = true
+        case .mosaic:
+            defer { dragStart = nil; dragCurrent = nil }
+            guard let start = dragStart else { return }
+            let end = clamp(convert(event.locationInWindow, from: nil))
+            let rect = Self.rect(start, end)
+            guard rect.width > 4, rect.height > 4, let small = makeMosaicSmall(rect: rect) else { return }
+            pushUndo()
+            annotations.append(Annotation(kind: .mosaic, start: start, end: end,
+                                          color: .clear, width: 0, mosaicImage: small))
             needsDisplay = true
         default:
             break
@@ -395,6 +413,14 @@ final class EditorImageView: NSView {
                 draw(Annotation(kind: .rectangle, start: start, end: current, color: strokeColor, width: strokeWidth))
             case .ellipse:
                 draw(Annotation(kind: .ellipse, start: start, end: current, color: strokeColor, width: strokeWidth))
+            case .mosaic:
+                // 드래그 중 실시간 미리보기
+                let rect = Self.rect(start, current)
+                if let small = makeMosaicSmall(rect: rect) { drawMosaic(rect: rect, small: small) }
+                NSColor.white.withAlphaComponent(0.9).setStroke()
+                let border = NSBezierPath(rect: rect)
+                border.lineWidth = 1 / zoomScale
+                border.stroke()
             default:
                 break
             }
@@ -475,7 +501,49 @@ final class EditorImageView: NSView {
             let path = NSBezierPath(ovalIn: Self.rect(annotation.start, annotation.end))
             path.lineWidth = annotation.width
             path.stroke()
+        case .mosaic:
+            if let small = annotation.mosaicImage {
+                drawMosaic(rect: Self.rect(annotation.start, annotation.end), small: small)
+            }
         }
+    }
+
+    /// 작은(다운샘플) 이미지를 보간 없이 영역에 확대해 그린다 → 블록 모자이크.
+    private func drawMosaic(rect: CGRect, small: CGImage) {
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current?.imageInterpolation = .none
+        NSImage(cgImage: small, size: rect.size).draw(in: rect)
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// 영역을 블록 격자 수만큼 다운샘플한 작은 CGImage를 만든다(블록당 평균색).
+    private func makeMosaicSmall(rect: CGRect) -> CGImage? {
+        guard let cg = backingImageCG() else { return nil }
+        let imageBounds = CGRect(x: 0, y: 0, width: cg.width, height: cg.height)
+        let r = rect.integral.intersection(imageBounds)
+        guard r.width >= 2, r.height >= 2, let cropped = cg.cropping(to: r) else { return nil }
+        let block: CGFloat = 14                                  // 블록 한 변(이미지 px) 목표
+        let cols = max(1, min(80, Int(r.width / block)))
+        let rows = max(1, min(80, Int(r.height / block)))
+        return scaled(cropped, width: cols, height: rows, interpolation: .medium)
+    }
+
+    /// CGImage를 지정 크기로 다시 그려 새 CGImage를 만든다(보간 품질 지정).
+    private func scaled(_ src: CGImage, width: Int, height: Int, interpolation: CGInterpolationQuality) -> CGImage? {
+        guard width > 0, height > 0,
+              let cs = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: width, height: height,
+                                  bitsPerComponent: 8, bytesPerRow: 0, space: cs,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.interpolationQuality = interpolation
+        ctx.draw(src, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return ctx.makeImage()
+    }
+
+    private func backingImageCG() -> CGImage? {
+        if let backingCG { return backingCG }
+        backingCG = backingImage?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        return backingCG
     }
 
     /// 동글 번호 하나를 그린다. `alpha < 1`이면 커서를 따라다니는 스탬프 미리보기 용도.

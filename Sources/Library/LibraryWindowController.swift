@@ -17,7 +17,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private let cropDoneButton = NSButton(title: "완료", target: nil, action: nil)
 
     // 편집 도구 (세그먼트 인덱스 → 도구)
-    private let tools: [EditorImageView.Tool] = [.none, .crop, .number, .arrow, .rectangle, .ellipse]
+    private let tools: [EditorImageView.Tool] = [.none, .crop, .number, .arrow, .rectangle, .ellipse, .mosaic]
 
     private var items: [LibraryItem] = []
     private var selectedItem: LibraryItem?
@@ -236,8 +236,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
         // 편집 도구: 포인터 / 크롭 / 번호 / 화살표 / 사각형 / 원
         let toolControl = NSSegmentedControl(labels: [], trackingMode: .selectOne, target: self, action: #selector(toolChanged(_:)))
-        let symbols = ["cursorarrow", "crop", "number.circle", "arrow.up.right", "rectangle", "circle"]
-        let tips = ["선택", "크롭 (드래그 후 ⏎ 적용)", "번호 ➊–➒", "화살표", "사각형", "원"]
+        let symbols = ["cursorarrow", "crop", "number.circle", "arrow.up.right", "rectangle", "circle", "square.grid.3x3.fill"]
+        let tips = ["선택", "크롭 (드래그 후 ⏎ 적용)", "번호 ➊–➒", "화살표", "사각형", "원", "모자이크 (드래그)"]
         toolControl.segmentCount = symbols.count
         for (i, symbol) in symbols.enumerated() {
             toolControl.setImage(NSImage(systemSymbolName: symbol, accessibilityDescription: tips[i]), forSegment: i)
