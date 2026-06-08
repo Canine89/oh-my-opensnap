@@ -67,7 +67,7 @@ final class VideoEditorView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.underPageBackgroundColor.cgColor
 
-        playerView.controlsStyle = .floating
+        playerView.controlsStyle = .none
         playerView.videoGravity = .resizeAspect
         playerView.translatesAutoresizingMaskIntoConstraints = false
 
