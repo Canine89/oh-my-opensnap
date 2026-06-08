@@ -178,6 +178,16 @@ if [ "$PUBLISH" = "1" ]; then
 ---
 설치: [INSTALL.md](https://github.com/$REPO/blob/main/INSTALL.md) 참고. 이미 설치한 사용자는 앱이 자동으로 업데이트합니다."
   fi
+  echo "▸ 공개 업데이트 ZIP 다운로드 확인"
+  curl --fail --location --retry 12 --retry-delay 5 --retry-all-errors \
+    --output /tmp/oh-my-opensnap-update-check.zip "$ZIP_URL" >/dev/null
+  ACTUAL_SIZE="$(stat -f%z /tmp/oh-my-opensnap-update-check.zip)"
+  EXPECTED_SIZE="$(stat -f%z "$ZIP")"
+  rm -f /tmp/oh-my-opensnap-update-check.zip
+  if [ "$ACTUAL_SIZE" != "$EXPECTED_SIZE" ]; then
+    echo "✗ 공개 ZIP 크기 불일치: expected=$EXPECTED_SIZE actual=$ACTUAL_SIZE"
+    exit 1
+  fi
   echo "✅ 게시 완료: $TAG"
 else
   echo
