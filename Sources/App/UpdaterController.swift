@@ -21,11 +21,44 @@ final class UpdaterController {
 
     /// 메뉴 "업데이트 확인…" 액션에 연결.
     @objc func checkForUpdates(_ sender: Any?) {
+        NSApp.activate(ignoringOtherApps: true)
         controller.checkForUpdates(sender)
+        bringUpdateWindowsForwardSoon()
     }
 
     /// 메뉴 항목 활성/비활성 갱신용 (확인 중이면 비활성).
     var canCheckForUpdates: Bool {
         controller.updater.canCheckForUpdates
+    }
+
+    private func bringUpdateWindowsForwardSoon() {
+        [0.1, 0.4, 0.9, 1.6].forEach { delay in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.bringUpdateWindowsForward()
+            }
+        }
+    }
+
+    private func bringUpdateWindowsForward() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows
+            .filter(isLikelyUpdateWindow)
+            .forEach { window in
+                window.level = .modalPanel
+                window.orderFrontRegardless()
+                window.makeKeyAndOrderFront(nil)
+            }
+    }
+
+    private func isLikelyUpdateWindow(_ window: NSWindow) -> Bool {
+        guard window.isVisible else { return false }
+        let title = window.title.lowercased()
+        let className = String(describing: type(of: window)).lowercased()
+        return className.contains("sparkle")
+            || className.contains("update")
+            || title.contains("update")
+            || title.contains("업데이트")
+            || title.contains("새 버전")
+            || title.contains("new version")
     }
 }

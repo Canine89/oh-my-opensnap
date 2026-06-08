@@ -89,13 +89,13 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
     // MARK: 구성
     private func buildWindow() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 460),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 920, height: 600),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
         window.title = "\(Brand.name) — 라이브러리"
         window.delegate = self
         window.isReleasedWhenClosed = false
-        window.contentMinSize = NSSize(width: 520, height: 360)
+        window.contentMinSize = NSSize(width: 760, height: 460)
         window.center()
         window.setFrameAutosaveName("LibraryWindowV2")
 
