@@ -6,16 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.30</title>
-      <pubDate>Mon, 08 Jun 2026 09:58:25 +0000</pubDate>
-      <sparkle:version>31</sparkle:version>
-      <sparkle:shortVersionString>1.0.30</sparkle:shortVersionString>
+      <title>1.0.31</title>
+      <pubDate>Mon, 08 Jun 2026 10:09:13 +0000</pubDate>
+      <sparkle:version>32</sparkle:version>
+      <sparkle:shortVersionString>1.0.31</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.30</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.31</h2>
 <ul>
-<li>선택 HUD와 촬영 중 HUD의 버튼을 고대비 전용 버튼으로 바꿔 어두운 배경에서도 글자가 확실히 보이도록 개선</li>
+<li>캡처 선택 HUD에서 영상 촬영을 고를 수 있으므로 상태바 메뉴의 별도 `영상 촬영` 항목 제거</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.30.zip" type="application/octet-stream" sparkle:edSignature="Tup4sfDtF06L4MC1a4QcvyTJ6o3CULZbSWK3qTpviNNwO2o7e+PI4JXSr+eeZFuxtBgRhKOuzKz6aTscJS9FCA==" length="3383902" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.31.zip" type="application/octet-stream" sparkle:edSignature="ou/BOyLN1KjkrjlErZ9gL6Ra1na1L8fySHodtRlO5LkOUvXaMqgtxaedT44Bf/V5KtBywVtSVW34eJJhH4SNDg==" length="3383751" />
     </item>
   </channel>
 </rss>
