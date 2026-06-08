@@ -6,19 +6,18 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.22</title>
-      <pubDate>Mon, 08 Jun 2026 08:07:21 +0000</pubDate>
-      <sparkle:version>23</sparkle:version>
-      <sparkle:shortVersionString>1.0.22</sparkle:shortVersionString>
+      <title>1.0.23</title>
+      <pubDate>Mon, 08 Jun 2026 08:11:30 +0000</pubDate>
+      <sparkle:version>24</sparkle:version>
+      <sparkle:shortVersionString>1.0.23</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.22</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.23</h2>
 <ul>
-<li>라이브러리에서 GIF 항목을 WebKit 기반 미리보기로 표시해 애니메이션이 재생되도록 수정</li>
-<li>영상 편집의 잘라내기 흐름을 `영역 선택` → 드래그 → `선택 영역 잘라내기` 순서로 명확히 변경</li>
-<li>영상 재생 컨트롤을 평소에는 가리지 않도록 잘라내기 오버레이가 영역 선택 모드에서만 마우스 입력을 받게 수정</li>
-<li>선택 영역이 없을 때 MP4 잘라내기가 전체 영상으로 실행되지 않도록 방지</li>
+<li>영상 편집의 잘라내기를 화면 영역 크롭이 아니라 시작/끝 초 구간 잘라내기로 변경</li>
+<li>현재 재생 위치를 구간 시작/끝으로 지정하는 버튼 추가</li>
+<li>GIF 내보내기도 선택한 초 구간 기준으로 30프레임/45프레임 무한 반복 GIF를 만들도록 변경</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.22.zip" type="application/octet-stream" sparkle:edSignature="Kc4rrJyE+JoXnBmIpuNlhSLPnCo6ezUV/jtNe/rOAweCQtT8alJjyXD0Gmv6K6zR6XPt7+7/obejgxirpaKlBA==" length="3364912" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.23.zip" type="application/octet-stream" sparkle:edSignature="/oxeFxqlGJXbyiCE5Os0qurI3m+Ebs6d8MTvdsStzL4IHcOkNoV0qGIC3u5zkx3950DabOxo5H2f4pRXbUMeCQ==" length="3361048" />
     </item>
   </channel>
 </rss>
