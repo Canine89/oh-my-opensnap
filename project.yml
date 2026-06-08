@@ -14,8 +14,8 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "5.0"            # Swift 5 language mode: AppKit/콜백 코드 안정성 우선
-    MARKETING_VERSION: "1.0.26"
-    CURRENT_PROJECT_VERSION: "27"
+    MARKETING_VERSION: "1.0.27"
+    CURRENT_PROJECT_VERSION: "28"
     SWIFT_STRICT_CONCURRENCY: minimal
     DEAD_CODE_STRIPPING: YES
 

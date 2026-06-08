@@ -6,17 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.26</title>
-      <pubDate>Mon, 08 Jun 2026 08:57:34 +0000</pubDate>
-      <sparkle:version>27</sparkle:version>
-      <sparkle:shortVersionString>1.0.26</sparkle:shortVersionString>
+      <title>1.0.27</title>
+      <pubDate>Mon, 08 Jun 2026 09:29:52 +0000</pubDate>
+      <sparkle:version>28</sparkle:version>
+      <sparkle:shortVersionString>1.0.27</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.26</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.27</h2>
 <ul>
-<li>영상 촬영 HUD를 고정 다크 배경으로 바꿔 글자와 버튼 대비를 개선</li>
-<li>영상 편집의 MP4 내보내기 문구를 `선택 구간 MP4 저장`으로 바꿔 선택한 초 구간만 새 파일로 저장된다는 의미를 명확히 표시</li>
+<li>라이브러리에서 영상을 볼 때 macOS 기본 플레이어 HUD가 커스텀 편집 HUD 위에 뜨지 않도록 제거</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.26.zip" type="application/octet-stream" sparkle:edSignature="syKo64sTr/0lv1PFktV4dAxZcESZCCaSB2FQJNBIHf3ZDDhxxzKnUKprdOu0JIndkHHoUtTmgHfR27fBXMGEBg==" length="3372621" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.27.zip" type="application/octet-stream" sparkle:edSignature="Rcr8jl5a5bSBFpNpy8itYqqHAgt7bVM3OLJukZzsmqttuobYUHX89Dz+65gbBZLaO0M11QbJu6Vfpp8clzUtAQ==" length="3372625" />
     </item>
   </channel>
 </rss>
