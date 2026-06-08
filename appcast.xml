@@ -6,16 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.27</title>
-      <pubDate>Mon, 08 Jun 2026 09:29:52 +0000</pubDate>
-      <sparkle:version>28</sparkle:version>
-      <sparkle:shortVersionString>1.0.27</sparkle:shortVersionString>
+      <title>1.0.28</title>
+      <pubDate>Mon, 08 Jun 2026 09:48:31 +0000</pubDate>
+      <sparkle:version>29</sparkle:version>
+      <sparkle:shortVersionString>1.0.28</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.27</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.28</h2>
 <ul>
-<li>라이브러리에서 영상을 볼 때 macOS 기본 플레이어 HUD가 커스텀 편집 HUD 위에 뜨지 않도록 제거</li>
+<li>영상 편집에서 시작/끝 핸들을 드래그할 때 재생 화면도 해당 시점으로 이동해 선택 장면을 바로 확인할 수 있도록 개선</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.27.zip" type="application/octet-stream" sparkle:edSignature="Rcr8jl5a5bSBFpNpy8itYqqHAgt7bVM3OLJukZzsmqttuobYUHX89Dz+65gbBZLaO0M11QbJu6Vfpp8clzUtAQ==" length="3372625" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.28.zip" type="application/octet-stream" sparkle:edSignature="ymu+zU3XFFAXsN2+bSRAAyBiuvs59O2iGlbr/XivO4gMS2OD0xZXMeBF+GMUmcD/NaF4m0Zlfkvyc9pDLNnMDQ==" length="3372793" />
     </item>
   </channel>
 </rss>
