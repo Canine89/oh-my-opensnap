@@ -5,7 +5,6 @@ final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private var prefs: PreferencesWindowController?
     private var captureItem: NSMenuItem?
-    private var videoItem: NSMenuItem?
     private var pauseVideoItem: NSMenuItem?
 
     override init() {
@@ -25,7 +24,6 @@ final class MenuBarController: NSObject {
         menu.addItem(header)
         menu.addItem(.separator())
         captureItem = addItem(to: menu, title: captureTitle(), action: #selector(captureArea))
-        videoItem = addItem(to: menu, title: videoTitle(), action: #selector(toggleVideoRecording))
         pauseVideoItem = addItem(to: menu, title: pauseVideoTitle(), action: #selector(toggleVideoPause))
         addItem(to: menu, title: "라이브러리…", action: #selector(openLibrary), key: "l")
         menu.addItem(.separator())
@@ -53,10 +51,6 @@ final class MenuBarController: NSObject {
         return "캡처   \(shortcut)"
     }
 
-    private func videoTitle() -> String {
-        VideoRecordingController.shared.isRecording ? "촬영 중지" : "영상 촬영"
-    }
-
     private func pauseVideoTitle() -> String {
         VideoRecordingController.shared.isPaused ? "촬영 재개" : "촬영 일시정지"
     }
@@ -67,7 +61,6 @@ final class MenuBarController: NSObject {
 
     @objc private func refreshVideoState() {
         let isRecording = VideoRecordingController.shared.isRecording
-        videoItem?.title = videoTitle()
         pauseVideoItem?.title = pauseVideoTitle()
         pauseVideoItem?.isEnabled = isRecording
         pauseVideoItem?.isHidden = !isRecording
@@ -83,14 +76,6 @@ final class MenuBarController: NSObject {
 
     @objc private func captureArea() {
         CaptureCoordinator.shared.startAreaCapture()
-    }
-
-    @objc private func toggleVideoRecording() {
-        if VideoRecordingController.shared.isRecording {
-            VideoRecordingController.shared.stop()
-        } else {
-            CaptureCoordinator.shared.startAreaVideoRecording()
-        }
     }
 
     @objc private func toggleVideoPause() {
