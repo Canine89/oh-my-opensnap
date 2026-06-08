@@ -5,6 +5,7 @@ final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private var prefs: PreferencesWindowController?
     private var captureItem: NSMenuItem?
+    private var videoItem: NSMenuItem?
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -22,6 +23,7 @@ final class MenuBarController: NSObject {
         menu.addItem(header)
         menu.addItem(.separator())
         captureItem = addItem(to: menu, title: captureTitle(), action: #selector(captureArea))
+        videoItem = addItem(to: menu, title: videoTitle(), action: #selector(toggleVideoRecording))
         addItem(to: menu, title: "라이브러리…", action: #selector(openLibrary), key: "l")
         menu.addItem(.separator())
         addItem(to: menu, title: "설정…", action: #selector(openPreferences), key: ",")
@@ -37,6 +39,8 @@ final class MenuBarController: NSObject {
 
         NotificationCenter.default.addObserver(self, selector: #selector(refreshShortcut),
                                                name: .hotkeyChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshVideoState),
+                                               name: .videoRecordingStateDidChange, object: nil)
     }
 
     private func captureTitle() -> String {
@@ -45,8 +49,16 @@ final class MenuBarController: NSObject {
         return "캡처   \(shortcut)"
     }
 
+    private func videoTitle() -> String {
+        VideoRecordingController.shared.isRecording ? "촬영 중지" : "영상 촬영"
+    }
+
     @objc private func refreshShortcut() {
         captureItem?.title = captureTitle()
+    }
+
+    @objc private func refreshVideoState() {
+        videoItem?.title = videoTitle()
     }
 
     @discardableResult
@@ -59,6 +71,14 @@ final class MenuBarController: NSObject {
 
     @objc private func captureArea() {
         CaptureCoordinator.shared.startAreaCapture()
+    }
+
+    @objc private func toggleVideoRecording() {
+        if VideoRecordingController.shared.isRecording {
+            VideoRecordingController.shared.stop()
+        } else {
+            CaptureCoordinator.shared.startAreaVideoRecording()
+        }
     }
 
     @objc private func openPreferences() {
