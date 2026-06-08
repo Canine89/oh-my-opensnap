@@ -6,17 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.19</title>
-      <pubDate>Mon, 08 Jun 2026 07:41:47 +0000</pubDate>
-      <sparkle:version>20</sparkle:version>
-      <sparkle:shortVersionString>1.0.19</sparkle:shortVersionString>
+      <title>1.0.20</title>
+      <pubDate>Mon, 08 Jun 2026 07:51:28 +0000</pubDate>
+      <sparkle:version>21</sparkle:version>
+      <sparkle:shortVersionString>1.0.20</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.19</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.20</h2>
 <ul>
-<li>영상 촬영 중임을 바로 알 수 있도록 화면 하단에 녹화 HUD 추가</li>
-<li>녹화 HUD와 메뉴바에서 일시정지/재개/중지 제어 지원</li>
+<li>영상 촬영에서 창을 클릭하면 정지 캡처처럼 동작하던 문제 수정: 하이라이트된 창 영역도 영상 녹화로 시작</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.19.zip" type="application/octet-stream" sparkle:edSignature="GFtuHe8PYdlfax0v2NnVVdoPq/3NIwka64ufpVcNrr0kvL39Y6ujN5+rtJttcEuqGJCby3PiO9ANaAg+9B0bAw==" length="3335649" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.20.zip" type="application/octet-stream" sparkle:edSignature="BxXa0WpMl/yCk9jps2xb1+GOdqlmkQTI9miHrNftYUOKLMBa+8he3CfIY7wHO+tKAEA1yc/8PZfYoYu8Gj+4AA==" length="3336254" />
     </item>
   </channel>
 </rss>
