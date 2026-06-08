@@ -6,16 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.18</title>
-      <pubDate>Mon, 08 Jun 2026 06:47:01 +0000</pubDate>
-      <sparkle:version>19</sparkle:version>
-      <sparkle:shortVersionString>1.0.18</sparkle:shortVersionString>
+      <title>1.0.19</title>
+      <pubDate>Mon, 08 Jun 2026 07:41:47 +0000</pubDate>
+      <sparkle:version>20</sparkle:version>
+      <sparkle:shortVersionString>1.0.19</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.18</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.19</h2>
 <ul>
-<li>자동 업데이트 ZIP을 GitHub Release 다운로드 URL 대신 repo raw URL로 제공해 다운로드 실패 가능성 감소</li>
+<li>영상 촬영 중임을 바로 알 수 있도록 화면 하단에 녹화 HUD 추가</li>
+<li>녹화 HUD와 메뉴바에서 일시정지/재개/중지 제어 지원</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.18.zip" type="application/octet-stream" sparkle:edSignature="uNRjKtBvbQkEYXOI0qNR2DvkKKVFy3W6TV+IEPlS/NL1OtHeflfYR0K2R82+TqNl9UuaMeXq2ioXAY5Bz0psBA==" length="3327875" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.19.zip" type="application/octet-stream" sparkle:edSignature="GFtuHe8PYdlfax0v2NnVVdoPq/3NIwka64ufpVcNrr0kvL39Y6ujN5+rtJttcEuqGJCby3PiO9ANaAg+9B0bAw==" length="3335649" />
     </item>
   </channel>
 </rss>
