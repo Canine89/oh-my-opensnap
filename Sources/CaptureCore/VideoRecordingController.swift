@@ -12,6 +12,7 @@ final class VideoRecordingController {
 
     private var recorder: AreaVideoRecorder?
     private var hud: RecordingHUD?
+    private var regionOverlay: RecordingRegionOverlay?
     private(set) var isPaused = false
 
     var isRecording: Bool { recorder != nil }
@@ -32,12 +33,15 @@ final class VideoRecordingController {
         try await recorder.start()
         self.recorder = recorder
         isPaused = false
+        let regionOverlay = RecordingRegionOverlay(displayID: displayID, captureRect: rect.integral)
+        self.regionOverlay = regionOverlay
         let hud = RecordingHUD(onPauseToggle: { [weak self] in
             self?.togglePause()
         }, onStop: { [weak self] in
             self?.stop()
         })
         self.hud = hud
+        regionOverlay?.show()
         hud.show()
         LibraryWindowController.shared.restoreAfterCapture()
         NotificationCenter.default.post(name: .videoRecordingStateDidChange, object: nil)
@@ -60,6 +64,8 @@ final class VideoRecordingController {
         isPaused = false
         hud?.dismiss()
         hud = nil
+        regionOverlay?.dismiss()
+        regionOverlay = nil
         NotificationCenter.default.post(name: .videoRecordingStateDidChange, object: nil)
 
         Task {

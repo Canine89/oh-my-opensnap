@@ -74,8 +74,13 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private func installKeyMonitorIfNeeded() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.window?.isVisible == true,
-                  event.modifierFlags.contains(.command) else { return event }
+            guard let self, self.window?.isVisible == true else { return event }
+            let significantFlags = event.modifierFlags.intersection([.command, .option, .control])
+            if event.keyCode == 49, significantFlags.isEmpty, self.videoEditorView.isHidden == false {
+                self.videoEditorView.togglePlayback()
+                return nil
+            }
+            guard event.modifierFlags.contains(.command) else { return event }
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "z": self.editorView.undo(); return nil
             case "c": self.editorView.copyToClipboard(); return nil

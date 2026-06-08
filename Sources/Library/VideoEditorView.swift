@@ -63,6 +63,10 @@ final class VideoEditorView: NSView {
         duration = 0
     }
 
+    func togglePlayback() {
+        togglePlay()
+    }
+
     private func build() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.underPageBackgroundColor.cgColor
