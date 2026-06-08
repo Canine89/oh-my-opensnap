@@ -112,7 +112,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
         // 썸네일 그리드
         let flow = NSCollectionViewFlowLayout()
-        flow.itemSize = NSSize(width: 116, height: 96)
+        flow.itemSize = NSSize(width: 116, height: 122)
         flow.minimumInteritemSpacing = 8
         flow.minimumLineSpacing = 8
         flow.sectionInset = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
@@ -706,9 +706,16 @@ final class CenteringClipView: NSClipView {
 /// 그리드 셀.
 final class ThumbnailItem: NSCollectionViewItem {
     private let thumbView = NSImageView()
+    private let filenameLabel = NSTextField(labelWithString: "")
 
     /// 비동기 썸네일 로드 시 셀 재사용을 구분하기 위한 현재 표시 대상.
-    var representedURL: URL?
+    var representedURL: URL? {
+        didSet {
+            let filename = representedURL?.lastPathComponent ?? ""
+            filenameLabel.stringValue = filename
+            filenameLabel.toolTip = filename
+        }
+    }
 
     var thumbnail: NSImage? {
         didSet { thumbView.image = thumbnail }
@@ -725,11 +732,25 @@ final class ThumbnailItem: NSCollectionViewItem {
         thumbView.imageScaling = .scaleProportionallyUpOrDown
         thumbView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(thumbView)
+
+        filenameLabel.alignment = .center
+        filenameLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        filenameLabel.textColor = .secondaryLabelColor
+        filenameLabel.lineBreakMode = .byTruncatingMiddle
+        filenameLabel.maximumNumberOfLines = 1
+        filenameLabel.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(filenameLabel)
+
         NSLayoutConstraint.activate([
             thumbView.topAnchor.constraint(equalTo: container.topAnchor, constant: 5),
-            thumbView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -5),
             thumbView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 5),
-            thumbView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -5)
+            thumbView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -5),
+            thumbView.bottomAnchor.constraint(equalTo: filenameLabel.topAnchor, constant: -4),
+
+            filenameLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 5),
+            filenameLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -5),
+            filenameLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -5),
+            filenameLabel.heightAnchor.constraint(equalToConstant: 14)
         ])
     }
 
