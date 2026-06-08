@@ -8,7 +8,7 @@ final class CaptureCoordinator {
 
     func startAreaCapture() {
         guard ensurePermission() else { return }
-        OverlayController.shared.begin(mode: .stillImage)
+        OverlayController.shared.begin(mode: .askAfterSelection)
     }
 
     func startAreaVideoRecording() {

@@ -11,9 +11,11 @@ final class OverlayController {
     enum Mode {
         case stillImage
         case video
+        case askAfterSelection
     }
 
     private var windows: [OverlayWindow] = []
+    private var choiceHUD: CaptureChoiceHUD?
     private var providers: [CGDirectDisplayID: DisplayStreamProvider] = [:]
     // 우리 오버레이 윈도우들의 SCWindow 매핑. 루페/스틸 캡처에서 이것만 제외해
     // 자기참조(자기 자신이 캡처에 찍힘)를 막는다. OBS 등 외부 녹화엔 그대로 보인다.
@@ -30,7 +32,7 @@ final class OverlayController {
     private let watchdogTimeout: TimeInterval = 30
 
     func begin(mode: Mode = .stillImage) {
-        guard !active else { return }
+        guard !active, choiceHUD == nil else { return }
         active = true
         // 캡처 모드에선 라이브러리 창이 화면(스틸 캡처)에 찍히지 않도록 자동으로 가린다.
         LibraryWindowController.shared.hideForCapture()
@@ -73,6 +75,12 @@ final class OverlayController {
                     self?.finishStillImage(viewRect: rect, scale: scale, display: scDisplay)
                 case .video:
                     self?.finishVideo(viewRect: rect, scale: scale, display: scDisplay, displayID: displayID)
+                case .askAfterSelection:
+                    self?.finishWithChoice(viewRect: rect,
+                                           scale: scale,
+                                           display: scDisplay,
+                                           displayID: displayID,
+                                           overlayWindow: window)
                 }
             }
             view.onWindowCapture = { [weak self] scWindow, windowRect in
@@ -81,6 +89,13 @@ final class OverlayController {
                     self?.finishWindow(scWindow)
                 case .video:
                     self?.finishVideo(viewRect: windowRect, scale: scale, display: scDisplay, displayID: displayID)
+                case .askAfterSelection:
+                    self?.finishWindowWithChoice(scWindow,
+                                                 windowRect: windowRect,
+                                                 scale: scale,
+                                                 display: scDisplay,
+                                                 displayID: displayID,
+                                                 overlayWindow: window)
                 }
             }
             view.onCancel = { [weak self] in self?.cancel() }
@@ -202,6 +217,131 @@ final class OverlayController {
         }
     }
 
+    private func finishWithChoice(viewRect: CGRect,
+                                  scale: CGFloat,
+                                  display: SCDisplay,
+                                  displayID: CGDirectDisplayID,
+                                  overlayWindow: OverlayWindow) {
+        guard viewRect.width > 2, viewRect.height > 2 else { cancel(); return }
+        let excluded = overlayWindows
+        let anchor = screenRect(for: viewRect, in: overlayWindow)
+        teardown()
+        presentChoice(anchor: anchor,
+                      imageAction: { [weak self] in
+                          self?.captureStillImage(viewRect: viewRect, scale: scale, display: display, excluding: excluded)
+                      },
+                      videoAction: { [weak self] in
+                          self?.startVideo(viewRect: viewRect,
+                                           scale: scale,
+                                           display: display,
+                                           displayID: displayID,
+                                           excluding: excluded)
+                      })
+    }
+
+    private func finishWindowWithChoice(_ window: SCWindow,
+                                        windowRect: CGRect,
+                                        scale: CGFloat,
+                                        display: SCDisplay,
+                                        displayID: CGDirectDisplayID,
+                                        overlayWindow: OverlayWindow) {
+        let excluded = overlayWindows
+        let anchor = screenRect(for: windowRect, in: overlayWindow)
+        teardown()
+        presentChoice(anchor: anchor,
+                      imageAction: { [weak self] in
+                          self?.captureWindow(window)
+                      },
+                      videoAction: { [weak self] in
+                          self?.startVideo(viewRect: windowRect,
+                                           scale: scale,
+                                           display: display,
+                                           displayID: displayID,
+                                           excluding: excluded)
+                      })
+    }
+
+    private func presentChoice(anchor: CGRect, imageAction: @escaping () -> Void, videoAction: @escaping () -> Void) {
+        let hud = CaptureChoiceHUD(anchor: anchor,
+                                   onImage: { [weak self] in
+                                       self?.choiceHUD = nil
+                                       imageAction()
+                                   },
+                                   onVideo: { [weak self] in
+                                       self?.choiceHUD = nil
+                                       videoAction()
+                                   },
+                                   onCancel: { [weak self] in
+                                       self?.choiceHUD = nil
+                                       LibraryWindowController.shared.restoreAfterCapture()
+                                   })
+        choiceHUD = hud
+        hud.show()
+    }
+
+    private func captureStillImage(viewRect: CGRect, scale: CGFloat, display: SCDisplay, excluding excluded: [SCWindow]) {
+        Task {
+            do {
+                let full = try await StillImageCapturer.capture(display: display, scale: scale, excluding: excluded)
+                await MainActor.run {
+                    defer { LibraryWindowController.shared.restoreAfterCapture() }
+                    let pxRect = CGRect(x: viewRect.minX * scale,
+                                        y: viewRect.minY * scale,
+                                        width: viewRect.width * scale,
+                                        height: viewRect.height * scale).integral
+                    let imageBounds = CGRect(x: 0, y: 0, width: full.width, height: full.height)
+                    let clamped = pxRect.intersection(imageBounds)
+                    guard !clamped.isEmpty, let crop = full.cropping(to: clamped) else { return }
+                    CaptureOutput.deliver(cgImage: crop, scale: scale)
+                }
+            } catch {
+                NSLog("Still capture failed: \(error)")
+                await MainActor.run { LibraryWindowController.shared.restoreAfterCapture() }
+            }
+        }
+    }
+
+    private func startVideo(viewRect: CGRect,
+                            scale: CGFloat,
+                            display: SCDisplay,
+                            displayID: CGDirectDisplayID,
+                            excluding excluded: [SCWindow]) {
+        Task {
+            do {
+                try await VideoRecordingController.shared.start(display: display,
+                                                               displayID: displayID,
+                                                               rect: viewRect,
+                                                               scale: scale,
+                                                               excluding: excluded)
+            } catch {
+                NSLog("Video recording start failed: \(error)")
+                await MainActor.run { LibraryWindowController.shared.restoreAfterCapture() }
+            }
+        }
+    }
+
+    private func captureWindow(_ window: SCWindow) {
+        Task {
+            do {
+                let result = try await StillImageCapturer.captureWindow(window)
+                await MainActor.run {
+                    CaptureOutput.deliver(cgImage: result.image, scale: result.scale)
+                    LibraryWindowController.shared.restoreAfterCapture()
+                }
+            } catch {
+                NSLog("Window capture failed: \(error)")
+                await MainActor.run { LibraryWindowController.shared.restoreAfterCapture() }
+            }
+        }
+    }
+
+    private func screenRect(for viewRect: CGRect, in window: OverlayWindow) -> CGRect {
+        CGRect(x: window.frame.minX + viewRect.minX,
+               y: window.frame.maxY - viewRect.maxY,
+               width: viewRect.width,
+               height: viewRect.height)
+    }
+
     private func finishWindow(_ window: SCWindow) {
         teardown()
         Task {
@@ -219,6 +359,8 @@ final class OverlayController {
     }
 
     private func cancel() {
+        choiceHUD?.dismiss()
+        choiceHUD = nil
         teardown()
         LibraryWindowController.shared.restoreAfterCapture()
     }
