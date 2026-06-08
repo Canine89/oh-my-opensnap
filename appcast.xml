@@ -6,18 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.24</title>
-      <pubDate>Mon, 08 Jun 2026 08:33:04 +0000</pubDate>
-      <sparkle:version>25</sparkle:version>
-      <sparkle:shortVersionString>1.0.24</sparkle:shortVersionString>
+      <title>1.0.25</title>
+      <pubDate>Mon, 08 Jun 2026 08:37:58 +0000</pubDate>
+      <sparkle:version>26</sparkle:version>
+      <sparkle:shortVersionString>1.0.25</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.24</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.25</h2>
 <ul>
-<li>영상 편집의 구간 잘라내기 HUD를 단일 타임라인과 시작/끝 핸들 기반으로 개선</li>
-<li>라이브러리 영상 편집 창의 기본 크기를 키워 재생과 구간 편집 컨트롤이 눌리지 않도록 조정</li>
-<li>업데이트 확인 창이 뒤에 숨지 않도록 앱을 활성화하고 Sparkle 업데이트 창을 앞으로 가져오도록 보강</li>
+<li>영상 촬영 HUD가 다른 창이나 화면을 클릭해도 사라지지 않도록 패널 표시 방식을 보강</li>
+<li>상태바 메뉴의 `촬영 일시정지` 항목을 실제 영상 촬영 중일 때만 보이도록 개선</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.24.zip" type="application/octet-stream" sparkle:edSignature="FABIzSa7jUpemxXbRc+LrhyUP+fQuhe6p4LudOWeoIMu6u103TK+/baxA9Iz0LJAhCy8aN59G74+EpxIuEJ6Aw==" length="3371757" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.25.zip" type="application/octet-stream" sparkle:edSignature="6kRfeHzPpIo0FAicuc5Cz5shz9YmgbyU6u6drFcxjH6VfYRptL7Tq5a+/rvPxlDv1yF9+yZHN5byaka1iMMGAg==" length="3372462" />
     </item>
   </channel>
 </rss>
