@@ -6,16 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.16</title>
-      <pubDate>Mon, 08 Jun 2026 06:36:32 +0000</pubDate>
-      <sparkle:version>17</sparkle:version>
-      <sparkle:shortVersionString>1.0.16</sparkle:shortVersionString>
+      <title>1.0.17</title>
+      <pubDate>Mon, 08 Jun 2026 06:40:45 +0000</pubDate>
+      <sparkle:version>18</sparkle:version>
+      <sparkle:shortVersionString>1.0.17</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.16</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.17</h2>
 <ul>
-<li>영상 촬영 추가 — 메뉴바에서 영역을 선택한 뒤 화면을 녹화하고, 촬영 중지 시 MP4 파일로 저장</li>
+<li>자동 업데이트 ZIP 공개 다운로드 검증을 릴리스 절차에 추가</li>
 </ul>]]></description>
-      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.16/oh-my-opensnap-1.0.16.zip" type="application/octet-stream" sparkle:edSignature="pygD58NCcwi1WLtzH2afuyDeXFARy/Pf6AgHDtmMlaB8b/yvm/UThhIKr61XR7dKUSsyMdD6HuVxpSbqMmNSDQ==" length="3327874" />
+      <enclosure url="https://github.com/Canine89/oh-my-opensnap/releases/download/v1.0.17/oh-my-opensnap-1.0.17.zip" type="application/octet-stream" sparkle:edSignature="6vNmEHe3KLL8tmeSs4nTje6r8GHfZfWyYqhbrvZubzC9WMCD7TbqT3R+DunIMXBKIAOdnMzOad4H3dnL/IAeBg==" length="3327866" />
     </item>
   </channel>
 </rss>
