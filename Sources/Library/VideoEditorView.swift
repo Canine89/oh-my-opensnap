@@ -23,7 +23,7 @@ final class VideoEditorView: NSView {
                                          action: nil)
     private let setStartButton = NSButton(title: "현재를 시작", target: nil, action: nil)
     private let setEndButton = NSButton(title: "현재를 끝", target: nil, action: nil)
-    private let trimButton = NSButton(title: "구간 잘라내기", target: nil, action: nil)
+    private let trimButton = NSButton(title: "선택 구간 MP4 저장", target: nil, action: nil)
     private let gif30Button = NSButton(title: "GIF 30", target: nil, action: nil)
     private let gif45Button = NSButton(title: "GIF 45", target: nil, action: nil)
     private let resetButton = NSButton(title: "초기화", target: nil, action: nil)
@@ -213,12 +213,12 @@ final class VideoEditorView: NSView {
         guard let url = representedURL else { return }
         let range = selectedRange()
         guard range.duration.seconds > 0.05, range.duration.seconds < max(duration - 0.05, 0) else {
-            onToast?("잘라낼 시작/끝 초를 먼저 지정하세요")
+            onToast?("저장할 시작/끝 초를 먼저 지정하세요")
             return
         }
-        setBusy(true, message: "MP4 구간 잘라내는 중...")
+        setBusy(true, message: "선택 구간 MP4 저장 중...")
         VideoExportService.trimmedMP4(source: url, timeRange: range) { [weak self] result in
-            self?.handleExport(result, successMessage: "잘라낸 MP4 저장됨")
+            self?.handleExport(result, successMessage: "선택 구간 MP4 저장됨")
         }
     }
 
