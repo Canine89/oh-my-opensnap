@@ -1,9 +1,24 @@
 import AppKit
+import AVFoundation
 import ImageIO
 
 struct LibraryItem {
+    enum Kind {
+        case image
+        case video
+    }
+
     let url: URL
     let date: Date
+
+    var kind: Kind {
+        switch url.pathExtension.lowercased() {
+        case "mp4", "mov", "m4v":
+            return .video
+        default:
+            return .image
+        }
+    }
 }
 
 extension Notification.Name {
@@ -115,13 +130,14 @@ final class CaptureLibrary {
                 DispatchQueue.main.async { completion([]) }
                 return
             }
-            let keys: Set<URLResourceKey> = [.creationDateKey]
+            let keys: Set<URLResourceKey> = [.creationDateKey, .contentModificationDateKey]
             let urls = (try? FileManager.default.contentsOfDirectory(
                 at: self.directory, includingPropertiesForKeys: Array(keys))) ?? []
             let items = urls
-                .filter { $0.pathExtension.lowercased() == "png" }
+                .filter { ["png", "gif", "mp4"].contains($0.pathExtension.lowercased()) }
                 .map { url -> LibraryItem in
-                    let date = (try? url.resourceValues(forKeys: keys).creationDate) ?? .distantPast
+                    let values = try? url.resourceValues(forKeys: keys)
+                    let date = values?.creationDate ?? values?.contentModificationDate ?? .distantPast
                     return LibraryItem(url: url, date: date)
                 }
                 .sorted { $0.date > $1.date }
@@ -165,6 +181,13 @@ final class CaptureLibrary {
         }
     }
 
+    func fileDidChange(_ url: URL? = nil) {
+        if let url { thumbnailCache[url] = nil }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .libraryDidChange, object: nil)
+        }
+    }
+
     /// 효율적인 썸네일 (CGImageSource 다운샘플 + 캐시). 디스크 읽기는 백그라운드,
     /// 캐시 갱신/콜백은 메인에서.
     func thumbnail(for url: URL, maxPixel: CGFloat = 240, completion: @escaping (NSImage?) -> Void) {
@@ -179,6 +202,9 @@ final class CaptureLibrary {
     }
 
     private static func makeThumbnail(url: URL, maxPixel: CGFloat) -> NSImage? {
+        if url.pathExtension.lowercased() == "mp4" {
+            return makeVideoThumbnail(url: url, maxPixel: maxPixel)
+        }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
@@ -187,5 +213,17 @@ final class CaptureLibrary {
         ]
         guard let cgThumb = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
         return NSImage(cgImage: cgThumb, size: NSSize(width: cgThumb.width, height: cgThumb.height))
+    }
+
+    private static func makeVideoThumbnail(url: URL, maxPixel: CGFloat) -> NSImage? {
+        let asset = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: maxPixel, height: maxPixel)
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        guard let cgImage = try? generator.copyCGImage(at: CMTime(seconds: 0.1, preferredTimescale: 600),
+                                                       actualTime: nil) else { return nil }
+        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
     }
 }

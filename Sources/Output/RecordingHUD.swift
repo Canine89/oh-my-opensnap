@@ -36,6 +36,7 @@ final class RecordingHUD {
         panel.backgroundColor = .clear
         panel.level = .screenSaver
         panel.hasShadow = true
+        panel.isMovableByWindowBackground = true
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.sharingType = .none
@@ -79,7 +80,7 @@ final class RecordingHUD {
     }
 
     private func buildContent(size: NSSize) {
-        let container = NSVisualEffectView(frame: NSRect(origin: .zero, size: size))
+        let container = DraggableHUDBackground(frame: NSRect(origin: .zero, size: size))
         container.material = .hudWindow
         container.state = .active
         container.blendingMode = .behindWindow
@@ -150,4 +151,12 @@ final class RecordingHUD {
 private final class RecordingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+}
+
+private final class DraggableHUDBackground: NSVisualEffectView {
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .openHand)
+    }
 }
