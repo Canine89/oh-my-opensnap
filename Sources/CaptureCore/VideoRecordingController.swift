@@ -66,7 +66,8 @@ final class VideoRecordingController {
             let url = await recorder.stop()
             await MainActor.run {
                 Self.copyFileURLToClipboard(url)
-                NSWorkspace.shared.activateFileViewerSelecting([url])
+                CaptureLibrary.shared.fileDidChange(url)
+                LibraryWindowController.shared.showWindowSelectingLatest()
                 if Settings.shared.playSound {
                     NSSound(named: NSSound.Name("Pop"))?.play()
                 }

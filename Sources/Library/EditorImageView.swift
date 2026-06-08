@@ -522,10 +522,16 @@ final class EditorImageView: NSView {
         let imageBounds = CGRect(x: 0, y: 0, width: cg.width, height: cg.height)
         let r = rect.integral.intersection(imageBounds)
         guard r.width >= 2, r.height >= 2, let cropped = cg.cropping(to: r) else { return nil }
-        let block: CGFloat = 14                                  // 블록 한 변(이미지 px) 목표
-        let cols = max(1, min(80, Int(r.width / block)))
-        let rows = max(1, min(80, Int(r.height / block)))
+        let block: CGFloat = 28
+        let cols = mosaicCellCount(length: r.width, block: block)
+        let rows = mosaicCellCount(length: r.height, block: block)
         return scaled(cropped, width: cols, height: rows, interpolation: .medium)
+    }
+
+    private func mosaicCellCount(length: CGFloat, block: CGFloat) -> Int {
+        guard length >= 2 else { return 1 }
+        let count = Int((length / block).rounded(.down))
+        return max(length >= block ? 2 : 1, min(48, count))
     }
 
     /// CGImage를 지정 크기로 다시 그려 새 CGImage를 만든다(보간 품질 지정).

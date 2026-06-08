@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// 캡처 라이브러리 편집/뷰어 창.
 /// 레이아웃: 상단 툴바 + 좌측 썸네일 그리드 + 우측 큰 미리보기.
@@ -10,6 +11,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private let collectionView = ThumbnailCollectionView()
     private let previewScroll = ZoomableScrollView()
     private let editorView = EditorImageView()
+    private let videoEditorView = VideoEditorView()
     private let emptyLabel = NSTextField(labelWithString: "아직 잡아 둔 화면이 없어요.\n⌘⇧2 로 캡처하면 여기에 빨갛게 짚어 둘 수 있습니다.")
     private let countLabel = NSTextField(labelWithString: "")
     private let widthSlider = NSSlider()
@@ -156,12 +158,24 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         editorView.onEditCommitted = { [weak self] in
             self?.persistCurrentEdit()
         }
+        videoEditorView.onToast = { [weak self] message in
+            self?.showToast(message)
+        }
+        videoEditorView.onOutputCreated = { [weak self] url in
+            guard let self else { return }
+            self.selectLatestPending = true
+            CaptureLibrary.shared.fileDidChange(url)
+        }
 
         previewScroll.configure()
         previewScroll.documentView = editorView
         previewScroll.backgroundColor = .underPageBackgroundColor
         previewScroll.translatesAutoresizingMaskIntoConstraints = false
         previewContainer.addSubview(previewScroll)
+
+        videoEditorView.translatesAutoresizingMaskIntoConstraints = false
+        videoEditorView.isHidden = true
+        previewContainer.addSubview(videoEditorView)
 
         emptyLabel.alignment = .center
         emptyLabel.textColor = .secondaryLabelColor
@@ -205,6 +219,11 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             previewScroll.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
             previewScroll.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
             previewScroll.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
+
+            videoEditorView.topAnchor.constraint(equalTo: previewContainer.topAnchor),
+            videoEditorView.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
+            videoEditorView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
+            videoEditorView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
 
             emptyLabel.centerXAnchor.constraint(equalTo: previewContainer.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: previewContainer.centerYAnchor),
@@ -317,6 +336,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         } else {
             selectedItem = nil
             editorView.image = nil
+            videoEditorView.stop()
+            videoEditorView.isHidden = true
+            previewScroll.isHidden = false
             emptyLabel.isHidden = false
         }
     }
@@ -331,6 +353,22 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private func showPreview(_ item: LibraryItem) {
         selectedItem = item
         emptyLabel.isHidden = true
+        cropDoneButton.isHidden = true
+        switch item.kind {
+        case .video:
+            editorView.image = nil
+            previewScroll.isHidden = true
+            videoEditorView.isHidden = false
+            videoEditorView.load(url: item.url)
+        case .image:
+            videoEditorView.stop()
+            videoEditorView.isHidden = true
+            previewScroll.isHidden = false
+            showImagePreview(item)
+        }
+    }
+
+    private func showImagePreview(_ item: LibraryItem) {
         // 원본 PNG 읽기는 백그라운드. 그 사이 선택이 바뀌면 결과를 버린다.
         CaptureLibrary.shared.loadImage(at: item.url) { [weak self] image in
             guard let self, self.selectedItem?.url == item.url else { return }
@@ -430,6 +468,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     /// 전체 reload를 하지 않으므로 편집 중인 에디터 상태(undo 스택 포함)는 유지된다.
     private func persistCurrentEdit() {
         guard let item = selectedItem,
+              item.url.pathExtension.lowercased() == "png",
               let cg = editorView.renderedCGImage(),
               let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { return }
         CaptureLibrary.shared.overwrite(pngData: png, at: item.url) { [weak self] in
@@ -452,16 +491,31 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
     // MARK: 파일 액션
     @objc private func saveSelected() {
-        guard let item = selectedItem,
-              let cg = editorView.renderedCGImage() else { return }
+        guard let item = selectedItem else { return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = item.url.lastPathComponent
-        panel.allowedContentTypes = [.png]
+        panel.allowedContentTypes = allowedContentTypes(for: item)
         if panel.runModal() == .OK, let dest = panel.url {
-            let rep = NSBitmapImageRep(cgImage: cg)
-            if let png = rep.representation(using: .png, properties: [:]) {
-                try? png.write(to: dest)
+            switch item.kind {
+            case .video:
+                try? FileManager.default.copyItem(at: item.url, to: dest)
+            case .image:
+                guard let cg = editorView.renderedCGImage() else { return }
+                let rep = NSBitmapImageRep(cgImage: cg)
+                if item.url.pathExtension.lowercased() == "gif" {
+                    try? FileManager.default.copyItem(at: item.url, to: dest)
+                } else if let png = rep.representation(using: .png, properties: [:]) {
+                    try? png.write(to: dest)
+                }
             }
+        }
+    }
+
+    private func allowedContentTypes(for item: LibraryItem) -> [UTType] {
+        switch item.url.pathExtension.lowercased() {
+        case "mp4": return [.mpeg4Movie]
+        case "gif": return [.gif]
+        default: return [.png]
         }
     }
 
