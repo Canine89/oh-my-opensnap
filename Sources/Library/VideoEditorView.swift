@@ -10,7 +10,8 @@ final class VideoEditorView: NSView {
     private let playerView = AVPlayerView()
     private let overlayView = VideoCropOverlayView()
     private let statusLabel = NSTextField(labelWithString: "")
-    private let cropButton = NSButton(title: "영역 잘라내기", target: nil, action: nil)
+    private let selectAreaButton = NSButton(title: "영역 선택", target: nil, action: nil)
+    private let cropButton = NSButton(title: "선택 영역 잘라내기", target: nil, action: nil)
     private let gif30Button = NSButton(title: "GIF 30프레임", target: nil, action: nil)
     private let gif45Button = NSButton(title: "GIF 45프레임", target: nil, action: nil)
     private let resetButton = NSButton(title: "영역 초기화", target: nil, action: nil)
@@ -29,9 +30,11 @@ final class VideoEditorView: NSView {
 
     func load(url: URL) {
         representedURL = url
-        statusLabel.stringValue = "영역을 드래그해 선택"
+        statusLabel.stringValue = "영역 선택을 누른 뒤 드래그"
         overlayView.videoSize = Self.videoSize(url: url)
         overlayView.resetSelection()
+        overlayView.isSelecting = false
+        updateSelectionControls()
         playerView.player = AVPlayer(url: url)
         playerView.player?.play()
     }
@@ -52,7 +55,7 @@ final class VideoEditorView: NSView {
 
         overlayView.translatesAutoresizingMaskIntoConstraints = false
         overlayView.onSelectionChanged = { [weak self] hasSelection in
-            self?.statusLabel.stringValue = hasSelection ? "선택 영역 사용 중" : "전체 영상 사용 중"
+            self?.updateSelectionControls()
         }
 
         let videoContainer = NSView()
@@ -64,17 +67,20 @@ final class VideoEditorView: NSView {
         statusLabel.font = .systemFont(ofSize: 11)
         statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        for button in [cropButton, gif30Button, gif45Button, resetButton] {
+        for button in [selectAreaButton, cropButton, gif30Button, gif45Button, resetButton] {
             button.bezelStyle = .rounded
             button.controlSize = .regular
             button.target = self
         }
+        selectAreaButton.action = #selector(beginAreaSelection)
         cropButton.action = #selector(exportCroppedMP4)
         gif30Button.action = #selector(exportGIF30)
         gif45Button.action = #selector(exportGIF45)
         resetButton.action = #selector(resetCrop)
+        cropButton.isEnabled = false
+        resetButton.isEnabled = false
 
-        let controls = NSStackView(views: [cropButton, gif30Button, gif45Button, resetButton, statusLabel])
+        let controls = NSStackView(views: [selectAreaButton, cropButton, gif30Button, gif45Button, resetButton, statusLabel])
         controls.orientation = .horizontal
         controls.alignment = .centerY
         controls.spacing = 8
@@ -109,10 +115,21 @@ final class VideoEditorView: NSView {
 
     @objc private func resetCrop() {
         overlayView.resetSelection()
+        overlayView.isSelecting = false
+        updateSelectionControls()
+    }
+
+    @objc private func beginAreaSelection() {
+        overlayView.isSelecting = true
+        statusLabel.stringValue = "영상 위에서 잘라낼 영역을 드래그"
+        window?.makeFirstResponder(overlayView)
     }
 
     @objc private func exportCroppedMP4() {
-        guard let url = representedURL else { return }
+        guard let url = representedURL, overlayView.hasSelection else {
+            onToast?("먼저 영역을 선택하세요")
+            return
+        }
         setBusy(true, message: "MP4 잘라내는 중...")
         VideoExportService.croppedMP4(source: url, crop: overlayView.exportCropRect) { [weak self] result in
             self?.handleExport(result, successMessage: "잘라낸 MP4 저장됨")
@@ -147,8 +164,22 @@ final class VideoEditorView: NSView {
     }
 
     private func setBusy(_ busy: Bool, message: String) {
-        [cropButton, gif30Button, gif45Button, resetButton].forEach { $0.isEnabled = !busy }
-        statusLabel.stringValue = busy ? message : (overlayView.hasSelection ? "선택 영역 사용 중" : "전체 영상 사용 중")
+        [selectAreaButton, cropButton, gif30Button, gif45Button, resetButton].forEach { $0.isEnabled = !busy }
+        if busy {
+            statusLabel.stringValue = message
+        } else {
+            updateSelectionControls()
+        }
+    }
+
+    private func updateSelectionControls() {
+        let hasSelection = overlayView.hasSelection
+        selectAreaButton.title = hasSelection ? "영역 다시 선택" : "영역 선택"
+        cropButton.isEnabled = hasSelection
+        resetButton.isEnabled = hasSelection
+        statusLabel.stringValue = overlayView.isSelecting
+            ? "영상 위에서 잘라낼 영역을 드래그"
+            : (hasSelection ? "선택 영역 기준으로 내보내기" : "영역 선택을 누른 뒤 드래그")
     }
 
     private static func videoSize(url: URL) -> CGSize {
@@ -163,6 +194,11 @@ private final class VideoCropOverlayView: NSView {
     var onSelectionChanged: ((Bool) -> Void)?
     var videoSize = CGSize(width: 16, height: 9) {
         didSet { needsDisplay = true }
+    }
+    var isSelecting = false {
+        didSet {
+            needsDisplay = true
+        }
     }
 
     var hasSelection: Bool { selection != nil }
@@ -194,7 +230,12 @@ private final class VideoCropOverlayView: NSView {
         layer?.backgroundColor = NSColor.clear.cgColor
     }
 
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        isSelecting ? super.hitTest(point) : nil
+    }
+
     override func mouseDown(with event: NSEvent) {
+        guard isSelecting else { return }
         let point = clampToVideo(convert(event.locationInWindow, from: nil))
         dragStart = point
         selection = CGRect(origin: point, size: .zero)
@@ -203,6 +244,7 @@ private final class VideoCropOverlayView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        guard isSelecting else { return }
         guard let dragStart else { return }
         let point = clampToVideo(convert(event.locationInWindow, from: nil))
         selection = CGRect(x: min(dragStart.x, point.x),
@@ -214,10 +256,12 @@ private final class VideoCropOverlayView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        guard isSelecting else { return }
         if let rect = selection, rect.width <= 6 || rect.height <= 6 {
             selection = nil
         }
         dragStart = nil
+        isSelecting = false
         onSelectionChanged?(selection != nil)
         needsDisplay = true
     }
@@ -227,7 +271,7 @@ private final class VideoCropOverlayView: NSView {
         let videoRect = fittedVideoRect()
 
         guard let selection else {
-            drawHint(in: videoRect)
+            if isSelecting { drawHint(in: videoRect) }
             return
         }
 

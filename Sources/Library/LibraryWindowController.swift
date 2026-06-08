@@ -1,5 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
+import WebKit
 
 /// 캡처 라이브러리 편집/뷰어 창.
 /// 레이아웃: 상단 툴바 + 좌측 썸네일 그리드 + 우측 큰 미리보기.
@@ -12,6 +13,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private let previewScroll = ZoomableScrollView()
     private let editorView = EditorImageView()
     private let videoEditorView = VideoEditorView()
+    private let animatedImageView = WKWebView()
     private let emptyLabel = NSTextField(labelWithString: "아직 잡아 둔 화면이 없어요.\n⌘⇧2 로 캡처하면 여기에 빨갛게 짚어 둘 수 있습니다.")
     private let countLabel = NSTextField(labelWithString: "")
     private let widthSlider = NSSlider()
@@ -177,6 +179,10 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         videoEditorView.isHidden = true
         previewContainer.addSubview(videoEditorView)
 
+        animatedImageView.translatesAutoresizingMaskIntoConstraints = false
+        animatedImageView.isHidden = true
+        previewContainer.addSubview(animatedImageView)
+
         emptyLabel.alignment = .center
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.font = .systemFont(ofSize: 13)
@@ -224,6 +230,11 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             videoEditorView.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
             videoEditorView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
             videoEditorView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
+
+            animatedImageView.topAnchor.constraint(equalTo: previewContainer.topAnchor, constant: 18),
+            animatedImageView.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor, constant: 18),
+            animatedImageView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -18),
+            animatedImageView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor, constant: -18),
 
             emptyLabel.centerXAnchor.constraint(equalTo: previewContainer.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: previewContainer.centerYAnchor),
@@ -338,6 +349,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             editorView.image = nil
             videoEditorView.stop()
             videoEditorView.isHidden = true
+            animatedImageView.loadHTMLString("", baseURL: nil)
+            animatedImageView.isHidden = true
             previewScroll.isHidden = false
             emptyLabel.isHidden = false
         }
@@ -357,15 +370,30 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         switch item.kind {
         case .video:
             editorView.image = nil
+            animatedImageView.loadHTMLString("", baseURL: nil)
+            animatedImageView.isHidden = true
             previewScroll.isHidden = true
             videoEditorView.isHidden = false
             videoEditorView.load(url: item.url)
+        case .animatedImage:
+            editorView.image = nil
+            videoEditorView.stop()
+            videoEditorView.isHidden = true
+            previewScroll.isHidden = true
+            animatedImageView.isHidden = false
+            showAnimatedImagePreview(item)
         case .image:
             videoEditorView.stop()
             videoEditorView.isHidden = true
+            animatedImageView.loadHTMLString("", baseURL: nil)
+            animatedImageView.isHidden = true
             previewScroll.isHidden = false
             showImagePreview(item)
         }
+    }
+
+    private func showAnimatedImagePreview(_ item: LibraryItem) {
+        animatedImageView.loadFileURL(item.url, allowingReadAccessTo: item.url.deletingLastPathComponent())
     }
 
     private func showImagePreview(_ item: LibraryItem) {
@@ -499,12 +527,12 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             switch item.kind {
             case .video:
                 try? FileManager.default.copyItem(at: item.url, to: dest)
+            case .animatedImage:
+                try? FileManager.default.copyItem(at: item.url, to: dest)
             case .image:
                 guard let cg = editorView.renderedCGImage() else { return }
                 let rep = NSBitmapImageRep(cgImage: cg)
-                if item.url.pathExtension.lowercased() == "gif" {
-                    try? FileManager.default.copyItem(at: item.url, to: dest)
-                } else if let png = rep.representation(using: .png, properties: [:]) {
+                if let png = rep.representation(using: .png, properties: [:]) {
                     try? png.write(to: dest)
                 }
             }

@@ -5,6 +5,7 @@ import ImageIO
 struct LibraryItem {
     enum Kind {
         case image
+        case animatedImage
         case video
     }
 
@@ -15,6 +16,8 @@ struct LibraryItem {
         switch url.pathExtension.lowercased() {
         case "mp4", "mov", "m4v":
             return .video
+        case "gif":
+            return .animatedImage
         default:
             return .image
         }
