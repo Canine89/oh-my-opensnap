@@ -197,11 +197,13 @@ final class VideoEditorView: NSView {
 
     @objc private func setCurrentAsStart() {
         timelineView.setStart(currentPlaybackSeconds())
+        seek(to: timelineView.startTime)
         updateLabels()
     }
 
     @objc private func setCurrentAsEnd() {
         timelineView.setEnd(currentPlaybackSeconds())
+        seek(to: timelineView.endTime)
         updateLabels()
     }
 
@@ -463,8 +465,12 @@ private final class TrimTimelineView: NSView {
         switch handle {
         case .start:
             setStart(time)
+            currentTime = startTime
+            onSeekRequested?(startTime)
         case .end:
             setEnd(time)
+            currentTime = endTime
+            onSeekRequested?(endTime)
         case .playhead, .none:
             currentTime = clamp(time)
             onSeekRequested?(currentTime)
