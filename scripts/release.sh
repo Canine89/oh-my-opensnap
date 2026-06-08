@@ -29,6 +29,7 @@ VOL_NAME="oh-my-opensnap"
 REPO="Canine89/oh-my-opensnap"
 DD="$ROOT/build/dd"
 DIST="$ROOT/dist"
+UPDATES="$ROOT/updates"
 APPCAST="$ROOT/appcast.xml"
 
 # --- 인자 파싱: [버전] [--publish] ---
@@ -118,7 +119,10 @@ SIGN_UPDATE="$(find "$HOME/Library/Developer/Xcode/DerivedData" -name sign_updat
 [ -x "$SIGN_UPDATE" ] || { echo "✗ sign_update 도구를 못 찾음 (Sparkle 패키지 해석 필요)"; exit 1; }
 # 예: sparkle:edSignature="..." length="12345"
 SIG_ATTRS="$("$SIGN_UPDATE" "$ZIP")"
-ZIP_URL="https://github.com/$REPO/releases/download/v$VERSION/oh-my-opensnap-$VERSION.zip"
+mkdir -p "$UPDATES"
+UPDATE_ZIP="$UPDATES/oh-my-opensnap-$VERSION.zip"
+cp "$ZIP" "$UPDATE_ZIP"
+ZIP_URL="https://raw.githubusercontent.com/$REPO/main/updates/oh-my-opensnap-$VERSION.zip"
 PUBDATE="$(date -u "+%a, %d %b %Y %H:%M:%S +0000")"
 
 # 릴리스 노트: CHANGELOG.md 의 "## <버전>" 섹션을 읽어
@@ -162,10 +166,20 @@ if [ "$PUBLISH" = "1" ]; then
   command -v gh >/dev/null || { echo "✗ 'brew install gh' 필요"; exit 1; }
   TAG="v$VERSION"
   # 1) appcast/버전 먼저 푸시 → 릴리스 태그가 최신 커밋을 가리키도록
-  echo "▸ appcast.xml + project.yml(버전) 커밋/푸시"
-  git add appcast.xml project.yml
+  echo "▸ appcast.xml + project.yml(버전) + updates ZIP 커밋/푸시"
+  git add appcast.xml project.yml "$UPDATE_ZIP"
   git commit -q -m "release: v$VERSION (appcast 갱신)" || true
   git push
+  echo "▸ 공개 업데이트 ZIP 다운로드 확인"
+  curl --fail --location --retry 12 --retry-delay 5 --retry-all-errors \
+    --output /tmp/oh-my-opensnap-update-check.zip "$ZIP_URL" >/dev/null
+  ACTUAL_SIZE="$(stat -f%z /tmp/oh-my-opensnap-update-check.zip)"
+  EXPECTED_SIZE="$(stat -f%z "$ZIP")"
+  rm -f /tmp/oh-my-opensnap-update-check.zip
+  if [ "$ACTUAL_SIZE" != "$EXPECTED_SIZE" ]; then
+    echo "✗ 공개 ZIP 크기 불일치: expected=$EXPECTED_SIZE actual=$ACTUAL_SIZE"
+    exit 1
+  fi
   # 2) 릴리스 생성/자산 업로드
   echo "▸ GitHub Release '$TAG' 업로드 (DMG + ZIP)"
   if gh release view "$TAG" >/dev/null 2>&1; then
@@ -177,16 +191,6 @@ if [ "$PUBLISH" = "1" ]; then
 
 ---
 설치: [INSTALL.md](https://github.com/$REPO/blob/main/INSTALL.md) 참고. 이미 설치한 사용자는 앱이 자동으로 업데이트합니다."
-  fi
-  echo "▸ 공개 업데이트 ZIP 다운로드 확인"
-  curl --fail --location --retry 12 --retry-delay 5 --retry-all-errors \
-    --output /tmp/oh-my-opensnap-update-check.zip "$ZIP_URL" >/dev/null
-  ACTUAL_SIZE="$(stat -f%z /tmp/oh-my-opensnap-update-check.zip)"
-  EXPECTED_SIZE="$(stat -f%z "$ZIP")"
-  rm -f /tmp/oh-my-opensnap-update-check.zip
-  if [ "$ACTUAL_SIZE" != "$EXPECTED_SIZE" ]; then
-    echo "✗ 공개 ZIP 크기 불일치: expected=$EXPECTED_SIZE actual=$ACTUAL_SIZE"
-    exit 1
   fi
   echo "✅ 게시 완료: $TAG"
 else

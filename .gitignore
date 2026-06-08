@@ -12,6 +12,8 @@ Config/Info.plist
 dist/
 *.dmg
 *.zip
+!updates/
+!updates/*.zip
 
 # macOS
 .DS_Store
