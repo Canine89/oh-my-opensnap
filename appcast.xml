@@ -6,16 +6,21 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.20</title>
-      <pubDate>Mon, 08 Jun 2026 07:51:28 +0000</pubDate>
-      <sparkle:version>21</sparkle:version>
-      <sparkle:shortVersionString>1.0.20</sparkle:shortVersionString>
+      <title>1.0.21</title>
+      <pubDate>Mon, 08 Jun 2026 08:01:53 +0000</pubDate>
+      <sparkle:version>22</sparkle:version>
+      <sparkle:shortVersionString>1.0.21</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.20</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.21</h2>
 <ul>
-<li>영상 촬영에서 창을 클릭하면 정지 캡처처럼 동작하던 문제 수정: 하이라이트된 창 영역도 영상 녹화로 시작</li>
+<li>영상 촬영 HUD를 마우스로 끌어 원하는 위치로 옮길 수 있게 개선</li>
+<li>녹화 HUD가 실제 녹화 파일에 잡히지 않도록 캡처 제외 설정 유지</li>
+<li>녹화 종료 후 라이브러리에서 MP4를 바로 선택해 간단 편집 가능</li>
+<li>영상 편집에서 지정 영역 MP4 잘라내기와 무한 반복 GIF 내보내기 지원</li>
+<li>GIF 내보내기에 30프레임, 45프레임 옵션 추가</li>
+<li>모자이크 도구가 더 명확하게 가려지도록 블록 크기와 다운샘플 강도 조정</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.20.zip" type="application/octet-stream" sparkle:edSignature="BxXa0WpMl/yCk9jps2xb1+GOdqlmkQTI9miHrNftYUOKLMBa+8he3CfIY7wHO+tKAEA1yc/8PZfYoYu8Gj+4AA==" length="3336254" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.21.zip" type="application/octet-stream" sparkle:edSignature="GD7s1NGF+YNlfY6RWdwbK8J69IRO5nhWI7otGURgM0Hs3zQqgQiuyoi0P7iyjBxO9UotadAmsJP+Gn9BorgOAg==" length="3363309" />
     </item>
   </channel>
 </rss>
