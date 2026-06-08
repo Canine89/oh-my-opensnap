@@ -11,6 +11,8 @@ final class VideoRecordingController {
     private init() {}
 
     private var recorder: AreaVideoRecorder?
+    private var hud: RecordingHUD?
+    private(set) var isPaused = false
 
     var isRecording: Bool { recorder != nil }
 
@@ -29,6 +31,14 @@ final class VideoRecordingController {
                                          excluding: excluding)
         try await recorder.start()
         self.recorder = recorder
+        isPaused = false
+        let hud = RecordingHUD(onPauseToggle: { [weak self] in
+            self?.togglePause()
+        }, onStop: { [weak self] in
+            self?.stop()
+        })
+        self.hud = hud
+        hud.show()
         LibraryWindowController.shared.restoreAfterCapture()
         NotificationCenter.default.post(name: .videoRecordingStateDidChange, object: nil)
         if Settings.shared.playSound {
@@ -36,9 +46,20 @@ final class VideoRecordingController {
         }
     }
 
+    func togglePause() {
+        guard let recorder else { return }
+        isPaused.toggle()
+        recorder.setPaused(isPaused)
+        hud?.setPaused(isPaused)
+        NotificationCenter.default.post(name: .videoRecordingStateDidChange, object: nil)
+    }
+
     func stop() {
         guard let recorder else { return }
         self.recorder = nil
+        isPaused = false
+        hud?.dismiss()
+        hud = nil
         NotificationCenter.default.post(name: .videoRecordingStateDidChange, object: nil)
 
         Task {

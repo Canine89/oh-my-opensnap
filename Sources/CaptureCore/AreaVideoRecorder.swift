@@ -14,6 +14,10 @@ final class AreaVideoRecorder: NSObject, SCStreamOutput {
     private var input: AVAssetWriterInput?
     private var didStartSession = false
     private var isStopping = false
+    private var isPaused = false
+    private var pauseBeganAt: CMTime?
+    private var pausedDuration: CMTime = .zero
+    private var shouldClosePauseGap = false
 
     init(display: SCDisplay, sourceRect: CGRect, outputURL: URL, scale: CGFloat, excluding: [SCWindow]) {
         self.display = display
@@ -98,6 +102,18 @@ final class AreaVideoRecorder: NSObject, SCStreamOutput {
         return outputURL
     }
 
+    func setPaused(_ paused: Bool) {
+        sampleQueue.async { [weak self] in
+            guard let self, !self.isStopping, self.isPaused != paused else { return }
+            self.isPaused = paused
+            if paused {
+                self.pauseBeganAt = nil
+            } else {
+                self.shouldClosePauseGap = true
+            }
+        }
+    }
+
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen,
               !isStopping,
@@ -108,11 +124,24 @@ final class AreaVideoRecorder: NSObject, SCStreamOutput {
               input.isReadyForMoreMediaData else { return }
 
         let presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        if isPaused {
+            if pauseBeganAt == nil { pauseBeganAt = presentationTime }
+            return
+        }
+        if shouldClosePauseGap {
+            if let pauseBeganAt {
+                pausedDuration = CMTimeAdd(pausedDuration, CMTimeSubtract(presentationTime, pauseBeganAt))
+            }
+            pauseBeganAt = nil
+            shouldClosePauseGap = false
+        }
+
+        let adjustedPresentationTime = CMTimeSubtract(presentationTime, pausedDuration)
         if !didStartSession {
-            writer.startSession(atSourceTime: presentationTime)
+            writer.startSession(atSourceTime: adjustedPresentationTime)
             didStartSession = true
         }
-        input.append(sampleBuffer)
+        input.append(retimedSampleBuffer(sampleBuffer, presentationTime: adjustedPresentationTime) ?? sampleBuffer)
     }
 
     private func isCompleteFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
@@ -122,6 +151,20 @@ final class AreaVideoRecorder: NSObject, SCStreamOutput {
             return true
         }
         return status == .complete
+    }
+
+    private func retimedSampleBuffer(_ sampleBuffer: CMSampleBuffer, presentationTime: CMTime) -> CMSampleBuffer? {
+        var timing = CMSampleTimingInfo(duration: CMSampleBufferGetDuration(sampleBuffer),
+                                        presentationTimeStamp: presentationTime,
+                                        decodeTimeStamp: CMSampleBufferGetDecodeTimeStamp(sampleBuffer))
+        var adjusted: CMSampleBuffer?
+        let status = CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault,
+                                                           sampleBuffer: sampleBuffer,
+                                                           sampleTimingEntryCount: 1,
+                                                           sampleTimingArray: &timing,
+                                                           sampleBufferOut: &adjusted)
+        guard status == noErr else { return nil }
+        return adjusted
     }
 }
 
