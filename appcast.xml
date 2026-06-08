@@ -6,17 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.32</title>
-      <pubDate>Mon, 08 Jun 2026 10:15:31 +0000</pubDate>
-      <sparkle:version>33</sparkle:version>
-      <sparkle:shortVersionString>1.0.32</sparkle:shortVersionString>
+      <title>1.0.33</title>
+      <pubDate>Mon, 08 Jun 2026 10:22:06 +0000</pubDate>
+      <sparkle:version>34</sparkle:version>
+      <sparkle:shortVersionString>1.0.33</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.32</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.33</h2>
 <ul>
-<li>영상 촬영 중 선택 영역 바깥을 어둡고 흐린 오버레이로 덮어 현재 녹화 범위를 쉽게 확인할 수 있도록 개선</li>
-<li>라이브러리 영상 미리보기에서 Space 키로 재생/일시정지를 토글할 수 있도록 지원</li>
+<li>라이브러리 왼쪽 썸네일 목록에서 파일명과 확장자를 함께 표시해 이미지/영상/GIF 항목을 구분하기 쉽게 개선</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.32.zip" type="application/octet-stream" sparkle:edSignature="HN27W1UyfZg6+a5hYnjYy9lZ4d4YOYEsSCEFYoNVr8r1OAZUyxaV1BkBML54sOXpmqdtFe5tQ7/lE3wO+cjFCg==" length="3387602" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.33.zip" type="application/octet-stream" sparkle:edSignature="N6/VaOA/z0E1qJ3ODvjTYcsNt4RlpBtwBingkNG0L+VeAL4F2vdPHQwT4eATBpFcKVvXW1UY0DdFxQOVz9I1AQ==" length="3388048" />
     </item>
   </channel>
 </rss>
