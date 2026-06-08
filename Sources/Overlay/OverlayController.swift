@@ -75,8 +75,13 @@ final class OverlayController {
                     self?.finishVideo(viewRect: rect, scale: scale, display: scDisplay, displayID: displayID)
                 }
             }
-            view.onWindowCapture = { [weak self] scWindow in
-                self?.finishWindow(scWindow)
+            view.onWindowCapture = { [weak self] scWindow, windowRect in
+                switch mode {
+                case .stillImage:
+                    self?.finishWindow(scWindow)
+                case .video:
+                    self?.finishVideo(viewRect: windowRect, scale: scale, display: scDisplay, displayID: displayID)
+                }
             }
             view.onCancel = { [weak self] in self?.cancel() }
 

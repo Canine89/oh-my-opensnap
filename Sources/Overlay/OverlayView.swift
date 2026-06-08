@@ -16,7 +16,7 @@ final class OverlayView: NSView {
     weak var hitTester: WindowHitTester?
     var onFinish: ((CGRect) -> Void)?
     var onCancel: (() -> Void)?
-    var onWindowCapture: ((SCWindow) -> Void)?
+    var onWindowCapture: ((SCWindow, CGRect) -> Void)?
 
     private var cursor: CGPoint = .zero
     private var dragStart: CGPoint?
@@ -109,9 +109,9 @@ final class OverlayView: NSView {
             // 드래그 → 영역 캡처
             let rect = makeRect(start, point, square: event.modifierFlags.contains(.shift))
             onFinish?(rect)
-        } else if let window = hoveredWindow {
+        } else if let window = hoveredWindow, let windowRect = hoveredWindowRect {
             // 클릭(드래그 없음) + 감지된 윈도우 → 윈도우 캡처
-            onWindowCapture?(window)
+            onWindowCapture?(window, windowRect)
         } else {
             onCancel?()
         }
