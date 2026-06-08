@@ -58,9 +58,9 @@ final class CaptureChoiceHUD {
         label.alignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
 
-        let imageButton = makeButton(title: "이미지 캡처", action: #selector(captureImage))
-        let videoButton = makeButton(title: "영상 촬영", action: #selector(recordVideo))
-        let cancelButton = makeButton(title: "취소", action: #selector(cancel))
+        let imageButton = makeButton(title: "이미지 캡처", role: .secondary, action: #selector(captureImage))
+        let videoButton = makeButton(title: "영상 촬영", role: .primary, action: #selector(recordVideo))
+        let cancelButton = makeButton(title: "취소", role: .secondary, action: #selector(cancel))
 
         let buttons = NSStackView(views: [imageButton, videoButton, cancelButton])
         buttons.orientation = .horizontal
@@ -85,11 +85,8 @@ final class CaptureChoiceHUD {
         panel.contentView = container
     }
 
-    private func makeButton(title: String, action: Selector) -> NSButton {
-        let button = NSButton(title: title, target: self, action: action)
-        button.bezelStyle = .rounded
-        button.controlSize = .regular
-        return button
+    private func makeButton(title: String, role: HUDButton.Role, action: Selector) -> NSButton {
+        HUDButton(title: title, role: role, target: self, action: action)
     }
 
     @objc private func captureImage() {

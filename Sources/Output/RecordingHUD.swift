@@ -5,8 +5,8 @@ final class RecordingHUD {
     private let panel: RecordingPanel
     private let timeLabel = NSTextField(labelWithString: "00:00")
     private let statusLabel = NSTextField(labelWithString: "촬영 중")
-    private let pauseButton = NSButton(title: "일시정지", target: nil, action: nil)
-    private let stopButton = NSButton(title: "중지", target: nil, action: nil)
+    private let pauseButton = HUDButton(title: "일시정지")
+    private let stopButton = HUDButton(title: "중지", role: .destructive)
     private let onPauseToggle: () -> Void
     private let onStop: () -> Void
 
@@ -106,13 +106,9 @@ final class RecordingHUD {
 
         pauseButton.target = self
         pauseButton.action = #selector(togglePause)
-        pauseButton.bezelStyle = .rounded
-        pauseButton.contentTintColor = .white
 
         stopButton.target = self
         stopButton.action = #selector(stop)
-        stopButton.bezelStyle = .rounded
-        stopButton.contentTintColor = .systemRed
 
         let stack = NSStackView(views: [dot, statusLabel, timeLabel, pauseButton, stopButton])
         stack.orientation = .horizontal
