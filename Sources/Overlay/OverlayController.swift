@@ -8,6 +8,11 @@ final class OverlayController {
     static let shared = OverlayController()
     private init() {}
 
+    enum Mode {
+        case stillImage
+        case video
+    }
+
     private var windows: [OverlayWindow] = []
     private var providers: [CGDirectDisplayID: DisplayStreamProvider] = [:]
     // 우리 오버레이 윈도우들의 SCWindow 매핑. 루페/스틸 캡처에서 이것만 제외해
@@ -24,16 +29,16 @@ final class OverlayController {
     private var watchdog: Timer?
     private let watchdogTimeout: TimeInterval = 30
 
-    func begin() {
+    func begin(mode: Mode = .stillImage) {
         guard !active else { return }
         active = true
         // 캡처 모드에선 라이브러리 창이 화면(스틸 캡처)에 찍히지 않도록 자동으로 가린다.
         LibraryWindowController.shared.hideForCapture()
         NSApp.activate(ignoringOtherApps: true)
-        Task { await setup() }
+        Task { await setup(mode: mode) }
     }
 
-    private func setup() async {
+    private func setup(mode: Mode) async {
         let content: SCShareableContent
         do {
             content = try await SCShareableContent.current
@@ -63,7 +68,12 @@ final class OverlayController {
             view.cgOrigin = CGDisplayBounds(displayID).origin   // CG 전역 좌상단 원점(point)
             view.hitTester = tester
             view.onFinish = { [weak self] rect in
-                self?.finish(viewRect: rect, scale: scale, display: scDisplay)
+                switch mode {
+                case .stillImage:
+                    self?.finishStillImage(viewRect: rect, scale: scale, display: scDisplay)
+                case .video:
+                    self?.finishVideo(viewRect: rect, scale: scale, display: scDisplay, displayID: displayID)
+                }
             }
             view.onWindowCapture = { [weak self] scWindow in
                 self?.finishWindow(scWindow)
@@ -140,7 +150,7 @@ final class OverlayController {
         }
     }
 
-    private func finish(viewRect: CGRect, scale: CGFloat, display: SCDisplay) {
+    private func finishStillImage(viewRect: CGRect, scale: CGFloat, display: SCDisplay) {
         // 너무 작은 선택은 취소로 간주
         guard viewRect.width > 2, viewRect.height > 2 else { cancel(); return }
         let excluded = overlayWindows        // teardown 전에 제외 목록을 확보
@@ -163,6 +173,25 @@ final class OverlayController {
                 }
             } catch {
                 NSLog("Still capture failed: \(error)")
+                await MainActor.run { LibraryWindowController.shared.restoreAfterCapture() }
+            }
+        }
+    }
+
+    private func finishVideo(viewRect: CGRect, scale: CGFloat, display: SCDisplay, displayID: CGDirectDisplayID) {
+        guard viewRect.width > 2, viewRect.height > 2 else { cancel(); return }
+        let excluded = overlayWindows
+        teardown()
+
+        Task {
+            do {
+                try await VideoRecordingController.shared.start(display: display,
+                                                               displayID: displayID,
+                                                               rect: viewRect,
+                                                               scale: scale,
+                                                               excluding: excluded)
+            } catch {
+                NSLog("Video recording start failed: \(error)")
                 await MainActor.run { LibraryWindowController.shared.restoreAfterCapture() }
             }
         }
