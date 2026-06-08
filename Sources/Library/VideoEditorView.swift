@@ -8,15 +8,21 @@ final class VideoEditorView: NSView {
     var onToast: ((String) -> Void)?
 
     private let playerView = AVPlayerView()
-    private let overlayView = VideoCropOverlayView()
     private let statusLabel = NSTextField(labelWithString: "")
-    private let selectAreaButton = NSButton(title: "영역 선택", target: nil, action: nil)
-    private let cropButton = NSButton(title: "선택 영역 잘라내기", target: nil, action: nil)
+    private let startSlider = NSSlider()
+    private let endSlider = NSSlider()
+    private let startLabel = NSTextField(labelWithString: "시작 00:00.0")
+    private let endLabel = NSTextField(labelWithString: "끝 00:00.0")
+    private let setStartButton = NSButton(title: "현재를 시작", target: nil, action: nil)
+    private let setEndButton = NSButton(title: "현재를 끝", target: nil, action: nil)
+    private let trimButton = NSButton(title: "구간 잘라내기", target: nil, action: nil)
     private let gif30Button = NSButton(title: "GIF 30프레임", target: nil, action: nil)
     private let gif45Button = NSButton(title: "GIF 45프레임", target: nil, action: nil)
-    private let resetButton = NSButton(title: "영역 초기화", target: nil, action: nil)
+    private let resetButton = NSButton(title: "구간 초기화", target: nil, action: nil)
 
     private var representedURL: URL?
+    private var duration: Double = 0
+    private var isBusy = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -30,12 +36,9 @@ final class VideoEditorView: NSView {
 
     func load(url: URL) {
         representedURL = url
-        statusLabel.stringValue = "영역 선택을 누른 뒤 드래그"
-        overlayView.videoSize = Self.videoSize(url: url)
-        overlayView.resetSelection()
-        overlayView.isSelecting = false
-        updateSelectionControls()
+        duration = max(0, Self.videoDuration(url: url))
         playerView.player = AVPlayer(url: url)
+        resetRange()
         playerView.player?.play()
     }
 
@@ -43,6 +46,7 @@ final class VideoEditorView: NSView {
         playerView.player?.pause()
         playerView.player = nil
         representedURL = nil
+        duration = 0
     }
 
     private func build() {
@@ -53,85 +57,106 @@ final class VideoEditorView: NSView {
         playerView.videoGravity = .resizeAspect
         playerView.translatesAutoresizingMaskIntoConstraints = false
 
-        overlayView.translatesAutoresizingMaskIntoConstraints = false
-        overlayView.onSelectionChanged = { [weak self] hasSelection in
-            self?.updateSelectionControls()
+        for slider in [startSlider, endSlider] {
+            slider.minValue = 0
+            slider.target = self
+            slider.action = #selector(rangeSliderChanged(_:))
+            slider.translatesAutoresizingMaskIntoConstraints = false
         }
 
-        let videoContainer = NSView()
-        videoContainer.translatesAutoresizingMaskIntoConstraints = false
-        videoContainer.addSubview(playerView)
-        videoContainer.addSubview(overlayView)
-
-        statusLabel.textColor = .secondaryLabelColor
+        for label in [startLabel, endLabel, statusLabel] {
+            label.textColor = .secondaryLabelColor
+            label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+            label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
         statusLabel.font = .systemFont(ofSize: 11)
         statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        for button in [selectAreaButton, cropButton, gif30Button, gif45Button, resetButton] {
+        for button in [setStartButton, setEndButton, trimButton, gif30Button, gif45Button, resetButton] {
             button.bezelStyle = .rounded
             button.controlSize = .regular
             button.target = self
         }
-        selectAreaButton.action = #selector(beginAreaSelection)
-        cropButton.action = #selector(exportCroppedMP4)
+        setStartButton.action = #selector(setCurrentAsStart)
+        setEndButton.action = #selector(setCurrentAsEnd)
+        trimButton.action = #selector(exportTrimmedMP4)
         gif30Button.action = #selector(exportGIF30)
         gif45Button.action = #selector(exportGIF45)
-        resetButton.action = #selector(resetCrop)
-        cropButton.isEnabled = false
-        resetButton.isEnabled = false
+        resetButton.action = #selector(resetRangeAction)
 
-        let controls = NSStackView(views: [selectAreaButton, cropButton, gif30Button, gif45Button, resetButton, statusLabel])
-        controls.orientation = .horizontal
-        controls.alignment = .centerY
-        controls.spacing = 8
+        let startRow = NSStackView(views: [startLabel, startSlider, setStartButton])
+        startRow.orientation = .horizontal
+        startRow.alignment = .centerY
+        startRow.spacing = 8
+
+        let endRow = NSStackView(views: [endLabel, endSlider, setEndButton])
+        endRow.orientation = .horizontal
+        endRow.alignment = .centerY
+        endRow.spacing = 8
+
+        let actionRow = NSStackView(views: [trimButton, gif30Button, gif45Button, resetButton, statusLabel])
+        actionRow.orientation = .horizontal
+        actionRow.alignment = .centerY
+        actionRow.spacing = 8
+
+        let controls = NSStackView(views: [startRow, endRow, actionRow])
+        controls.orientation = .vertical
+        controls.alignment = .leading
+        controls.spacing = 6
         controls.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
         controls.translatesAutoresizingMaskIntoConstraints = false
 
-        addSubview(videoContainer)
+        addSubview(playerView)
         addSubview(controls)
 
         NSLayoutConstraint.activate([
-            videoContainer.topAnchor.constraint(equalTo: topAnchor),
-            videoContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
-            videoContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
-            videoContainer.bottomAnchor.constraint(equalTo: controls.topAnchor),
-
-            playerView.topAnchor.constraint(equalTo: videoContainer.topAnchor),
-            playerView.leadingAnchor.constraint(equalTo: videoContainer.leadingAnchor),
-            playerView.trailingAnchor.constraint(equalTo: videoContainer.trailingAnchor),
-            playerView.bottomAnchor.constraint(equalTo: videoContainer.bottomAnchor),
-
-            overlayView.topAnchor.constraint(equalTo: videoContainer.topAnchor),
-            overlayView.leadingAnchor.constraint(equalTo: videoContainer.leadingAnchor),
-            overlayView.trailingAnchor.constraint(equalTo: videoContainer.trailingAnchor),
-            overlayView.bottomAnchor.constraint(equalTo: videoContainer.bottomAnchor),
+            playerView.topAnchor.constraint(equalTo: topAnchor),
+            playerView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            playerView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            playerView.bottomAnchor.constraint(equalTo: controls.topAnchor),
 
             controls.leadingAnchor.constraint(equalTo: leadingAnchor),
             controls.trailingAnchor.constraint(equalTo: trailingAnchor),
             controls.bottomAnchor.constraint(equalTo: bottomAnchor),
-            controls.heightAnchor.constraint(equalToConstant: 46)
+            controls.heightAnchor.constraint(equalToConstant: 112),
+
+            startSlider.widthAnchor.constraint(greaterThanOrEqualToConstant: 220),
+            endSlider.widthAnchor.constraint(equalTo: startSlider.widthAnchor),
+            startLabel.widthAnchor.constraint(equalToConstant: 86),
+            endLabel.widthAnchor.constraint(equalToConstant: 86)
         ])
     }
 
-    @objc private func resetCrop() {
-        overlayView.resetSelection()
-        overlayView.isSelecting = false
-        updateSelectionControls()
+    @objc private func rangeSliderChanged(_ sender: NSSlider) {
+        normalizeRange(changed: sender)
+        updateLabels()
     }
 
-    @objc private func beginAreaSelection() {
-        overlayView.isSelecting = true
-        statusLabel.stringValue = "영상 위에서 잘라낼 영역을 드래그"
-        window?.makeFirstResponder(overlayView)
+    @objc private func setCurrentAsStart() {
+        startSlider.doubleValue = currentPlaybackSeconds()
+        normalizeRange(changed: startSlider)
+        updateLabels()
     }
 
-    @objc private func exportCroppedMP4() {
-        guard let url = representedURL, overlayView.hasSelection else {
-            onToast?("먼저 영역을 선택하세요")
+    @objc private func setCurrentAsEnd() {
+        endSlider.doubleValue = currentPlaybackSeconds()
+        normalizeRange(changed: endSlider)
+        updateLabels()
+    }
+
+    @objc private func resetRangeAction() {
+        resetRange()
+    }
+
+    @objc private func exportTrimmedMP4() {
+        guard let url = representedURL else { return }
+        let range = selectedRange()
+        guard range.duration.seconds > 0.05, range.duration.seconds < max(duration - 0.05, 0) else {
+            onToast?("잘라낼 시작/끝 초를 먼저 지정하세요")
             return
         }
-        setBusy(true, message: "MP4 잘라내는 중...")
-        VideoExportService.croppedMP4(source: url, crop: overlayView.exportCropRect) { [weak self] result in
+        setBusy(true, message: "MP4 구간 잘라내는 중...")
+        VideoExportService.trimmedMP4(source: url, timeRange: range) { [weak self] result in
             self?.handleExport(result, successMessage: "잘라낸 MP4 저장됨")
         }
     }
@@ -147,7 +172,7 @@ final class VideoEditorView: NSView {
     private func exportGIF(frameCount: Int) {
         guard let url = representedURL else { return }
         setBusy(true, message: "GIF \(frameCount)프레임 내보내는 중...")
-        VideoExportService.gif(source: url, crop: overlayView.optionalCropRect, frameCount: frameCount) { [weak self] result in
+        VideoExportService.gif(source: url, timeRange: selectedRange(), frameCount: frameCount) { [weak self] result in
             self?.handleExport(result, successMessage: "GIF \(frameCount)프레임 저장됨")
         }
     }
@@ -163,166 +188,68 @@ final class VideoEditorView: NSView {
         }
     }
 
+    private func resetRange() {
+        startSlider.maxValue = duration
+        endSlider.maxValue = duration
+        startSlider.doubleValue = 0
+        endSlider.doubleValue = duration
+        updateLabels()
+    }
+
+    private func normalizeRange(changed slider: NSSlider) {
+        let minGap = min(0.1, max(duration, 0) / 10)
+        if slider === startSlider, startSlider.doubleValue > endSlider.doubleValue - minGap {
+            endSlider.doubleValue = min(duration, startSlider.doubleValue + minGap)
+        }
+        if slider === endSlider, endSlider.doubleValue < startSlider.doubleValue + minGap {
+            startSlider.doubleValue = max(0, endSlider.doubleValue - minGap)
+        }
+        startSlider.doubleValue = min(max(0, startSlider.doubleValue), duration)
+        endSlider.doubleValue = min(max(startSlider.doubleValue + minGap, endSlider.doubleValue), duration)
+    }
+
+    private func selectedRange() -> CMTimeRange {
+        let start = min(startSlider.doubleValue, endSlider.doubleValue)
+        let end = max(startSlider.doubleValue, endSlider.doubleValue)
+        return CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600),
+                           end: CMTime(seconds: end, preferredTimescale: 600))
+    }
+
+    private func currentPlaybackSeconds() -> Double {
+        guard let seconds = playerView.player?.currentTime().seconds, seconds.isFinite else { return 0 }
+        return min(max(0, seconds), duration)
+    }
+
+    private func updateLabels() {
+        startLabel.stringValue = "시작 \(formatTime(startSlider.doubleValue))"
+        endLabel.stringValue = "끝 \(formatTime(endSlider.doubleValue))"
+        let range = selectedRange()
+        statusLabel.stringValue = "선택 \(formatTime(range.duration.seconds)) / 전체 \(formatTime(duration))"
+    }
+
     private func setBusy(_ busy: Bool, message: String) {
-        [selectAreaButton, cropButton, gif30Button, gif45Button, resetButton].forEach { $0.isEnabled = !busy }
+        isBusy = busy
+        [setStartButton, setEndButton, trimButton, gif30Button, gif45Button, resetButton, startSlider, endSlider]
+            .forEach { $0.isEnabled = !busy }
         if busy {
             statusLabel.stringValue = message
         } else {
-            updateSelectionControls()
+            updateLabels()
         }
     }
 
-    private func updateSelectionControls() {
-        let hasSelection = overlayView.hasSelection
-        selectAreaButton.title = hasSelection ? "영역 다시 선택" : "영역 선택"
-        cropButton.isEnabled = hasSelection
-        resetButton.isEnabled = hasSelection
-        statusLabel.stringValue = overlayView.isSelecting
-            ? "영상 위에서 잘라낼 영역을 드래그"
-            : (hasSelection ? "선택 영역 기준으로 내보내기" : "영역 선택을 누른 뒤 드래그")
+    private func formatTime(_ seconds: Double) -> String {
+        guard seconds.isFinite else { return "00:00.0" }
+        let whole = Int(seconds)
+        let minutes = whole / 60
+        let secs = whole % 60
+        let tenths = Int((seconds - Double(whole)) * 10)
+        return String(format: "%02d:%02d.%d", minutes, secs, tenths)
     }
 
-    private static func videoSize(url: URL) -> CGSize {
+    private static func videoDuration(url: URL) -> Double {
         let asset = AVURLAsset(url: url)
-        guard let track = asset.tracks(withMediaType: .video).first else { return CGSize(width: 16, height: 9) }
-        let transformed = CGRect(origin: .zero, size: track.naturalSize).applying(track.preferredTransform)
-        return CGSize(width: max(1, abs(transformed.width)), height: max(1, abs(transformed.height)))
-    }
-}
-
-private final class VideoCropOverlayView: NSView {
-    var onSelectionChanged: ((Bool) -> Void)?
-    var videoSize = CGSize(width: 16, height: 9) {
-        didSet { needsDisplay = true }
-    }
-    var isSelecting = false {
-        didSet {
-            needsDisplay = true
-        }
-    }
-
-    var hasSelection: Bool { selection != nil }
-    var optionalCropRect: CGRect? { normalizedCropRect() }
-    var exportCropRect: CGRect { normalizedCropRect() ?? CGRect(x: 0, y: 0, width: 1, height: 1) }
-
-    private var selection: CGRect?
-    private var dragStart: CGPoint?
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        commonInit()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        commonInit()
-    }
-
-    func resetSelection() {
-        selection = nil
-        dragStart = nil
-        onSelectionChanged?(false)
-        needsDisplay = true
-    }
-
-    private func commonInit() {
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.clear.cgColor
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        isSelecting ? super.hitTest(point) : nil
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        guard isSelecting else { return }
-        let point = clampToVideo(convert(event.locationInWindow, from: nil))
-        dragStart = point
-        selection = CGRect(origin: point, size: .zero)
-        onSelectionChanged?(false)
-        needsDisplay = true
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard isSelecting else { return }
-        guard let dragStart else { return }
-        let point = clampToVideo(convert(event.locationInWindow, from: nil))
-        selection = CGRect(x: min(dragStart.x, point.x),
-                           y: min(dragStart.y, point.y),
-                           width: abs(point.x - dragStart.x),
-                           height: abs(point.y - dragStart.y))
-        onSelectionChanged?((selection?.width ?? 0) > 6 && (selection?.height ?? 0) > 6)
-        needsDisplay = true
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        guard isSelecting else { return }
-        if let rect = selection, rect.width <= 6 || rect.height <= 6 {
-            selection = nil
-        }
-        dragStart = nil
-        isSelecting = false
-        onSelectionChanged?(selection != nil)
-        needsDisplay = true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        let videoRect = fittedVideoRect()
-
-        guard let selection else {
-            if isSelecting { drawHint(in: videoRect) }
-            return
-        }
-
-        NSColor.black.withAlphaComponent(0.42).setFill()
-        let dimPath = NSBezierPath(rect: videoRect)
-        dimPath.append(NSBezierPath(rect: selection))
-        dimPath.windingRule = .evenOdd
-        dimPath.fill()
-
-        NSColor.systemRed.setStroke()
-        let border = NSBezierPath(rect: selection)
-        border.lineWidth = 2
-        border.stroke()
-    }
-
-    private func drawHint(in rect: CGRect) {
-        let text = "드래그해서 내보낼 영역 선택"
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 12, weight: .medium),
-            .foregroundColor: NSColor.white.withAlphaComponent(0.86)
-        ]
-        let size = text.size(withAttributes: attrs)
-        let point = CGPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2)
-        text.draw(at: point, withAttributes: attrs)
-    }
-
-    private func normalizedCropRect() -> CGRect? {
-        guard let selection else { return nil }
-        let videoRect = fittedVideoRect()
-        let clipped = selection.intersection(videoRect)
-        guard clipped.width > 6, clipped.height > 6 else { return nil }
-        return CGRect(x: (clipped.minX - videoRect.minX) / videoRect.width,
-                      y: (clipped.minY - videoRect.minY) / videoRect.height,
-                      width: clipped.width / videoRect.width,
-                      height: clipped.height / videoRect.height)
-    }
-
-    private func clampToVideo(_ point: CGPoint) -> CGPoint {
-        let rect = fittedVideoRect()
-        return CGPoint(x: min(max(point.x, rect.minX), rect.maxX),
-                       y: min(max(point.y, rect.minY), rect.maxY))
-    }
-
-    private func fittedVideoRect() -> CGRect {
-        guard bounds.width > 0, bounds.height > 0, videoSize.width > 0, videoSize.height > 0 else { return bounds }
-        let scale = min(bounds.width / videoSize.width, bounds.height / videoSize.height)
-        let width = videoSize.width * scale
-        let height = videoSize.height * scale
-        return CGRect(x: bounds.midX - width / 2,
-                      y: bounds.midY - height / 2,
-                      width: width,
-                      height: height)
+        let seconds = asset.duration.seconds
+        return seconds.isFinite ? seconds : 0
     }
 }
