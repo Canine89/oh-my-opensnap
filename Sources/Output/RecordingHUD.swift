@@ -29,16 +29,17 @@ final class RecordingHUD {
                            height: size.height)
 
         panel = RecordingPanel(contentRect: frame,
-                               styleMask: [.borderless],
+                               styleMask: [.borderless, .nonactivatingPanel],
                                backing: .buffered,
                                defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.level = .screenSaver
         panel.hasShadow = true
+        panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = true
         panel.isReleasedWhenClosed = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.sharingType = .none
 
         buildContent(size: size)

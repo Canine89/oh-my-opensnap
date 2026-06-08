@@ -19,6 +19,7 @@ final class MenuBarController: NSObject {
         }
 
         let menu = NSMenu()
+        menu.delegate = self
         let header = NSMenuItem(title: "\(Brand.name) · \(Brand.tagline)", action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
@@ -65,9 +66,11 @@ final class MenuBarController: NSObject {
     }
 
     @objc private func refreshVideoState() {
+        let isRecording = VideoRecordingController.shared.isRecording
         videoItem?.title = videoTitle()
         pauseVideoItem?.title = pauseVideoTitle()
-        pauseVideoItem?.isEnabled = VideoRecordingController.shared.isRecording
+        pauseVideoItem?.isEnabled = isRecording
+        pauseVideoItem?.isHidden = !isRecording
     }
 
     @discardableResult
@@ -105,5 +108,11 @@ final class MenuBarController: NSObject {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+}
+
+extension MenuBarController: NSMenuDelegate {
+    func menuWillOpen(_ menu: NSMenu) {
+        refreshVideoState()
     }
 }
