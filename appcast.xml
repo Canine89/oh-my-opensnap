@@ -6,16 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.36</title>
-      <pubDate>Thu, 11 Jun 2026 00:29:04 +0000</pubDate>
-      <sparkle:version>37</sparkle:version>
-      <sparkle:shortVersionString>1.0.36</sparkle:shortVersionString>
+      <title>1.0.37</title>
+      <pubDate>Thu, 11 Jun 2026 00:32:57 +0000</pubDate>
+      <sparkle:version>38</sparkle:version>
+      <sparkle:shortVersionString>1.0.37</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.36</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.37</h2>
 <ul>
-<li>캡처 영역을 핸들로 조절하거나 이동하는 동안 선택 HUD가 영역을 실시간으로 따라다니도록 개선 (기존에는 조절이 끝난 뒤에만 이동)</li>
+<li>캡처 영역을 조정할 때 선택 HUD가 오버레이 뒤로 숨어버리던 문제 수정 — HUD가 항상 오버레이 위에 표시</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.36.zip" type="application/octet-stream" sparkle:edSignature="aBSfUHR2D+sfEXfMQxAYqVUZrhYTjCibMBlZmdNrQWx8/AjmWBCbseoFFjWfPas8C6yFw3t/6L4p8/1Fwt7wDA==" length="3397786" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.37.zip" type="application/octet-stream" sparkle:edSignature="DJWx4nODGRNkaMJcqSmt5A1JV+vA9fLeSPBefbTzHxmND/OSbdFvY5mvQV2ExtmQXA/g7XGjk1heTZ/2+b+wDg==" length="3397812" />
     </item>
   </channel>
 </rss>
