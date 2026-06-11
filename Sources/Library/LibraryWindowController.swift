@@ -123,6 +123,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         collectionView.allowsEmptySelection = true
         collectionView.backgroundColors = [.clear]
         collectionView.register(ThumbnailItem.self, forItemWithIdentifier: itemIdentifier)
+        // 썸네일을 다른 앱(Finder/메일/슬랙 등)으로 끌어다 놓으면 실제 파일이 첨부되도록
+        // 앱 바깥 드래그를 복사 동작으로 허용한다.
+        collectionView.setDraggingSourceOperationMask(.copy, forLocal: false)
         // 썸네일 우클릭 → "Finder에서 보기" 컨텍스트 메뉴
         collectionView.menuProvider = { [weak self] indexPath in
             guard let self, self.items.indices.contains(indexPath.item) else { return nil }
@@ -430,6 +433,20 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         if let indexPath = indexPaths.first, items.indices.contains(indexPath.item) {
             showPreview(items[indexPath.item])
         }
+    }
+
+    // MARK: 드래그앤드롭 (썸네일 → 외부 앱 파일 첨부)
+    func collectionView(_ collectionView: NSCollectionView,
+                        canDragItemsAt indexPaths: Set<IndexPath>,
+                        with event: NSEvent) -> Bool {
+        true
+    }
+
+    /// 항목의 실제 파일 URL을 pasteboard에 실어, 드롭한 곳에 파일 자체가 전달되게 한다.
+    func collectionView(_ collectionView: NSCollectionView,
+                        pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
+        guard items.indices.contains(indexPath.item) else { return nil }
+        return items[indexPath.item].url as NSURL
     }
 
     // MARK: 편집 도구 액션
