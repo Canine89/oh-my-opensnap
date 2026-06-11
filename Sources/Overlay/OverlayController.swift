@@ -99,6 +99,29 @@ final class OverlayController {
                 }
             }
             view.onCancel = { [weak self] in self?.cancel() }
+            view.onAdjustingStarted = { [weak self, weak window] in
+                guard let self else { return }
+                // 선택이 조정(확정 대기) 단계로 들어가면:
+                // 핸들을 잡을 수 있게 커서를 되살리고, 조정하는 동안 워치독이
+                // 오버레이를 닫아 버리지 않도록 해제한다(Esc 모니터는 그대로 살아 있다).
+                self.watchdog?.invalidate()
+                self.watchdog = nil
+                if self.cursorHidden {
+                    NSCursor.unhide()
+                    self.cursorHidden = false
+                }
+                if let window {
+                    window.makeKeyAndOrderFront(nil)   // ⏎ 확정 키를 받도록 선택이 일어난 창을 key로
+                    window.makeFirstResponder(window.captureView)
+                }
+            }
+            view.onSelectionActivity = { [weak self, weak view] in
+                // 다른 디스플레이에 남아 있던 선택/하이라이트를 비활성화한다.
+                guard let self else { return }
+                for other in self.windows where other.captureView !== view {
+                    other.captureView.deactivateSelection()
+                }
+            }
 
             let provider = DisplayStreamProvider(displayID: displayID, scale: scale)
             view.provider = provider
@@ -137,7 +160,7 @@ final class OverlayController {
 
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.windows.forEach { $0.captureView.refreshLoupe() }
+                self?.windows.forEach { $0.captureView.tick() }
             }
         }
     }
@@ -158,6 +181,12 @@ final class OverlayController {
         // 요구해 새 권한 prompt를 유발할 수 있어 피한다. 오버레이 중 앱은 활성/key라 충분하다.
         let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == 53 { self?.cancel(); return nil }   // Esc
+            if event.keyCode == 36 || event.keyCode == 76,          // Return / 키패드 Enter
+               self?.windows.contains(where: { $0.captureView.confirmIfAdjusting() }) == true {
+                // first-responder 라우팅과 무관하게 ⏎ 확정이 항상 동작하게 한다
+                // (멀티 디스플레이에서 key 윈도우가 다른 디스플레이일 수 있다).
+                return nil
+            }
             return event
         }
         escMonitors = [local].compactMap { $0 }

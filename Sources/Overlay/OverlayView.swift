@@ -6,7 +6,9 @@ import ScreenCaptureKit
 ///
 /// 인터랙션 분기:
 /// - 호버(버튼 안 누름): 커서 아래 윈도우를 자동 감지해 하이라이트 → 클릭하면 윈도우 캡처
-/// - 드래그(임계값 초과): 기존 영역 캡처 모드
+/// - 드래그(임계값 초과): 영역 선택 → 조정 단계로 진입(점선 테두리 + 핸들 8개)
+/// - 조정 단계: 핸들 드래그로 크기 조절(루페 표시), 내부 드래그로 이동,
+///   바깥 드래그로 새 선택, ⏎(Return)/더블클릭으로 캡처 확정
 final class OverlayView: NSView {
     // OverlayController가 주입
     var scale: CGFloat = 1
@@ -17,13 +19,64 @@ final class OverlayView: NSView {
     var onFinish: ((CGRect) -> Void)?
     var onCancel: (() -> Void)?
     var onWindowCapture: ((SCWindow, CGRect) -> Void)?
+    /// 선택이 조정(확정 대기) 단계로 처음 들어갈 때 호출 —
+    /// 컨트롤러가 커서를 되살리고 워치독을 해제하는 데 쓴다.
+    var onAdjustingStarted: (() -> Void)?
+    /// 이 뷰에서 새 선택이 시작될 때 호출 —
+    /// 컨트롤러가 다른 디스플레이의 진행 중 선택을 비활성화한다.
+    var onSelectionActivity: (() -> Void)?
+
+    // MARK: 상태 기계
+    /// 크기 조절 핸들 8개. 배열 순서가 히트 테스트 우선순위라 코너가 변 중앙보다 먼저다.
+    private enum Handle: CaseIterable {
+        case topLeft, topRight, bottomLeft, bottomRight
+        case top, bottom, left, right
+
+        var cursor: NSCursor {
+            switch self {
+            case .topLeft: return .frameResize(position: .topLeft, directions: .all)
+            case .topRight: return .frameResize(position: .topRight, directions: .all)
+            case .bottomLeft: return .frameResize(position: .bottomLeft, directions: .all)
+            case .bottomRight: return .frameResize(position: .bottomRight, directions: .all)
+            case .top: return .frameResize(position: .top, directions: .all)
+            case .bottom: return .frameResize(position: .bottom, directions: .all)
+            case .left: return .frameResize(position: .left, directions: .all)
+            case .right: return .frameResize(position: .right, directions: .all)
+            }
+        }
+    }
+
+    private enum Phase {
+        case idle               // 호버 — 윈도우 하이라이트
+        case selecting          // 첫 드래그로 사각형 그리는 중
+        case adjusting          // 선택 확정 대기 — 점선 + 핸들, ⏎/더블클릭으로 캡처
+        case resizing(Handle)   // 핸들 드래그로 크기 조절 중 (루페 표시)
+        case moving             // 선택 영역 내부 드래그로 이동 중
+    }
+
+    private var phase: Phase = .idle
+    /// 조정 단계(핸들 드래그/이동 포함) 여부 — 점선·핸들·짙은 디밍을 그릴지 결정.
+    private var selectionLocked: Bool {
+        switch phase {
+        case .adjusting, .resizing, .moving: return true
+        case .idle, .selecting: return false
+        }
+    }
 
     private var cursor: CGPoint = .zero
     private var dragStart: CGPoint?
+    private var downPoint: CGPoint = .zero
     private var selection: CGRect?
+    private var previousSelection: CGRect?   // 조정 중 빈 클릭/미세 드래그 시 복원용
+    private var resizeBase: CGRect = .zero   // 핸들 드래그 시작 시점의 선택(앵커 계산용)
+    private var moveOffset: CGPoint = .zero
     private var cursorInside = false
     private var didDrag = false
+    private var suppressed = false           // 다른 디스플레이에서 선택 진행 중 → 이 뷰의 표시 억제
+    private var dashPhase: CGFloat = 0       // 점선 행진(marching ants) 위상
     private let dragThreshold: CGFloat = 5
+    private let handleHitRadius: CGFloat = 12
+    private let handleRadius: CGFloat = 4.5
 
     // 호버 중 감지된 윈도우
     private var hoveredWindow: SCWindow?
@@ -57,7 +110,7 @@ final class OverlayView: NSView {
         // 진입 이벤트에도 실제 위치를 반영해야 첫 mouseMoved 전 (0,0) 크로스헤어가 안 보인다.
         cursor = convert(event.locationInWindow, from: nil)
         cursorInside = true
-        updateHoveredWindow()
+        if !selectionLocked, !suppressed { updateHoveredWindow() }
         needsDisplay = true
     }
     override func mouseExited(with event: NSEvent) { cursorInside = false; needsDisplay = true }
@@ -77,43 +130,167 @@ final class OverlayView: NSView {
     override func mouseMoved(with event: NSEvent) {
         cursor = convert(event.locationInWindow, from: nil)
         cursorInside = true
-        updateHoveredWindow()
+        if selectionLocked {
+            // 조정 단계에선 크로스헤어 대신 위치별 커서 모양으로 피드백한다.
+            updateAdjustCursor(at: cursor)
+            return
+        }
+        if !suppressed { updateHoveredWindow() }
         needsDisplay = true
     }
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        dragStart = point
         cursor = point
+        downPoint = point
+
+        if selectionLocked {
+            if let handle = handle(at: point) {
+                resizeBase = selection ?? .zero
+                phase = .resizing(handle)
+            } else if let sel = selection, sel.contains(point) {
+                moveOffset = CGPoint(x: point.x - sel.minX, y: point.y - sel.minY)
+                phase = .moving
+                NSCursor.closedHand.set()
+            } else {
+                // 선택 바깥 → 새 선택 시작. 클릭만 하고 떼면 기존 선택을 복원한다.
+                previousSelection = selection
+                beginSelecting(at: point)
+            }
+        } else {
+            beginSelecting(at: point)
+        }
+        needsDisplay = true
+    }
+
+    private func beginSelecting(at point: CGPoint) {
+        suppressed = false
+        onSelectionActivity?()
+        phase = .selecting
+        dragStart = point
         didDrag = false
         selection = CGRect(origin: point, size: .zero)
-        needsDisplay = true
+        NSCursor.crosshair.set()   // 커서가 이미 보이는 상태(조정 후 재선택)일 때를 위해
     }
 
     override func mouseDragged(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         cursor = point
-        if let start = dragStart {
-            if hypot(point.x - start.x, point.y - start.y) >= dragThreshold { didDrag = true }
-            selection = makeRect(start, point, square: event.modifierFlags.contains(.shift))
+        let square = event.modifierFlags.contains(.shift)
+
+        switch phase {
+        case .selecting:
+            if let start = dragStart {
+                if hypot(point.x - start.x, point.y - start.y) >= dragThreshold { didDrag = true }
+                selection = makeRect(start, point, square: square)
+            }
+        case .resizing(let handle):
+            // 화면 밖으로 못 나가게 클램프 — 선택이 디스플레이를 벗어나는 걸 막는다.
+            let clamped = CGPoint(x: max(0, min(point.x, bounds.width)),
+                                  y: max(0, min(point.y, bounds.height)))
+            selection = resize(resizeBase, handle: handle, to: clamped, square: square)
+        case .moving:
+            if let sel = selection {
+                var origin = CGPoint(x: point.x - moveOffset.x, y: point.y - moveOffset.y)
+                origin.x = max(0, min(origin.x, bounds.width - sel.width))
+                origin.y = max(0, min(origin.y, bounds.height - sel.height))
+                selection = CGRect(origin: origin, size: sel.size)
+            }
+        case .idle, .adjusting:
+            break
         }
         needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        defer { dragStart = nil; didDrag = false }
-        guard let start = dragStart else { return }
 
-        if didDrag {
-            // 드래그 → 영역 캡처
-            let rect = makeRect(start, point, square: event.modifierFlags.contains(.shift))
-            onFinish?(rect)
-        } else if let window = hoveredWindow, let windowRect = hoveredWindowRect {
-            // 클릭(드래그 없음) + 감지된 윈도우 → 윈도우 캡처
-            onWindowCapture?(window, windowRect)
+        switch phase {
+        case .selecting:
+            defer { dragStart = nil; didDrag = false; previousSelection = nil }
+            guard let start = dragStart else { phase = .idle; needsDisplay = true; return }
+
+            if didDrag {
+                let rect = makeRect(start, point, square: event.modifierFlags.contains(.shift))
+                if rect.width > 2, rect.height > 2 {
+                    selection = rect
+                    enterAdjusting()
+                } else if let previous = previousSelection {
+                    selection = previous            // 미세 드래그 → 기존 선택 유지
+                    phase = .adjusting
+                } else {
+                    onCancel?()
+                    return
+                }
+            } else if let previous = previousSelection {
+                selection = previous                // 조정 중 바깥 빈 클릭 → 기존 선택 유지
+                phase = .adjusting
+            } else if let window = hoveredWindow, let windowRect = hoveredWindowRect {
+                // 클릭(드래그 없음) + 감지된 윈도우 → 윈도우 캡처
+                onWindowCapture?(window, windowRect)
+                return
+            } else {
+                onCancel?()
+                return
+            }
+        case .resizing:
+            phase = .adjusting
+        case .moving:
+            let moved = hypot(point.x - downPoint.x, point.y - downPoint.y) >= dragThreshold
+            if event.clickCount == 2, !moved {
+                confirmSelection()                  // 내부 더블클릭 → 캡처 확정
+                return
+            }
+            phase = .adjusting
+        case .idle, .adjusting:
+            break
+        }
+        needsDisplay = true
+        if selectionLocked { updateAdjustCursor(at: point) }
+    }
+
+    /// 선택 확정 대기 단계로 진입. 커서 복구/워치독 해제는 컨트롤러 콜백이 맡는다.
+    private func enterAdjusting() {
+        phase = .adjusting
+        onAdjustingStarted?()
+        window?.makeFirstResponder(self)   // ⏎ 키를 받기 위해
+        updateAdjustCursor(at: cursor)
+        needsDisplay = true
+    }
+
+    /// 조정 단계라면 현재 선택으로 캡처를 확정한다. (⏎ 모니터/키 입력에서 호출)
+    @discardableResult
+    func confirmIfAdjusting() -> Bool {
+        guard case .adjusting = phase else { return false }
+        confirmSelection()
+        return true
+    }
+
+    private func confirmSelection() {
+        guard let sel = selection, sel.width > 2, sel.height > 2 else { return }
+        phase = .idle
+        onFinish?(sel)
+    }
+
+    /// 다른 디스플레이에서 선택이 시작되면 이 뷰의 선택/표시를 비활성화한다.
+    func deactivateSelection() {
+        suppressed = true
+        phase = .idle
+        selection = nil
+        previousSelection = nil
+        dragStart = nil
+        didDrag = false
+        needsDisplay = true
+    }
+
+    private func updateAdjustCursor(at point: CGPoint) {
+        guard case .adjusting = phase else { return }
+        if let handle = handle(at: point) {
+            handle.cursor.set()
+        } else if let sel = selection, sel.contains(point) {
+            NSCursor.openHand.set()
         } else {
-            onCancel?()
+            NSCursor.crosshair.set()
         }
     }
 
@@ -133,7 +310,11 @@ final class OverlayView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { onCancel?() }   // Esc
+        switch event.keyCode {
+        case 53: onCancel?()                       // Esc
+        case 36, 76: confirmIfAdjusting()          // Return / 키패드 Enter
+        default: break
+        }
     }
 
     // 우클릭(또는 트랙패드 두 손가락 클릭)으로 언제든 취소. 키 입력이 오버레이로
@@ -141,10 +322,30 @@ final class OverlayView: NSView {
     // 가장 확실한 취소 경로다.
     override func rightMouseDown(with event: NSEvent) { onCancel?() }
 
+    /// 타이머(30fps)가 호출 — 루페 픽셀 갱신 + 조정 단계 점선 행진 애니메이션.
+    func tick() {
+        refreshLoupe()
+        if selectionLocked, let sel = selection {
+            dashPhase += 0.6
+            if dashPhase >= 10 { dashPhase -= 10 }   // 점선 한 주기(6+4)
+            invalidateBorder(sel)
+        }
+    }
+
     /// 타이머가 호출 — 커서가 멈춰 있어도 루페 픽셀을 갱신.
     func refreshLoupe() {
         guard cursorInside, loupeDirtyFrame != .zero else { return }
         setNeedsDisplay(loupeDirtyFrame)
+    }
+
+    /// 점선 애니메이션을 위해 테두리(핸들 포함) 띠 영역만 무효화 — 전체 리드로우를 피한다.
+    private func invalidateBorder(_ sel: CGRect) {
+        let pad: CGFloat = 8
+        let outer = sel.insetBy(dx: -pad, dy: -pad)
+        setNeedsDisplay(CGRect(x: outer.minX, y: outer.minY, width: outer.width, height: pad * 2))
+        setNeedsDisplay(CGRect(x: outer.minX, y: outer.maxY - pad * 2, width: outer.width, height: pad * 2))
+        setNeedsDisplay(CGRect(x: outer.minX, y: outer.minY, width: pad * 2, height: outer.height))
+        setNeedsDisplay(CGRect(x: outer.maxX - pad * 2, y: outer.minY, width: pad * 2, height: outer.height))
     }
 
     private func makeRect(_ a: CGPoint, _ b: CGPoint, square: Bool) -> CGRect {
@@ -158,30 +359,143 @@ final class OverlayView: NSView {
         return CGRect(x: min(a.x, a.x + w), y: min(a.y, a.y + h), width: abs(w), height: abs(h))
     }
 
+    /// 핸들 드래그 시작 시점의 선택(base) 기준으로 새 사각형을 계산한다.
+    /// 코너는 반대편 코너를 앵커로 자유 변형(Shift로 정사각형), 변 중앙은 해당 축만 움직인다.
+    /// min/max로 계산하므로 반대편을 지나치면 자연스럽게 뒤집힌다.
+    private func resize(_ base: CGRect, handle: Handle, to p: CGPoint, square: Bool) -> CGRect {
+        switch handle {
+        case .topLeft: return makeRect(CGPoint(x: base.maxX, y: base.maxY), p, square: square)
+        case .topRight: return makeRect(CGPoint(x: base.minX, y: base.maxY), p, square: square)
+        case .bottomLeft: return makeRect(CGPoint(x: base.maxX, y: base.minY), p, square: square)
+        case .bottomRight: return makeRect(CGPoint(x: base.minX, y: base.minY), p, square: square)
+        case .top:
+            return CGRect(x: base.minX, y: min(p.y, base.maxY),
+                          width: base.width, height: abs(base.maxY - p.y))
+        case .bottom:
+            return CGRect(x: base.minX, y: min(p.y, base.minY),
+                          width: base.width, height: abs(p.y - base.minY))
+        case .left:
+            return CGRect(x: min(p.x, base.maxX), y: base.minY,
+                          width: abs(base.maxX - p.x), height: base.height)
+        case .right:
+            return CGRect(x: min(p.x, base.minX), y: base.minY,
+                          width: abs(p.x - base.minX), height: base.height)
+        }
+    }
+
+    /// 핸들 8개의 중심 좌표. 코너 4개가 먼저라 작은 선택에서 코너가 변 중앙보다 우선 잡힌다.
+    private func handleCenters(_ sel: CGRect) -> [(Handle, CGPoint)] {
+        [(.topLeft, CGPoint(x: sel.minX, y: sel.minY)),
+         (.topRight, CGPoint(x: sel.maxX, y: sel.minY)),
+         (.bottomLeft, CGPoint(x: sel.minX, y: sel.maxY)),
+         (.bottomRight, CGPoint(x: sel.maxX, y: sel.maxY)),
+         (.top, CGPoint(x: sel.midX, y: sel.minY)),
+         (.bottom, CGPoint(x: sel.midX, y: sel.maxY)),
+         (.left, CGPoint(x: sel.minX, y: sel.midY)),
+         (.right, CGPoint(x: sel.maxX, y: sel.midY))]
+    }
+
+    private func handle(at point: CGPoint) -> Handle? {
+        guard let sel = selection else { return nil }
+        return handleCenters(sel).first {
+            hypot(point.x - $0.1.x, point.y - $0.1.y) <= handleHitRadius
+        }?.0
+    }
+
     // MARK: 그리기
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
 
         // 디밍 (dirtyRect로 클리핑되어 부분 갱신 시 저렴)
-        NSColor(white: 0, alpha: 0.30).setFill()
+        // 조정 단계에선 캡처될 영역이 더 도드라지도록 주변을 한층 더 어둡게 한다.
+        NSColor(white: 0, alpha: selectionLocked ? 0.45 : 0.30).setFill()
         bounds.fill()
 
-        let dragging = didDrag
+        let showSelection: Bool
+        switch phase {
+        case .selecting: showSelection = didDrag
+        case .adjusting, .resizing, .moving: showSelection = true
+        case .idle: showSelection = false
+        }
 
-        if dragging, let sel = selection, sel.width > 0, sel.height > 0 {
+        if showSelection, let sel = selection, sel.width > 0, sel.height > 0 {
             ctx.clear(sel)                                   // 선택 영역은 투명하게 → 실제 화면이 비침
-            NSColor.white.setStroke()
-            let border = NSBezierPath(rect: sel)
-            border.lineWidth = 1
-            border.stroke()
+            if selectionLocked {
+                drawAdjustableSelection(sel)
+                drawConfirmHint(for: sel)
+            } else {
+                NSColor.white.setStroke()
+                let border = NSBezierPath(rect: sel)
+                border.lineWidth = 1
+                border.stroke()
+            }
             drawDimensionLabel(for: sel)
-        } else if let windowRect = hoveredWindowRect {
+        } else if case .idle = phase, !suppressed, let windowRect = hoveredWindowRect {
             drawWindowHighlight(windowRect, ctx)
         }
 
-        guard cursorInside else { return }
-        drawCrosshair()
-        drawLoupe(ctx)
+        // 크로스헤어/루페
+        switch phase {
+        case .idle, .selecting:
+            guard cursorInside, !suppressed else { loupeDirtyFrame = .zero; return }
+            drawCrosshair()
+            drawLoupe(ctx)
+        case .resizing:
+            drawLoupe(ctx)                                   // 핸들 조절 중 픽셀 단위 확인용 확대경
+        case .adjusting, .moving:
+            loupeDirtyFrame = .zero
+        }
+    }
+
+    /// 조정 단계의 선택 표시: 점선 테두리(행진 애니메이션) + 크기 조절 핸들 8개.
+    private func drawAdjustableSelection(_ sel: CGRect) {
+        // 점선이 밝은 배경 위에서도 보이도록 어두운 실선을 깔고 흰 점선을 겹친다.
+        let underlay = NSBezierPath(rect: sel)
+        underlay.lineWidth = 1
+        NSColor(white: 0, alpha: 0.7).setStroke()
+        underlay.stroke()
+
+        let dashed = NSBezierPath(rect: sel)
+        dashed.lineWidth = 1
+        dashed.setLineDash([6, 4], count: 2, phase: dashPhase)
+        NSColor.white.setStroke()
+        dashed.stroke()
+
+        for (_, center) in handleCenters(sel) {
+            let rect = CGRect(x: center.x - handleRadius, y: center.y - handleRadius,
+                              width: handleRadius * 2, height: handleRadius * 2)
+            let knob = NSBezierPath(ovalIn: rect)
+            NSColor.white.setFill()
+            knob.fill()
+            NSColor(white: 0, alpha: 0.55).setStroke()
+            knob.lineWidth = 1
+            knob.stroke()
+        }
+    }
+
+    /// 확정 방법 안내 — 조정 대기 상태에서만 표시(드래그 중엔 숨겨 시야를 가리지 않는다).
+    private func drawConfirmHint(for sel: CGRect) {
+        guard case .adjusting = phase else { return }
+        let text = "⏎ 또는 더블클릭으로 캡처  ·  esc 취소" as NSString
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: NSColor.white
+        ]
+        let textSize = text.size(withAttributes: attributes)
+        let padding: CGFloat = 6
+        // 치수 레이블이 위 공간 부족으로 선택 아래(sel.maxY + 4)에 올 때는 그 아래로 비킨다.
+        let yOffset: CGFloat = sel.minY < 30 ? 34 : 8
+        var pill = CGRect(x: sel.midX - textSize.width / 2 - padding,
+                          y: sel.maxY + yOffset,
+                          width: textSize.width + padding * 2,
+                          height: textSize.height + padding * 2)
+        if pill.maxY > bounds.height - 4 { pill.origin.y = sel.maxY - pill.height - 8 }
+        pill.origin.x = max(4, min(pill.origin.x, bounds.width - pill.width - 4))
+
+        let pillPath = NSBezierPath(roundedRect: pill, xRadius: pill.height / 2, yRadius: pill.height / 2)
+        NSColor(white: 0, alpha: 0.75).setFill()
+        pillPath.fill()
+        text.draw(at: CGPoint(x: pill.minX + padding, y: pill.minY + padding), withAttributes: attributes)
     }
 
     private func drawWindowHighlight(_ rect: CGRect, _ ctx: CGContext) {
