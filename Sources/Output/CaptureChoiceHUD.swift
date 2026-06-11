@@ -43,6 +43,11 @@ final class CaptureChoiceHUD {
         panel.orderOut(nil)
     }
 
+    /// 선택 영역이 조정되면 HUD를 새 영역 근처로 옮긴다.
+    func move(near anchor: CGRect) {
+        panel.setFrame(Self.frame(size: panel.frame.size, near: anchor), display: true)
+    }
+
     private func buildContent(size: NSSize) {
         let container = NSView(frame: NSRect(origin: .zero, size: size))
         container.wantsLayer = true

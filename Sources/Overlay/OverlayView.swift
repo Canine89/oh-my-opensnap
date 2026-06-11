@@ -25,6 +25,10 @@ final class OverlayView: NSView {
     /// 이 뷰에서 새 선택이 시작될 때 호출 —
     /// 컨트롤러가 다른 디스플레이의 진행 중 선택을 비활성화한다.
     var onSelectionActivity: (() -> Void)?
+    /// 조정 단계에서 크기 조절/이동이 끝날 때마다 호출 — 컨트롤러가 선택 HUD 위치를 따라 옮긴다.
+    var onSelectionChanged: ((CGRect) -> Void)?
+    /// ⏎/더블클릭 확정 허용 여부. 선택 HUD가 결정을 맡는 모드에선 꺼서 이중 확정을 막는다.
+    var confirmEnabled = true
 
     // MARK: 상태 기계
     /// 크기 조절 핸들 8개. 배열 순서가 히트 테스트 우선순위라 코너가 변 중앙보다 먼저다.
@@ -217,14 +221,14 @@ final class OverlayView: NSView {
                     enterAdjusting()
                 } else if let previous = previousSelection {
                     selection = previous            // 미세 드래그 → 기존 선택 유지
-                    phase = .adjusting
+                    enterAdjusting()
                 } else {
                     onCancel?()
                     return
                 }
             } else if let previous = previousSelection {
                 selection = previous                // 조정 중 바깥 빈 클릭 → 기존 선택 유지
-                phase = .adjusting
+                enterAdjusting()
             } else if let window = hoveredWindow, let windowRect = hoveredWindowRect {
                 // 클릭(드래그 없음) + 감지된 윈도우 → 윈도우 캡처
                 onWindowCapture?(window, windowRect)
@@ -235,13 +239,15 @@ final class OverlayView: NSView {
             }
         case .resizing:
             phase = .adjusting
+            if let sel = selection { onSelectionChanged?(sel) }
         case .moving:
             let moved = hypot(point.x - downPoint.x, point.y - downPoint.y) >= dragThreshold
-            if event.clickCount == 2, !moved {
+            if event.clickCount == 2, !moved, confirmEnabled {
                 confirmSelection()                  // 내부 더블클릭 → 캡처 확정
                 return
             }
             phase = .adjusting
+            if let sel = selection { onSelectionChanged?(sel) }
         case .idle, .adjusting:
             break
         }
@@ -258,10 +264,15 @@ final class OverlayView: NSView {
         needsDisplay = true
     }
 
+    /// 조정 단계(드래그 중 포함)의 현재 선택. 컨트롤러가 HUD 확정 시점에 읽는다.
+    var currentSelection: CGRect? {
+        selectionLocked ? selection : nil
+    }
+
     /// 조정 단계라면 현재 선택으로 캡처를 확정한다. (⏎ 모니터/키 입력에서 호출)
     @discardableResult
     func confirmIfAdjusting() -> Bool {
-        guard case .adjusting = phase else { return false }
+        guard confirmEnabled, case .adjusting = phase else { return false }
         confirmSelection()
         return true
     }
@@ -422,7 +433,6 @@ final class OverlayView: NSView {
             ctx.clear(sel)                                   // 선택 영역은 투명하게 → 실제 화면이 비침
             if selectionLocked {
                 drawAdjustableSelection(sel)
-                drawConfirmHint(for: sel)
             } else {
                 NSColor.white.setStroke()
                 let border = NSBezierPath(rect: sel)
@@ -471,31 +481,6 @@ final class OverlayView: NSView {
             knob.lineWidth = 1
             knob.stroke()
         }
-    }
-
-    /// 확정 방법 안내 — 조정 대기 상태에서만 표시(드래그 중엔 숨겨 시야를 가리지 않는다).
-    private func drawConfirmHint(for sel: CGRect) {
-        guard case .adjusting = phase else { return }
-        let text = "⏎ 또는 더블클릭으로 캡처  ·  esc 취소" as NSString
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-            .foregroundColor: NSColor.white
-        ]
-        let textSize = text.size(withAttributes: attributes)
-        let padding: CGFloat = 6
-        // 치수 레이블이 위 공간 부족으로 선택 아래(sel.maxY + 4)에 올 때는 그 아래로 비킨다.
-        let yOffset: CGFloat = sel.minY < 30 ? 34 : 8
-        var pill = CGRect(x: sel.midX - textSize.width / 2 - padding,
-                          y: sel.maxY + yOffset,
-                          width: textSize.width + padding * 2,
-                          height: textSize.height + padding * 2)
-        if pill.maxY > bounds.height - 4 { pill.origin.y = sel.maxY - pill.height - 8 }
-        pill.origin.x = max(4, min(pill.origin.x, bounds.width - pill.width - 4))
-
-        let pillPath = NSBezierPath(roundedRect: pill, xRadius: pill.height / 2, yRadius: pill.height / 2)
-        NSColor(white: 0, alpha: 0.75).setFill()
-        pillPath.fill()
-        text.draw(at: CGPoint(x: pill.minX + padding, y: pill.minY + padding), withAttributes: attributes)
     }
 
     private func drawWindowHighlight(_ rect: CGRect, _ ctx: CGContext) {
