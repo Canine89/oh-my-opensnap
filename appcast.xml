@@ -6,16 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.37</title>
-      <pubDate>Thu, 11 Jun 2026 00:32:57 +0000</pubDate>
-      <sparkle:version>38</sparkle:version>
-      <sparkle:shortVersionString>1.0.37</sparkle:shortVersionString>
+      <title>1.0.38</title>
+      <pubDate>Thu, 11 Jun 2026 01:09:24 +0000</pubDate>
+      <sparkle:version>39</sparkle:version>
+      <sparkle:shortVersionString>1.0.38</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.37</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.38</h2>
 <ul>
-<li>캡처 영역을 조정할 때 선택 HUD가 오버레이 뒤로 숨어버리던 문제 수정 — HUD가 항상 오버레이 위에 표시</li>
+<li>라이브러리 왼쪽 썸네일 목록에서 이미지/영상/GIF를 드래그앤드롭으로 다른 앱(Finder·메일·슬랙 등)에 바로 파일 첨부 가능</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.37.zip" type="application/octet-stream" sparkle:edSignature="DJWx4nODGRNkaMJcqSmt5A1JV+vA9fLeSPBefbTzHxmND/OSbdFvY5mvQV2ExtmQXA/g7XGjk1heTZ/2+b+wDg==" length="3397812" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.38.zip" type="application/octet-stream" sparkle:edSignature="DSVhYmVvU4xX5IMuwh0RTfXQ/w3msQ+/Q7Y9T9QjD1sIFfQsR7L0JdKmxAqFnfSqlbvcTDqn+Sr+Hy9cDI8YDw==" length="3398111" />
     </item>
   </channel>
 </rss>
