@@ -6,16 +6,18 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.33</title>
-      <pubDate>Mon, 08 Jun 2026 10:22:06 +0000</pubDate>
-      <sparkle:version>34</sparkle:version>
-      <sparkle:shortVersionString>1.0.33</sparkle:shortVersionString>
+      <title>1.0.34</title>
+      <pubDate>Thu, 11 Jun 2026 00:04:56 +0000</pubDate>
+      <sparkle:version>35</sparkle:version>
+      <sparkle:shortVersionString>1.0.34</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.33</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.34</h2>
 <ul>
-<li>라이브러리 왼쪽 썸네일 목록에서 파일명과 확장자를 함께 표시해 이미지/영상/GIF 항목을 구분하기 쉽게 개선</li>
+<li>캡처 영역을 드래그한 뒤 바로 캡처하지 않고 조정 단계로 진입 — 점선 테두리와 8개 핸들로 영역을 정확히 확인·수정한 뒤 Enter 또는 더블클릭으로 캡처 확정</li>
+<li>핸들 드래그 중 확대경을 띄워 픽셀 단위로 경계 조절 가능, 영역 내부 드래그로 위치 이동</li>
+<li>조정 중에는 캡처되지 않는 주변을 더 어둡게 표시해 캡처 범위를 명확하게 구분</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.33.zip" type="application/octet-stream" sparkle:edSignature="N6/VaOA/z0E1qJ3ODvjTYcsNt4RlpBtwBingkNG0L+VeAL4F2vdPHQwT4eATBpFcKVvXW1UY0DdFxQOVz9I1AQ==" length="3388048" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.34.zip" type="application/octet-stream" sparkle:edSignature="jHE9kbWfGIgHvnea9UgmML6TX6Nvq/w+v36HuXucAvXCQhukcncxKlynYvDDNljuYsCma2yLUsYY/qydmVqZCg==" length="3396553" />
     </item>
   </channel>
 </rss>
