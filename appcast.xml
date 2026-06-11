@@ -6,18 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.34</title>
-      <pubDate>Thu, 11 Jun 2026 00:04:56 +0000</pubDate>
-      <sparkle:version>35</sparkle:version>
-      <sparkle:shortVersionString>1.0.34</sparkle:shortVersionString>
+      <title>1.0.35</title>
+      <pubDate>Thu, 11 Jun 2026 00:17:00 +0000</pubDate>
+      <sparkle:version>36</sparkle:version>
+      <sparkle:shortVersionString>1.0.35</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.34</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.35</h2>
 <ul>
-<li>캡처 영역을 드래그한 뒤 바로 캡처하지 않고 조정 단계로 진입 — 점선 테두리와 8개 핸들로 영역을 정확히 확인·수정한 뒤 Enter 또는 더블클릭으로 캡처 확정</li>
-<li>핸들 드래그 중 확대경을 띄워 픽셀 단위로 경계 조절 가능, 영역 내부 드래그로 위치 이동</li>
-<li>조정 중에는 캡처되지 않는 주변을 더 어둡게 표시해 캡처 범위를 명확하게 구분</li>
+<li>영역을 선택하면 조정 핸들과 함께 선택 HUD(이미지 캡처/영상 촬영/취소)가 바로 표시 — Enter 안내 문구 제거, HUD 버튼이 곧 캡처 확정</li>
+<li>HUD가 떠 있는 동안에도 핸들로 영역을 계속 수정할 수 있고, 버튼을 누르는 시점의 최종 영역으로 캡처/녹화</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.34.zip" type="application/octet-stream" sparkle:edSignature="jHE9kbWfGIgHvnea9UgmML6TX6Nvq/w+v36HuXucAvXCQhukcncxKlynYvDDNljuYsCma2yLUsYY/qydmVqZCg==" length="3396553" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.35.zip" type="application/octet-stream" sparkle:edSignature="TyLLO0J2t29xfrQYKwI5GDJExes4W0ttdhsL3K4ig0bn8EuyY+pCSN8c33FWNpoiKy07k4l86zYIEgf25YxwAw==" length="3397836" />
     </item>
   </channel>
 </rss>
