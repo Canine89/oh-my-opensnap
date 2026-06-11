@@ -193,12 +193,15 @@ final class OverlayView: NSView {
             let clamped = CGPoint(x: max(0, min(point.x, bounds.width)),
                                   y: max(0, min(point.y, bounds.height)))
             selection = resize(resizeBase, handle: handle, to: clamped, square: square)
+            if let sel = selection { onSelectionChanged?(sel) }   // HUD가 실시간으로 따라오게
         case .moving:
             if let sel = selection {
                 var origin = CGPoint(x: point.x - moveOffset.x, y: point.y - moveOffset.y)
                 origin.x = max(0, min(origin.x, bounds.width - sel.width))
                 origin.y = max(0, min(origin.y, bounds.height - sel.height))
-                selection = CGRect(origin: origin, size: sel.size)
+                let moved = CGRect(origin: origin, size: sel.size)
+                selection = moved
+                onSelectionChanged?(moved)                        // HUD가 실시간으로 따라오게
             }
         case .idle, .adjusting:
             break
