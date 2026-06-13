@@ -5,8 +5,8 @@ import ScreenCaptureKit
 /// `isFlipped == true`라 좌상단 기준 point 좌표를 쓴다(픽셀 좌표와 동일 방향).
 ///
 /// 인터랙션 분기:
-/// - 호버(버튼 안 누름): 커서 아래 윈도우를 자동 감지해 하이라이트 → 클릭하면 윈도우 캡처
-/// - 드래그(임계값 초과): 영역 선택 → 조정 단계로 진입(점선 테두리 + 핸들 8개)
+/// - 호버(버튼 안 누름): 커서 아래 윈도우를 자동 감지해 하이라이트 → 클릭하면 해당 윈도우 영역을 선택
+/// - 클릭/드래그로 영역 선택 → 조정 단계로 진입(점선 테두리 + 핸들 8개)
 /// - 조정 단계: 핸들 드래그로 크기 조절(루페 표시), 내부 드래그로 이동,
 ///   바깥 드래그로 새 선택, ⏎(Return)/더블클릭으로 캡처 확정
 final class OverlayView: NSView {
@@ -232,10 +232,9 @@ final class OverlayView: NSView {
             } else if let previous = previousSelection {
                 selection = previous                // 조정 중 바깥 빈 클릭 → 기존 선택 유지
                 enterAdjusting()
-            } else if let window = hoveredWindow, let windowRect = hoveredWindowRect {
-                // 클릭(드래그 없음) + 감지된 윈도우 → 윈도우 캡처
-                onWindowCapture?(window, windowRect)
-                return
+            } else if hoveredWindow != nil, let windowRect = hoveredWindowRect {
+                // 클릭(드래그 없음) + 감지된 윈도우 → 그 윈도우 영역을 조정 가능한 선택으로 전환.
+                selectInitialRegion(windowRect)
             } else {
                 onCancel?()
                 return
@@ -256,6 +255,15 @@ final class OverlayView: NSView {
         }
         needsDisplay = true
         if selectionLocked { updateAdjustCursor(at: point) }
+    }
+
+    private func selectInitialRegion(_ rect: CGRect) {
+        let clipped = rect.intersection(bounds)
+        guard clipped.width > 2, clipped.height > 2 else { return }
+        selection = clipped
+        phase = .adjusting
+        onAdjustingStarted?()
+        onSelectionChanged?(clipped)
     }
 
     /// 선택 확정 대기 단계로 진입. 커서 복구/워치독 해제는 컨트롤러 콜백이 맡는다.
@@ -419,11 +427,7 @@ final class OverlayView: NSView {
     // MARK: 그리기
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-
-        // 디밍 (dirtyRect로 클리핑되어 부분 갱신 시 저렴)
-        // 조정 단계에선 캡처될 영역이 더 도드라지도록 주변을 한층 더 어둡게 한다.
-        NSColor(white: 0, alpha: selectionLocked ? 0.45 : 0.30).setFill()
-        bounds.fill()
+        ctx.clear(dirtyRect)
 
         let showSelection: Bool
         switch phase {
@@ -433,7 +437,7 @@ final class OverlayView: NSView {
         }
 
         if showSelection, let sel = selection, sel.width > 0, sel.height > 0 {
-            ctx.clear(sel)                                   // 선택 영역은 투명하게 → 실제 화면이 비침
+            drawDimmedOverlay(excluding: sel)
             if selectionLocked {
                 drawAdjustableSelection(sel)
             } else {
@@ -444,7 +448,10 @@ final class OverlayView: NSView {
             }
             drawDimensionLabel(for: sel)
         } else if case .idle = phase, !suppressed, let windowRect = hoveredWindowRect {
+            drawDimmedOverlay(excluding: windowRect)
             drawWindowHighlight(windowRect, ctx)
+        } else {
+            drawDimmedOverlay(excluding: nil)
         }
 
         // 크로스헤어/루페
@@ -457,6 +464,24 @@ final class OverlayView: NSView {
             drawLoupe(ctx)                                   // 핸들 조절 중 픽셀 단위 확인용 확대경
         case .adjusting, .moving:
             loupeDirtyFrame = .zero
+        }
+    }
+
+    private func drawDimmedOverlay(excluding selectedRect: CGRect?) {
+        let alpha: CGFloat = selectionLocked ? 0.56 : 0.32
+        NSColor(white: 0, alpha: alpha).setFill()
+
+        guard let selected = selectedRect?.intersection(bounds), !selected.isEmpty else {
+            bounds.fill()
+            return
+        }
+
+        let top = CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: selected.minY - bounds.minY)
+        let left = CGRect(x: bounds.minX, y: selected.minY, width: selected.minX - bounds.minX, height: selected.height)
+        let right = CGRect(x: selected.maxX, y: selected.minY, width: bounds.maxX - selected.maxX, height: selected.height)
+        let bottom = CGRect(x: bounds.minX, y: selected.maxY, width: bounds.width, height: bounds.maxY - selected.maxY)
+        [top, left, right, bottom].forEach { rect in
+            if rect.width > 0, rect.height > 0 { rect.fill() }
         }
     }
 
