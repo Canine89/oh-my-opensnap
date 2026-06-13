@@ -6,16 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.39</title>
-      <pubDate>Sat, 13 Jun 2026 14:29:03 +0000</pubDate>
-      <sparkle:version>40</sparkle:version>
-      <sparkle:shortVersionString>1.0.39</sparkle:shortVersionString>
+      <title>1.0.40</title>
+      <pubDate>Sat, 13 Jun 2026 14:43:23 +0000</pubDate>
+      <sparkle:version>41</sparkle:version>
+      <sparkle:shortVersionString>1.0.40</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.39</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.40</h2>
 <ul>
-<li>캡처 영역 선택 직후 바로 선택 HUD가 떠서 조정 없이 확정되는 것처럼 보이던 흐름 수정 — 먼저 8개 핸들로 영역을 조정하고 Enter 또는 더블클릭으로 확정한 뒤 이미지 캡처/영상 촬영을 선택</li>
+<li>캡처 모드에서 창을 클릭해 선택해도 바로 캡처하지 않고, 해당 창 영역을 8개 핸들로 먼저 조정할 수 있도록 수정</li>
+<li>선택 영역 바깥만 어둡게 덮어 실제 캡처될 영역이 더 선명하게 보이도록 오버레이 표시 개선</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.39.zip" type="application/octet-stream" sparkle:edSignature="lF8SCEz1eXrYygA9byHCpYEp/WCkORmuhqTZS8he5CRl83vUyZ0eu/uDQsYSzKYH/ZlpeU19IpXxQ42hmsjAAQ==" length="3397000" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.40.zip" type="application/octet-stream" sparkle:edSignature="rv71Sao1Gj2aJi38nwyZID4k9ckHT2MkhStG7JoHW6xlyolXKUloAwRqSMBxAVDml6shRPmD/qa997auErMNBQ==" length="3398193" />
     </item>
   </channel>
 </rss>
