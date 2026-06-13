@@ -6,16 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.38</title>
-      <pubDate>Thu, 11 Jun 2026 01:09:24 +0000</pubDate>
-      <sparkle:version>39</sparkle:version>
-      <sparkle:shortVersionString>1.0.38</sparkle:shortVersionString>
+      <title>1.0.39</title>
+      <pubDate>Sat, 13 Jun 2026 14:29:03 +0000</pubDate>
+      <sparkle:version>40</sparkle:version>
+      <sparkle:shortVersionString>1.0.39</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.38</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.39</h2>
 <ul>
-<li>라이브러리 왼쪽 썸네일 목록에서 이미지/영상/GIF를 드래그앤드롭으로 다른 앱(Finder·메일·슬랙 등)에 바로 파일 첨부 가능</li>
+<li>캡처 영역 선택 직후 바로 선택 HUD가 떠서 조정 없이 확정되는 것처럼 보이던 흐름 수정 — 먼저 8개 핸들로 영역을 조정하고 Enter 또는 더블클릭으로 확정한 뒤 이미지 캡처/영상 촬영을 선택</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.38.zip" type="application/octet-stream" sparkle:edSignature="DSVhYmVvU4xX5IMuwh0RTfXQ/w3msQ+/Q7Y9T9QjD1sIFfQsR7L0JdKmxAqFnfSqlbvcTDqn+Sr+Hy9cDI8YDw==" length="3398111" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.39.zip" type="application/octet-stream" sparkle:edSignature="lF8SCEz1eXrYygA9byHCpYEp/WCkORmuhqTZS8he5CRl83vUyZ0eu/uDQsYSzKYH/ZlpeU19IpXxQ42hmsjAAQ==" length="3397000" />
     </item>
   </channel>
 </rss>
