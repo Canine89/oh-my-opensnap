@@ -69,7 +69,7 @@ final class OverlayController {
             view.displayID = displayID
             view.cgOrigin = CGDisplayBounds(displayID).origin   // CG 전역 좌상단 원점(point)
             view.hitTester = tester
-            view.confirmEnabled = true
+            view.confirmEnabled = mode != .askAfterSelection
             view.onFinish = { [weak self, weak window] rect in
                 switch mode {
                 case .stillImage:
@@ -101,7 +101,7 @@ final class OverlayController {
                 }
             }
             view.onCancel = { [weak self] in self?.cancel() }
-            view.onAdjustingStarted = { [weak self, weak window] in
+            view.onAdjustingStarted = { [weak self, weak window, weak view] in
                 guard let self else { return }
                 // 선택이 조정(확정 대기) 단계로 들어가면:
                 // 핸들을 잡을 수 있게 커서를 되살리고, 조정하는 동안 워치독이
@@ -115,6 +115,13 @@ final class OverlayController {
                 if let window {
                     window.makeKeyAndOrderFront(nil)   // ⏎ 확정 키를 받도록 선택이 일어난 창을 key로
                     window.makeFirstResponder(window.captureView)
+                }
+                if mode == .askAfterSelection, let view, let window {
+                    self.presentAdjustingChoice(for: view,
+                                                in: window,
+                                                scale: scale,
+                                                display: scDisplay,
+                                                displayID: displayID)
                 }
             }
             view.onSelectionActivity = { [weak self, weak view] in
@@ -277,6 +284,49 @@ final class OverlayController {
                                            displayID: displayID,
                                            excluding: excluded)
                       })
+    }
+
+    private func presentAdjustingChoice(for view: OverlayView,
+                                        in window: OverlayWindow,
+                                        scale: CGFloat,
+                                        display: SCDisplay,
+                                        displayID: CGDirectDisplayID) {
+        guard let rect = view.currentSelection else { return }
+        let anchor = screenRect(for: rect, in: window)
+        if let hud = choiceHUD {
+            hud.move(near: anchor)
+            return
+        }
+        let hud = CaptureChoiceHUD(anchor: anchor,
+                                   onImage: { [weak self, weak view] in
+                                       guard let self else { return }
+                                       self.choiceHUD = nil
+                                       guard let rect = view?.currentSelection else { self.cancel(); return }
+                                       let excluded = self.overlayWindows
+                                       self.teardown()
+                                       self.captureStillImage(viewRect: rect,
+                                                              scale: scale,
+                                                              display: display,
+                                                              excluding: excluded)
+                                   },
+                                   onVideo: { [weak self, weak view] in
+                                       guard let self else { return }
+                                       self.choiceHUD = nil
+                                       guard let rect = view?.currentSelection else { self.cancel(); return }
+                                       let excluded = self.overlayWindows
+                                       self.teardown()
+                                       self.startVideo(viewRect: rect,
+                                                       scale: scale,
+                                                       display: display,
+                                                       displayID: displayID,
+                                                       excluding: excluded)
+                                   },
+                                   onCancel: { [weak self] in
+                                       self?.choiceHUD = nil
+                                       self?.cancel()
+                                   })
+        choiceHUD = hud
+        hud.show()
     }
 
     private func finishWindowWithChoice(_ window: SCWindow,
