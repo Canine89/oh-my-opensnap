@@ -69,17 +69,20 @@ final class OverlayController {
             view.displayID = displayID
             view.cgOrigin = CGDisplayBounds(displayID).origin   // CG 전역 좌상단 원점(point)
             view.hitTester = tester
-            // askAfterSelection 모드에선 조정 단계에 함께 뜨는 선택 HUD가 확정을 맡으므로
-            // ⏎/더블클릭 확정을 끈다(onFinish 미도달).
-            view.confirmEnabled = mode != .askAfterSelection
-            view.onFinish = { [weak self] rect in
+            view.confirmEnabled = true
+            view.onFinish = { [weak self, weak window] rect in
                 switch mode {
                 case .stillImage:
                     self?.finishStillImage(viewRect: rect, scale: scale, display: scDisplay)
                 case .video:
                     self?.finishVideo(viewRect: rect, scale: scale, display: scDisplay, displayID: displayID)
                 case .askAfterSelection:
-                    break
+                    guard let window else { self?.cancel(); return }
+                    self?.finishAreaWithChoice(viewRect: rect,
+                                               scale: scale,
+                                               display: scDisplay,
+                                               displayID: displayID,
+                                               overlayWindow: window)
                 }
             }
             view.onWindowCapture = { [weak self] scWindow, windowRect in
@@ -98,7 +101,7 @@ final class OverlayController {
                 }
             }
             view.onCancel = { [weak self] in self?.cancel() }
-            view.onAdjustingStarted = { [weak self, weak window, weak view] in
+            view.onAdjustingStarted = { [weak self, weak window] in
                 guard let self else { return }
                 // 선택이 조정(확정 대기) 단계로 들어가면:
                 // 핸들을 잡을 수 있게 커서를 되살리고, 조정하는 동안 워치독이
@@ -113,14 +116,6 @@ final class OverlayController {
                     window.makeKeyAndOrderFront(nil)   // ⏎ 확정 키를 받도록 선택이 일어난 창을 key로
                     window.makeFirstResponder(window.captureView)
                 }
-                if mode == .askAfterSelection, let view, let window {
-                    // 조정과 동시에 선택 HUD를 띄운다 — HUD 버튼이 곧 캡처 확정.
-                    self.presentAdjustingChoice(for: view,
-                                                in: window,
-                                                scale: scale,
-                                                display: scDisplay,
-                                                displayID: displayID)
-                }
             }
             view.onSelectionActivity = { [weak self, weak view] in
                 // 새 선택이 시작되면 다른 디스플레이의 선택과 떠 있던 선택 HUD를 정리한다.
@@ -132,7 +127,7 @@ final class OverlayController {
                 }
             }
             view.onSelectionChanged = { [weak self, weak window] rect in
-                // 핸들 조절/이동이 끝나면 선택 HUD를 새 위치로 따라 옮긴다.
+                // 선택 HUD가 떠 있는 경우(윈도우 선택 등) 위치를 새 선택 근처로 따라 옮긴다.
                 guard let self, let window, let hud = self.choiceHUD else { return }
                 hud.move(near: self.screenRect(for: rect, in: window))
             }
@@ -260,47 +255,28 @@ final class OverlayController {
         }
     }
 
-    /// 조정 단계에 들어선 선택 옆에 선택 HUD를 띄운다. 오버레이는 그대로 두어
-    /// HUD가 떠 있는 동안에도 핸들로 영역을 계속 수정할 수 있고, HUD 버튼을
-    /// 누르는 시점의 최신 선택으로 캡처/녹화를 확정한다.
-    private func presentAdjustingChoice(for view: OverlayView,
-                                        in window: OverlayWindow,
-                                        scale: CGFloat,
-                                        display: SCDisplay,
-                                        displayID: CGDirectDisplayID) {
-        guard let rect = view.currentSelection else { return }
-        let anchor = screenRect(for: rect, in: window)
-        if let hud = choiceHUD {       // 같은 선택의 재조정 → 위치만 갱신
-            hud.move(near: anchor)
-            return
-        }
-        let hud = CaptureChoiceHUD(anchor: anchor,
-                                   onImage: { [weak self, weak view] in
-                                       guard let self else { return }
-                                       self.choiceHUD = nil
-                                       guard let rect = view?.currentSelection else { self.cancel(); return }
-                                       let excluded = self.overlayWindows
-                                       self.teardown()
-                                       self.captureStillImage(viewRect: rect, scale: scale, display: display, excluding: excluded)
-                                   },
-                                   onVideo: { [weak self, weak view] in
-                                       guard let self else { return }
-                                       self.choiceHUD = nil
-                                       guard let rect = view?.currentSelection else { self.cancel(); return }
-                                       let excluded = self.overlayWindows
-                                       self.teardown()
-                                       self.startVideo(viewRect: rect,
-                                                       scale: scale,
-                                                       display: display,
-                                                       displayID: displayID,
-                                                       excluding: excluded)
-                                   },
-                                   onCancel: { [weak self] in
-                                       self?.choiceHUD = nil
-                                       self?.cancel()
-                                   })
-        choiceHUD = hud
-        hud.show()
+    private func finishAreaWithChoice(viewRect: CGRect,
+                                      scale: CGFloat,
+                                      display: SCDisplay,
+                                      displayID: CGDirectDisplayID,
+                                      overlayWindow: OverlayWindow) {
+        let excluded = overlayWindows
+        let anchor = screenRect(for: viewRect, in: overlayWindow)
+        teardown()
+        presentChoice(anchor: anchor,
+                      imageAction: { [weak self] in
+                          self?.captureStillImage(viewRect: viewRect,
+                                                  scale: scale,
+                                                  display: display,
+                                                  excluding: excluded)
+                      },
+                      videoAction: { [weak self] in
+                          self?.startVideo(viewRect: viewRect,
+                                           scale: scale,
+                                           display: display,
+                                           displayID: displayID,
+                                           excluding: excluded)
+                      })
     }
 
     private func finishWindowWithChoice(_ window: SCWindow,
