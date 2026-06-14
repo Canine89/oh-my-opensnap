@@ -6,16 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.45</title>
-      <pubDate>Sun, 14 Jun 2026 14:26:21 +0000</pubDate>
-      <sparkle:version>46</sparkle:version>
-      <sparkle:shortVersionString>1.0.45</sparkle:shortVersionString>
+      <title>1.0.46</title>
+      <pubDate>Sun, 14 Jun 2026 14:33:23 +0000</pubDate>
+      <sparkle:version>47</sparkle:version>
+      <sparkle:shortVersionString>1.0.46</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.45</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.46</h2>
 <ul>
-<li>브라우저 전용 가정 대신 `AXWebArea`/`AXScrollArea`/`AXTable`/`AXOutline`/`AXList` 등 범용 콘텐츠 컨테이너 후보를 스코어링해 커서 위치에 맞는 영역을 선택하도록 개선</li>
+<li>캡처 모드에서 같은 창 위를 이동할 때 접근성 트리를 반복 순회하지 않도록 콘텐츠 영역 계산 결과를 캐시해 호버 렉을 완화</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.45.zip" type="application/octet-stream" sparkle:edSignature="dofXuNLoHgUltqhXMyYfFB1xAiXCiufJqac6hGyTtQ93QWS3H1hfdKSXPOo9/1NIiFen2FObbeNNfK/16Ph7AQ==" length="3407399" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.46.zip" type="application/octet-stream" sparkle:edSignature="pegGNMMAObUIgwbwO11XFEidEtRW7kZTbm305b+PIw2UMKuKyNhLG11DAY9lU8Fk5YFJ71mmFHIc1cqNzEieBw==" length="3408065" />
     </item>
   </channel>
 </rss>
