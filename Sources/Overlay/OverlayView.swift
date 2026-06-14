@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import ScreenCaptureKit
 
 /// 디밍 + 크로스헤어 + 라이브 확대경(루페) + 선택 사각형 + 윈도우 하이라이트를 그리는 뷰.
@@ -11,6 +12,8 @@ import ScreenCaptureKit
 /// - 조정 단계: 핸들 드래그로 크기 조절(루페 표시), 내부 드래그로 이동,
 ///   바깥 드래그로 새 선택, ⏎(Return)/더블클릭으로 캡처 확정
 final class OverlayView: NSView {
+    private static var didRequestAccessibilityTrust = false
+
     // OverlayController가 주입
     var scale: CGFloat = 1
     var displayID: CGDirectDisplayID = 0
@@ -323,13 +326,12 @@ final class OverlayView: NSView {
         let globalPoint = CGPoint(x: cgOrigin.x + cursor.x, y: cgOrigin.y + cursor.y)
         if let candidate = hitTester.window(at: globalPoint) {
             hoveredWindow = candidate.scWindow
-            let fullRect = CGRect(x: candidate.cgFrame.minX - cgOrigin.x,
-                                  y: candidate.cgFrame.minY - cgOrigin.y,
-                                  width: candidate.cgFrame.width,
-                                  height: candidate.cgFrame.height)
+            let fullRect = localRect(fromGlobal: candidate.cgFrame)
             hoveredFullWindowRect = fullRect
 
-            let contentRect = contentRect(for: candidate.scWindow, in: fullRect)
+            let contentRect = contentRect(for: candidate.scWindow,
+                                          globalFullRect: candidate.cgFrame,
+                                          localFullRect: fullRect)
             let chromeRect = CGRect(x: fullRect.minX,
                                     y: fullRect.minY,
                                     width: fullRect.width,
@@ -346,13 +348,137 @@ final class OverlayView: NSView {
         hoveredFullWindowRect = nil
     }
 
-    private func contentRect(for window: SCWindow, in fullRect: CGRect) -> CGRect {
-        let topInset = chromeTopInset(for: window, windowHeight: fullRect.height)
-        guard topInset > 0, fullRect.height - topInset >= 40 else { return fullRect }
-        return CGRect(x: fullRect.minX,
-                      y: fullRect.minY + topInset,
-                      width: fullRect.width,
-                      height: fullRect.height - topInset)
+    private func localRect(fromGlobal rect: CGRect) -> CGRect {
+        CGRect(x: rect.minX - cgOrigin.x,
+               y: rect.minY - cgOrigin.y,
+               width: rect.width,
+               height: rect.height)
+    }
+
+    private func contentRect(for window: SCWindow, globalFullRect: CGRect, localFullRect: CGRect) -> CGRect {
+        if let precise = accessibilityContentRect(for: window, globalFullRect: globalFullRect) {
+            let clipped = localRect(fromGlobal: precise).intersection(localFullRect)
+            if clipped.width >= 40, clipped.height >= 40 { return clipped }
+        }
+
+        let topInset = chromeTopInset(for: window, windowHeight: localFullRect.height)
+        guard topInset > 0, localFullRect.height - topInset >= 40 else { return localFullRect }
+        return CGRect(x: localFullRect.minX,
+                      y: localFullRect.minY + topInset,
+                      width: localFullRect.width,
+                      height: localFullRect.height - topInset)
+    }
+
+    private func accessibilityContentRect(for window: SCWindow, globalFullRect: CGRect) -> CGRect? {
+        guard isBrowser(window), let pid = window.owningApplication?.processID else { return nil }
+        guard AXIsProcessTrusted() else {
+            if !Self.didRequestAccessibilityTrust {
+                let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+                AXIsProcessTrustedWithOptions(options)
+                Self.didRequestAccessibilityTrust = true
+            }
+            return nil
+        }
+
+        let app = AXUIElementCreateApplication(pid)
+        guard let axWindow = matchingAXWindow(in: app, fullRect: globalFullRect),
+              let webArea = deepestWebArea(in: axWindow),
+              let rect = axRect(webArea)
+        else { return nil }
+
+        return rect
+    }
+
+    private func isBrowser(_ window: SCWindow) -> Bool {
+        let bundleID = (window.owningApplication?.bundleIdentifier ?? "").lowercased()
+        return bundleID.contains("com.apple.safari")
+            || bundleID.contains("com.google.chrome")
+            || bundleID.contains("com.microsoft.edgemac")
+            || bundleID.contains("org.mozilla.firefox")
+            || bundleID.contains("com.brave.browser")
+            || bundleID.contains("com.operasoftware.opera")
+            || bundleID.contains("company.thebrowser.browser")
+    }
+
+    private func matchingAXWindow(in app: AXUIElement, fullRect: CGRect) -> AXUIElement? {
+        guard let windows = axElements(app, attribute: kAXWindowsAttribute) else { return nil }
+        return windows
+            .compactMap { element -> (AXUIElement, CGFloat)? in
+                guard let rect = axRect(element) else { return nil }
+                let dx = abs(rect.minX - fullRect.minX)
+                let dy = abs(rect.minY - fullRect.minY)
+                let dw = abs(rect.width - fullRect.width)
+                let dh = abs(rect.height - fullRect.height)
+                return (element, dx + dy + dw + dh)
+            }
+            .filter { $0.1 < 160 }
+            .min { $0.1 < $1.1 }?
+            .0
+    }
+
+    private func deepestWebArea(in root: AXUIElement) -> AXUIElement? {
+        if let webArea = largestAXElement(in: root, roles: ["AXWebArea"]) {
+            return webArea
+        }
+        return largestAXElement(in: root, roles: [kAXScrollAreaRole])
+    }
+
+    private func largestAXElement(in root: AXUIElement, roles: Set<String>) -> AXUIElement? {
+        var best: (element: AXUIElement, area: CGFloat)?
+        walkAX(root, depth: 0, maxDepth: 14) { element in
+            guard let role = axString(element, attribute: kAXRoleAttribute),
+                  roles.contains(role),
+                  let rect = axRect(element),
+                  rect.width >= 80, rect.height >= 80
+            else { return }
+            let area = rect.width * rect.height
+            if best == nil || area > best!.area {
+                best = (element, area)
+            }
+        }
+        return best?.element
+    }
+
+    private func walkAX(_ element: AXUIElement, depth: Int, maxDepth: Int, visit: (AXUIElement) -> Void) {
+        guard depth <= maxDepth else { return }
+        visit(element)
+        guard let children = axElements(element, attribute: kAXChildrenAttribute) else { return }
+        for child in children {
+            walkAX(child, depth: depth + 1, maxDepth: maxDepth, visit: visit)
+        }
+    }
+
+    private func axRect(_ element: AXUIElement) -> CGRect? {
+        guard let positionValue = axValue(element, attribute: kAXPositionAttribute),
+              let sizeValue = axValue(element, attribute: kAXSizeAttribute)
+        else { return nil }
+
+        var position = CGPoint.zero
+        var size = CGSize.zero
+        guard AXValueGetValue(positionValue, .cgPoint, &position),
+              AXValueGetValue(sizeValue, .cgSize, &size)
+        else { return nil }
+
+        return CGRect(origin: position, size: size)
+    }
+
+    private func axElements(_ element: AXUIElement, attribute: String) -> [AXUIElement]? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
+        return value as? [AXUIElement]
+    }
+
+    private func axString(_ element: AXUIElement, attribute: String) -> String? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
+        return value as? String
+    }
+
+    private func axValue(_ element: AXUIElement, attribute: String) -> AXValue? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
+        guard let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+        return unsafeBitCast(value, to: AXValue.self)
     }
 
     private func chromeTopInset(for window: SCWindow, windowHeight: CGFloat) -> CGFloat {
