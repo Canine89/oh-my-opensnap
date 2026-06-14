@@ -5,7 +5,8 @@ import ScreenCaptureKit
 /// `isFlipped == true`라 좌상단 기준 point 좌표를 쓴다(픽셀 좌표와 동일 방향).
 ///
 /// 인터랙션 분기:
-/// - 호버(버튼 안 누름): 커서 아래 윈도우를 자동 감지해 하이라이트 → 클릭하면 해당 윈도우 영역을 선택
+/// - 호버(버튼 안 누름): 커서 아래 윈도우를 자동 감지해 하이라이트.
+///   상단 크롬 영역에 있으면 전체 창, 콘텐츠 영역에 있으면 콘텐츠만 선택한다.
 /// - 클릭/드래그로 영역 선택 → 조정 단계로 진입(점선 테두리 + 핸들 8개)
 /// - 조정 단계: 핸들 드래그로 크기 조절(루페 표시), 내부 드래그로 이동,
 ///   바깥 드래그로 새 선택, ⏎(Return)/더블클릭으로 캡처 확정
@@ -84,7 +85,8 @@ final class OverlayView: NSView {
 
     // 호버 중 감지된 윈도우
     private var hoveredWindow: SCWindow?
-    private var hoveredWindowRect: CGRect?     // 이 뷰의 로컬 좌표(좌상단 기준)
+    private var hoveredWindowRect: CGRect?     // 클릭 시 선택될 영역. 이 뷰의 로컬 좌표(좌상단 기준)
+    private var hoveredFullWindowRect: CGRect? // 실제 윈도우 전체 영역. 콘텐츠/크롬 구분 가이드용.
 
     // 루페 렌더 상태
     private let loupeRadius = 22                 // 한 변 45px 소스 영역
@@ -317,18 +319,67 @@ final class OverlayView: NSView {
     }
 
     private func updateHoveredWindow() {
-        guard let hitTester else { hoveredWindow = nil; hoveredWindowRect = nil; return }
+        guard let hitTester else { clearHoveredWindow(); return }
         let globalPoint = CGPoint(x: cgOrigin.x + cursor.x, y: cgOrigin.y + cursor.y)
         if let candidate = hitTester.window(at: globalPoint) {
             hoveredWindow = candidate.scWindow
-            hoveredWindowRect = CGRect(x: candidate.cgFrame.minX - cgOrigin.x,
-                                       y: candidate.cgFrame.minY - cgOrigin.y,
-                                       width: candidate.cgFrame.width,
-                                       height: candidate.cgFrame.height)
+            let fullRect = CGRect(x: candidate.cgFrame.minX - cgOrigin.x,
+                                  y: candidate.cgFrame.minY - cgOrigin.y,
+                                  width: candidate.cgFrame.width,
+                                  height: candidate.cgFrame.height)
+            hoveredFullWindowRect = fullRect
+
+            let contentRect = contentRect(for: candidate.scWindow, in: fullRect)
+            let chromeRect = CGRect(x: fullRect.minX,
+                                    y: fullRect.minY,
+                                    width: fullRect.width,
+                                    height: max(0, contentRect.minY - fullRect.minY))
+            hoveredWindowRect = chromeRect.contains(cursor) ? fullRect : contentRect
         } else {
-            hoveredWindow = nil
-            hoveredWindowRect = nil
+            clearHoveredWindow()
         }
+    }
+
+    private func clearHoveredWindow() {
+        hoveredWindow = nil
+        hoveredWindowRect = nil
+        hoveredFullWindowRect = nil
+    }
+
+    private func contentRect(for window: SCWindow, in fullRect: CGRect) -> CGRect {
+        let topInset = chromeTopInset(for: window, windowHeight: fullRect.height)
+        guard topInset > 0, fullRect.height - topInset >= 40 else { return fullRect }
+        return CGRect(x: fullRect.minX,
+                      y: fullRect.minY + topInset,
+                      width: fullRect.width,
+                      height: fullRect.height - topInset)
+    }
+
+    private func chromeTopInset(for window: SCWindow, windowHeight: CGFloat) -> CGFloat {
+        guard windowHeight >= 120 else { return 0 }
+        let bundleID = (window.owningApplication?.bundleIdentifier ?? "").lowercased()
+        let appName = (window.owningApplication?.applicationName ?? "").lowercased()
+
+        let preferred: CGFloat
+        if bundleID.contains("com.apple.safari") {
+            preferred = 88
+        } else if bundleID.contains("com.google.chrome") || bundleID.contains("com.microsoft.edgemac") || bundleID.contains("org.mozilla.firefox") {
+            preferred = 92
+        } else if bundleID.contains("com.apple.finder") {
+            preferred = 72
+        } else if bundleID.contains("com.apple.dt.xcode") {
+            preferred = 104
+        } else if bundleID.contains("com.microsoft.vscode") || bundleID.contains("com.todesktop") || appName.contains("code") {
+            preferred = 78
+        } else if bundleID.contains("com.apple.terminal") || bundleID.contains("com.googlecode.iterm2") {
+            preferred = 34
+        } else if bundleID.contains("com.apple.preview") {
+            preferred = 64
+        } else {
+            preferred = 74
+        }
+
+        return min(preferred, windowHeight * 0.35)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -449,7 +500,7 @@ final class OverlayView: NSView {
             drawDimensionLabel(for: sel)
         } else if case .idle = phase, !suppressed, let windowRect = hoveredWindowRect {
             drawDimmedOverlay(excluding: windowRect)
-            drawWindowHighlight(windowRect, ctx)
+            drawWindowSelectionGuide(selectedRect: windowRect, fullRect: hoveredFullWindowRect, ctx)
         } else {
             drawDimmedOverlay(excluding: nil)
         }
@@ -521,6 +572,17 @@ final class OverlayView: NSView {
         let border = NSBezierPath(rect: clipped.insetBy(dx: 0.75, dy: 0.75))
         border.lineWidth = 1.5
         border.stroke()
+    }
+
+    private func drawWindowSelectionGuide(selectedRect: CGRect, fullRect: CGRect?, _ ctx: CGContext) {
+        if let full = fullRect?.intersection(bounds), !full.isEmpty, full != selectedRect.intersection(bounds) {
+            NSColor.controlAccentColor.withAlphaComponent(0.55).setStroke()
+            let fullBorder = NSBezierPath(rect: full.insetBy(dx: 0.75, dy: 0.75))
+            fullBorder.lineWidth = 1
+            fullBorder.setLineDash([4, 4], count: 2, phase: 0)
+            fullBorder.stroke()
+        }
+        drawWindowHighlight(selectedRect, ctx)
     }
 
     private func drawCrosshair() {
