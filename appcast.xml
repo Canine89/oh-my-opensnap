@@ -6,17 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.44</title>
-      <pubDate>Sun, 14 Jun 2026 13:36:03 +0000</pubDate>
-      <sparkle:version>45</sparkle:version>
-      <sparkle:shortVersionString>1.0.44</sparkle:shortVersionString>
+      <title>1.0.45</title>
+      <pubDate>Sun, 14 Jun 2026 14:26:21 +0000</pubDate>
+      <sparkle:version>46</sparkle:version>
+      <sparkle:shortVersionString>1.0.45</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.44</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.45</h2>
 <ul>
-<li>브라우저 콘텐츠 영역 계산에서 접근성 창 매칭이 실패해도 focused/main window로 재시도하도록 보강</li>
-<li>접근성 권한이 없거나 `AXWebArea`를 찾지 못할 때 쓰는 Chrome/Safari/Edge/Firefox 계열 fallback 상단 영역 값을 더 현실적인 브라우저 UI 높이에 맞게 조정</li>
+<li>브라우저 전용 가정 대신 `AXWebArea`/`AXScrollArea`/`AXTable`/`AXOutline`/`AXList` 등 범용 콘텐츠 컨테이너 후보를 스코어링해 커서 위치에 맞는 영역을 선택하도록 개선</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.44.zip" type="application/octet-stream" sparkle:edSignature="Yc67dJRIPT04eHbnpADkFGeAIcbYEup28wo0WeGTgQ22ZEa/dHwntAJsqpaFXPTRchd3jN4cxE7sRt2413I6Dg==" length="3407654" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.45.zip" type="application/octet-stream" sparkle:edSignature="dofXuNLoHgUltqhXMyYfFB1xAiXCiufJqac6hGyTtQ93QWS3H1hfdKSXPOo9/1NIiFen2FObbeNNfK/16Ph7AQ==" length="3407399" />
     </item>
   </channel>
 </rss>
