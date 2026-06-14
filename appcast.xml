@@ -6,16 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.43</title>
-      <pubDate>Sun, 14 Jun 2026 13:28:25 +0000</pubDate>
-      <sparkle:version>44</sparkle:version>
-      <sparkle:shortVersionString>1.0.43</sparkle:shortVersionString>
+      <title>1.0.44</title>
+      <pubDate>Sun, 14 Jun 2026 13:36:03 +0000</pubDate>
+      <sparkle:version>45</sparkle:version>
+      <sparkle:shortVersionString>1.0.44</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.43</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.44</h2>
 <ul>
-<li>브라우저 콘텐츠 영역은 접근성 API의 실제 `AXWebArea`를 우선 사용해 고정 높이 추정보다 정확하게 계산</li>
+<li>브라우저 콘텐츠 영역 계산에서 접근성 창 매칭이 실패해도 focused/main window로 재시도하도록 보강</li>
+<li>접근성 권한이 없거나 `AXWebArea`를 찾지 못할 때 쓰는 Chrome/Safari/Edge/Firefox 계열 fallback 상단 영역 값을 더 현실적인 브라우저 UI 높이에 맞게 조정</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.43.zip" type="application/octet-stream" sparkle:edSignature="vVWWlPMFJxSqNnBR0Hgvm08RwghcOIjguZj89kkK1aPlrOC4HPE33xiqfRp1CSsl8xajfiKt3FOcJe27k1KvDA==" length="3407432" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.44.zip" type="application/octet-stream" sparkle:edSignature="Yc67dJRIPT04eHbnpADkFGeAIcbYEup28wo0WeGTgQ22ZEa/dHwntAJsqpaFXPTRchd3jN4cxE7sRt2413I6Dg==" length="3407654" />
     </item>
   </channel>
 </rss>
