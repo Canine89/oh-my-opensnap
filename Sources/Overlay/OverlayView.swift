@@ -24,6 +24,7 @@ final class OverlayView: NSView {
         let globalFrame: CGRect
         let localFullRect: CGRect
         let localContentRect: CGRect
+        let isPrecise: Bool
     }
 
     // OverlayController가 주입
@@ -103,6 +104,8 @@ final class OverlayView: NSView {
     private var hoveredWindowRect: CGRect?     // 클릭 시 선택될 영역. 이 뷰의 로컬 좌표(좌상단 기준)
     private var hoveredFullWindowRect: CGRect? // 실제 윈도우 전체 영역. 콘텐츠/크롬 구분 가이드용.
     private var hoverCache: HoverCache?
+    private let accessibilityQueue = DispatchQueue(label: "com.goldenrabbit.ohmyopensnap.accessibility-hover", qos: .userInitiated)
+    private var pendingAccessibilityWindowID: CGWindowID?
 
     // 루페 렌더 상태
     private let loupeRadius = 22                 // 한 변 45px 소스 영역
@@ -359,6 +362,7 @@ final class OverlayView: NSView {
         hoveredWindowRect = nil
         hoveredFullWindowRect = nil
         hoverCache = nil
+        pendingAccessibilityWindowID = nil
     }
 
     private func cachedHoverRegion(for candidate: WindowCandidate) -> HoverCache {
@@ -369,14 +373,14 @@ final class OverlayView: NSView {
         }
 
         let fullRect = localRect(fromGlobal: candidate.cgFrame)
-        let content = contentRect(for: candidate.scWindow,
-                                  globalFullRect: candidate.cgFrame,
-                                  localFullRect: fullRect)
+        let content = contentRect(for: candidate.scWindow, localFullRect: fullRect)
         let next = HoverCache(windowID: candidate.scWindow.windowID,
                               globalFrame: candidate.cgFrame,
                               localFullRect: fullRect,
-                              localContentRect: content)
+                              localContentRect: content,
+                              isPrecise: false)
         hoverCache = next
+        scheduleAccessibilityRefinement(for: candidate, localFullRect: fullRect)
         return next
     }
 
@@ -387,12 +391,7 @@ final class OverlayView: NSView {
                height: rect.height)
     }
 
-    private func contentRect(for window: SCWindow, globalFullRect: CGRect, localFullRect: CGRect) -> CGRect {
-        if let precise = accessibilityContentRect(for: window, globalFullRect: globalFullRect) {
-            let clipped = localRect(fromGlobal: precise).intersection(localFullRect)
-            if clipped.width >= 40, clipped.height >= 40 { return clipped }
-        }
-
+    private func contentRect(for window: SCWindow, localFullRect: CGRect) -> CGRect {
         let topInset = chromeTopInset(for: window, windowHeight: localFullRect.height)
         guard topInset > 0, localFullRect.height - topInset >= 40 else { return localFullRect }
         return CGRect(x: localFullRect.minX,
@@ -401,8 +400,53 @@ final class OverlayView: NSView {
                       height: localFullRect.height - topInset)
     }
 
-    private func accessibilityContentRect(for window: SCWindow, globalFullRect: CGRect) -> CGRect? {
-        guard let pid = window.owningApplication?.processID else { return nil }
+    private func scheduleAccessibilityRefinement(for candidate: WindowCandidate, localFullRect: CGRect) {
+        let windowID = candidate.scWindow.windowID
+        guard pendingAccessibilityWindowID != windowID,
+              let pid = candidate.scWindow.owningApplication?.processID
+        else { return }
+
+        pendingAccessibilityWindowID = windowID
+        let globalFrame = candidate.cgFrame
+        let globalCursor = CGPoint(x: cgOrigin.x + cursor.x, y: cgOrigin.y + cursor.y)
+        let localOrigin = cgOrigin
+
+        accessibilityQueue.async { [weak self] in
+            let precise = self?.accessibilityContentRect(pid: pid,
+                                                         globalFullRect: globalFrame,
+                                                         globalCursor: globalCursor)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if self.pendingAccessibilityWindowID == windowID {
+                    self.pendingAccessibilityWindowID = nil
+                }
+                guard let precise,
+                      let cache = self.hoverCache,
+                      cache.windowID == windowID,
+                      cache.globalFrame == globalFrame
+                else { return }
+
+                let localPrecise = CGRect(x: precise.minX - localOrigin.x,
+                                          y: precise.minY - localOrigin.y,
+                                          width: precise.width,
+                                          height: precise.height)
+                    .intersection(localFullRect)
+                guard localPrecise.width >= 40, localPrecise.height >= 40 else { return }
+
+                self.hoverCache = HoverCache(windowID: windowID,
+                                             globalFrame: globalFrame,
+                                             localFullRect: localFullRect,
+                                             localContentRect: localPrecise,
+                                             isPrecise: true)
+                if !self.selectionLocked, !self.suppressed {
+                    self.updateHoveredWindow()
+                    self.needsDisplay = true
+                }
+            }
+        }
+    }
+
+    private func accessibilityContentRect(pid: pid_t, globalFullRect: CGRect, globalCursor: CGPoint) -> CGRect? {
         guard AXIsProcessTrusted() else {
             if !Self.didRequestAccessibilityTrust {
                 let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
@@ -415,7 +459,7 @@ final class OverlayView: NSView {
 
         let app = AXUIElementCreateApplication(pid)
         guard let axWindow = matchingAXWindow(in: app, fullRect: globalFullRect),
-              let candidate = bestContentCandidate(in: axWindow, fullRect: globalFullRect, cursor: CGPoint(x: cgOrigin.x + cursor.x, y: cgOrigin.y + cursor.y))
+              let candidate = bestContentCandidate(in: axWindow, fullRect: globalFullRect, cursor: globalCursor)
         else { return nil }
 
         return candidate.rect
