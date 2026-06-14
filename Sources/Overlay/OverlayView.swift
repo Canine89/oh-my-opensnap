@@ -377,6 +377,7 @@ final class OverlayView: NSView {
                 AXIsProcessTrustedWithOptions(options)
                 Self.didRequestAccessibilityTrust = true
             }
+            NSLog("Accessibility permission is not trusted; falling back to browser chrome heuristic")
             return nil
         }
 
@@ -402,7 +403,7 @@ final class OverlayView: NSView {
 
     private func matchingAXWindow(in app: AXUIElement, fullRect: CGRect) -> AXUIElement? {
         guard let windows = axElements(app, attribute: kAXWindowsAttribute) else { return nil }
-        return windows
+        if let matched = (windows
             .compactMap { element -> (AXUIElement, CGFloat)? in
                 guard let rect = axRect(element) else { return nil }
                 let dx = abs(rect.minX - fullRect.minX)
@@ -413,7 +414,13 @@ final class OverlayView: NSView {
             }
             .filter { $0.1 < 160 }
             .min { $0.1 < $1.1 }?
-            .0
+            .0) {
+            return matched
+        }
+
+        return axElement(app, attribute: kAXFocusedWindowAttribute)
+            ?? axElement(app, attribute: kAXMainWindowAttribute)
+            ?? windows.first
     }
 
     private func deepestWebArea(in root: AXUIElement) -> AXUIElement? {
@@ -468,6 +475,13 @@ final class OverlayView: NSView {
         return value as? [AXUIElement]
     }
 
+    private func axElement(_ element: AXUIElement, attribute: String) -> AXUIElement? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
+        guard let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+        return unsafeBitCast(value, to: AXUIElement.self)
+    }
+
     private func axString(_ element: AXUIElement, attribute: String) -> String? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
@@ -488,9 +502,11 @@ final class OverlayView: NSView {
 
         let preferred: CGFloat
         if bundleID.contains("com.apple.safari") {
-            preferred = 88
+            preferred = 108
         } else if bundleID.contains("com.google.chrome") || bundleID.contains("com.microsoft.edgemac") || bundleID.contains("org.mozilla.firefox") {
-            preferred = 92
+            preferred = 124
+        } else if bundleID.contains("com.brave.browser") || bundleID.contains("com.operasoftware.opera") || bundleID.contains("company.thebrowser.browser") {
+            preferred = 124
         } else if bundleID.contains("com.apple.finder") {
             preferred = 72
         } else if bundleID.contains("com.apple.dt.xcode") {
