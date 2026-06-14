@@ -3,6 +3,9 @@
 릴리스마다 `## <버전>` 섹션을 추가하세요. `release.sh`가 해당 섹션을 읽어
 Sparkle 업데이트 창과 GitHub 릴리스 노트에 그대로 보여줍니다.
 
+## 1.0.45
+- 브라우저 전용 가정 대신 `AXWebArea`/`AXScrollArea`/`AXTable`/`AXOutline`/`AXList` 등 범용 콘텐츠 컨테이너 후보를 스코어링해 커서 위치에 맞는 영역을 선택하도록 개선
+
 ## 1.0.44
 - 브라우저 콘텐츠 영역 계산에서 접근성 창 매칭이 실패해도 focused/main window로 재시도하도록 보강
 - 접근성 권한이 없거나 `AXWebArea`를 찾지 못할 때 쓰는 Chrome/Safari/Edge/Firefox 계열 fallback 상단 영역 값을 더 현실적인 브라우저 UI 높이에 맞게 조정

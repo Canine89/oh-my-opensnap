@@ -14,6 +14,11 @@ import ScreenCaptureKit
 final class OverlayView: NSView {
     private static var didRequestAccessibilityTrust = false
 
+    private struct ContentCandidate {
+        let rect: CGRect
+        let score: CGFloat
+    }
+
     // OverlayController가 주입
     var scale: CGFloat = 1
     var displayID: CGDirectDisplayID = 0
@@ -370,7 +375,7 @@ final class OverlayView: NSView {
     }
 
     private func accessibilityContentRect(for window: SCWindow, globalFullRect: CGRect) -> CGRect? {
-        guard isBrowser(window), let pid = window.owningApplication?.processID else { return nil }
+        guard let pid = window.owningApplication?.processID else { return nil }
         guard AXIsProcessTrusted() else {
             if !Self.didRequestAccessibilityTrust {
                 let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
@@ -383,22 +388,10 @@ final class OverlayView: NSView {
 
         let app = AXUIElementCreateApplication(pid)
         guard let axWindow = matchingAXWindow(in: app, fullRect: globalFullRect),
-              let webArea = deepestWebArea(in: axWindow),
-              let rect = axRect(webArea)
+              let candidate = bestContentCandidate(in: axWindow, fullRect: globalFullRect, cursor: CGPoint(x: cgOrigin.x + cursor.x, y: cgOrigin.y + cursor.y))
         else { return nil }
 
-        return rect
-    }
-
-    private func isBrowser(_ window: SCWindow) -> Bool {
-        let bundleID = (window.owningApplication?.bundleIdentifier ?? "").lowercased()
-        return bundleID.contains("com.apple.safari")
-            || bundleID.contains("com.google.chrome")
-            || bundleID.contains("com.microsoft.edgemac")
-            || bundleID.contains("org.mozilla.firefox")
-            || bundleID.contains("com.brave.browser")
-            || bundleID.contains("com.operasoftware.opera")
-            || bundleID.contains("company.thebrowser.browser")
+        return candidate.rect
     }
 
     private func matchingAXWindow(in app: AXUIElement, fullRect: CGRect) -> AXUIElement? {
@@ -423,27 +416,54 @@ final class OverlayView: NSView {
             ?? windows.first
     }
 
-    private func deepestWebArea(in root: AXUIElement) -> AXUIElement? {
-        if let webArea = largestAXElement(in: root, roles: ["AXWebArea"]) {
-            return webArea
-        }
-        return largestAXElement(in: root, roles: [kAXScrollAreaRole])
-    }
-
-    private func largestAXElement(in root: AXUIElement, roles: Set<String>) -> AXUIElement? {
-        var best: (element: AXUIElement, area: CGFloat)?
+    private func bestContentCandidate(in root: AXUIElement, fullRect: CGRect, cursor: CGPoint) -> ContentCandidate? {
+        var bestContaining: ContentCandidate?
+        var bestOverall: ContentCandidate?
         walkAX(root, depth: 0, maxDepth: 14) { element in
             guard let role = axString(element, attribute: kAXRoleAttribute),
-                  roles.contains(role),
+                  let roleWeight = contentRoleWeight(role),
                   let rect = axRect(element),
-                  rect.width >= 80, rect.height >= 80
+                  let candidate = scoreContentRect(rect, roleWeight: roleWeight, fullRect: fullRect, cursor: cursor)
             else { return }
-            let area = rect.width * rect.height
-            if best == nil || area > best!.area {
-                best = (element, area)
+
+            if bestOverall == nil || candidate.score > bestOverall!.score {
+                bestOverall = candidate
+            }
+            if candidate.rect.contains(cursor), (bestContaining == nil || candidate.score > bestContaining!.score) {
+                bestContaining = candidate
             }
         }
-        return best?.element
+        return bestContaining ?? bestOverall
+    }
+
+    private func contentRoleWeight(_ role: String) -> CGFloat? {
+        switch role {
+        case "AXWebArea": return 120
+        case kAXScrollAreaRole: return 100
+        case kAXTableRole, kAXOutlineRole, kAXBrowserRole, kAXListRole: return 88
+        case kAXSplitGroupRole: return 64
+        case kAXGroupRole: return 40
+        default: return nil
+        }
+    }
+
+    private func scoreContentRect(_ rect: CGRect, roleWeight: CGFloat, fullRect: CGRect, cursor: CGPoint) -> ContentCandidate? {
+        let clipped = rect.intersection(fullRect)
+        guard clipped.width >= 120, clipped.height >= 80 else { return nil }
+
+        let fullArea = fullRect.width * fullRect.height
+        guard fullArea > 0 else { return nil }
+        let areaRatio = (clipped.width * clipped.height) / fullArea
+        guard areaRatio >= 0.10, areaRatio <= 0.98 else { return nil }
+
+        let topInset = clipped.minY - fullRect.minY
+        let removesTopChrome = topInset >= 24 ? CGFloat(45) : CGFloat(-35)
+        let cursorBonus = clipped.contains(cursor) ? CGFloat(80) : CGFloat(0)
+        let sizeScore = min(1, areaRatio) * 55
+        let leftPenalty = max(0, clipped.minX - fullRect.minX) > fullRect.width * 0.45 ? CGFloat(45) : CGFloat(0)
+
+        let score = roleWeight + removesTopChrome + cursorBonus + sizeScore - leftPenalty
+        return ContentCandidate(rect: clipped, score: score)
     }
 
     private func walkAX(_ element: AXUIElement, depth: Int, maxDepth: Int, visit: (AXUIElement) -> Void) {
