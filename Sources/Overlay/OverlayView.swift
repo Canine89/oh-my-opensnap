@@ -19,6 +19,13 @@ final class OverlayView: NSView {
         let score: CGFloat
     }
 
+    private struct HoverCache {
+        let windowID: CGWindowID
+        let globalFrame: CGRect
+        let localFullRect: CGRect
+        let localContentRect: CGRect
+    }
+
     // OverlayController가 주입
     var scale: CGFloat = 1
     var displayID: CGDirectDisplayID = 0
@@ -95,6 +102,7 @@ final class OverlayView: NSView {
     private var hoveredWindow: SCWindow?
     private var hoveredWindowRect: CGRect?     // 클릭 시 선택될 영역. 이 뷰의 로컬 좌표(좌상단 기준)
     private var hoveredFullWindowRect: CGRect? // 실제 윈도우 전체 영역. 콘텐츠/크롬 구분 가이드용.
+    private var hoverCache: HoverCache?
 
     // 루페 렌더 상태
     private let loupeRadius = 22                 // 한 변 45px 소스 영역
@@ -331,12 +339,11 @@ final class OverlayView: NSView {
         let globalPoint = CGPoint(x: cgOrigin.x + cursor.x, y: cgOrigin.y + cursor.y)
         if let candidate = hitTester.window(at: globalPoint) {
             hoveredWindow = candidate.scWindow
-            let fullRect = localRect(fromGlobal: candidate.cgFrame)
-            hoveredFullWindowRect = fullRect
+            let cached = cachedHoverRegion(for: candidate)
+            let fullRect = cached.localFullRect
+            hoveredFullWindowRect = cached.localFullRect
 
-            let contentRect = contentRect(for: candidate.scWindow,
-                                          globalFullRect: candidate.cgFrame,
-                                          localFullRect: fullRect)
+            let contentRect = cached.localContentRect
             let chromeRect = CGRect(x: fullRect.minX,
                                     y: fullRect.minY,
                                     width: fullRect.width,
@@ -351,6 +358,26 @@ final class OverlayView: NSView {
         hoveredWindow = nil
         hoveredWindowRect = nil
         hoveredFullWindowRect = nil
+        hoverCache = nil
+    }
+
+    private func cachedHoverRegion(for candidate: WindowCandidate) -> HoverCache {
+        if let cache = hoverCache,
+           cache.windowID == candidate.scWindow.windowID,
+           cache.globalFrame == candidate.cgFrame {
+            return cache
+        }
+
+        let fullRect = localRect(fromGlobal: candidate.cgFrame)
+        let content = contentRect(for: candidate.scWindow,
+                                  globalFullRect: candidate.cgFrame,
+                                  localFullRect: fullRect)
+        let next = HoverCache(windowID: candidate.scWindow.windowID,
+                              globalFrame: candidate.cgFrame,
+                              localFullRect: fullRect,
+                              localContentRect: content)
+        hoverCache = next
+        return next
     }
 
     private func localRect(fromGlobal rect: CGRect) -> CGRect {
