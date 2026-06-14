@@ -6,16 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.46</title>
-      <pubDate>Sun, 14 Jun 2026 14:33:23 +0000</pubDate>
-      <sparkle:version>47</sparkle:version>
-      <sparkle:shortVersionString>1.0.46</sparkle:shortVersionString>
+      <title>1.0.47</title>
+      <pubDate>Sun, 14 Jun 2026 14:41:21 +0000</pubDate>
+      <sparkle:version>48</sparkle:version>
+      <sparkle:shortVersionString>1.0.47</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.46</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.47</h2>
 <ul>
-<li>캡처 모드에서 같은 창 위를 이동할 때 접근성 트리를 반복 순회하지 않도록 콘텐츠 영역 계산 결과를 캐시해 호버 렉을 완화</li>
+<li>캡처 모드 진입 후 새 창에 처음 호버할 때도 접근성 트리 계산을 백그라운드에서 수행하도록 바꿔 일시 프리즈를 완화</li>
+<li>정밀 콘텐츠 영역 계산이 끝나기 전에는 즉시 휴리스틱 영역을 보여주고, 계산 완료 후 조용히 정밀 영역으로 갱신</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.46.zip" type="application/octet-stream" sparkle:edSignature="pegGNMMAObUIgwbwO11XFEidEtRW7kZTbm305b+PIw2UMKuKyNhLG11DAY9lU8Fk5YFJ71mmFHIc1cqNzEieBw==" length="3408065" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.47.zip" type="application/octet-stream" sparkle:edSignature="Mp40QPl8o0UhUy+JKo/wTWH8W+YXcXuY9koa/ltPZJJ0FE55fa3JpI0bkn3iw3a44Dyxhmt+Q1Y21jvLCQ+UBA==" length="3410007" />
     </item>
   </channel>
 </rss>
