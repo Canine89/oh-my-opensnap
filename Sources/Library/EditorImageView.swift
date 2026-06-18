@@ -1,15 +1,15 @@
 import AppKit
 
 /// 라이브러리 미리보기 겸 간단 편집 뷰.
-/// 도구: 크롭(핸들 방식) / 번호(➊–➒) / 화살표 / 사각형 / 원. 좌상단 원점(isFlipped).
+/// 도구: 크롭(핸들 방식) / 번호(➊–➒) / 텍스트 / 말풍선 / 화살표 / 사각형 / 원. 좌상단 원점(isFlipped).
 /// 좌표는 이미지 픽셀과 1:1 (캡처 PNG는 72dpi라 size(point) == 픽셀).
 /// ⌘Z 되돌리기는 스냅샷 스택으로 크롭 포함 모든 편집에 적용된다.
 final class EditorImageView: NSView {
 
-    enum Tool { case none, crop, number, arrow, rectangle, ellipse, mosaic }
+    enum Tool { case none, crop, number, text, callout, arrow, rectangle, ellipse, mosaic }
 
     struct Annotation {
-        enum Kind { case number(Int), arrow, rectangle, ellipse, mosaic }
+        enum Kind { case number(Int), text(String), callout(String), arrow, rectangle, ellipse, mosaic }
         let kind: Kind
         let start: CGPoint
         let end: CGPoint
@@ -21,6 +21,15 @@ final class EditorImageView: NSView {
 
     private enum Handle { case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left, center }
 
+    private struct PendingTextAnnotation {
+        enum Kind { case text, callout }
+        let kind: Kind
+        let start: CGPoint
+        let end: CGPoint
+        let color: NSColor
+        let width: CGFloat
+    }
+
     private struct Snapshot {
         let image: NSImage?
         let annotations: [Annotation]
@@ -31,8 +40,11 @@ final class EditorImageView: NSView {
     // MARK: 공개 상태
     var tool: Tool = .none {
         didSet {
+            if activeTextField != nil { commitActiveTextField() }
             cropRect = (tool == .crop) ? bounds : nil
             activeHandle = nil
+            dragStart = nil
+            dragCurrent = nil
             cropLoupePoint = nil
             // 번호 도구로 바꾸면 현재 커서 위치에서 스탬프 미리보기를 즉시 띄운다.
             if tool == .number, let window {
@@ -73,6 +85,8 @@ final class EditorImageView: NSView {
 
     private var dragStart: CGPoint?
     private var dragCurrent: CGPoint?
+    private var activeTextField: InlineTextField?
+    private var pendingTextAnnotation: PendingTextAnnotation?
 
     /// 번호 도구에서 커서를 따라다니는 스탬프 미리보기 위치(뷰 좌표). nil이면 표시 안 함.
     private var hoverPoint: CGPoint?
@@ -96,6 +110,7 @@ final class EditorImageView: NSView {
 
     // MARK: 이미지 로드/교체
     private func load(_ image: NSImage?) {
+        cancelActiveTextField()
         backingImage = image
         annotations.removeAll()
         nextNumber = 1
@@ -167,6 +182,10 @@ final class EditorImageView: NSView {
     // MARK: 마우스
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        if activeTextField != nil {
+            commitActiveTextField()
+            return
+        }
         let point = clamp(convert(event.locationInWindow, from: nil))
         switch tool {
         case .number:
@@ -184,6 +203,12 @@ final class EditorImageView: NSView {
             // 변/모서리 핸들을 잡으면 그 지점에 확대경을 띄운다(가운데 이동은 제외).
             cropLoupePoint = (activeHandle != nil && activeHandle != .center) ? point : nil
             needsDisplay = true
+        case .text:
+            showTextEditor(for: PendingTextAnnotation(kind: .text, start: point, end: point,
+                                                      color: strokeColor, width: strokeWidth))
+        case .callout:
+            dragStart = point
+            dragCurrent = point
         case .arrow, .rectangle, .ellipse, .mosaic:
             dragStart = point
             dragCurrent = point
@@ -201,10 +226,10 @@ final class EditorImageView: NSView {
             cropLoupePoint = (handle != .center) ? point : nil
             notifyCropProgress()
             needsDisplay = true
-        case .arrow, .rectangle, .ellipse:
+        case .arrow, .rectangle, .ellipse, .callout:
             guard let start = dragStart else { return }
-            // Shift: 사각형/원은 1:1, 화살표는 45° 단위로 반듯하게.
-            dragCurrent = event.modifierFlags.contains(.shift) ? constrained(from: start, to: point) : point
+            // Shift: 사각형/원은 1:1, 화살표는 45° 단위로 반듯하게. 말풍선은 자유 배치.
+            dragCurrent = (tool != .callout && event.modifierFlags.contains(.shift)) ? constrained(from: start, to: point) : point
             needsDisplay = true
         case .mosaic:
             guard dragStart != nil else { return }
@@ -234,6 +259,13 @@ final class EditorImageView: NSView {
             annotations.append(Annotation(kind: kind, start: start, end: end,
                                           color: strokeColor, width: strokeWidth))
             needsDisplay = true
+        case .callout:
+            defer { dragStart = nil; dragCurrent = nil }
+            guard let start = dragStart else { return }
+            let end = clamp(convert(event.locationInWindow, from: nil))
+            guard hypot(end.x - start.x, end.y - start.y) > 8 else { return }
+            showTextEditor(for: PendingTextAnnotation(kind: .callout, start: start, end: end,
+                                                      color: strokeColor, width: strokeWidth))
         case .mosaic:
             defer { dragStart = nil; dragCurrent = nil }
             guard let start = dragStart else { return }
@@ -298,6 +330,8 @@ final class EditorImageView: NSView {
 
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
+        case 53 where activeTextField != nil:
+            cancelActiveTextField()
         case 36, 76: applyCrop()        // Return / Enter
         case 53: tool = .none           // Esc → 크롭 취소
         default: super.keyDown(with: event)
@@ -365,6 +399,7 @@ final class EditorImageView: NSView {
 
     // MARK: 클립보드
     func copyToClipboard() {
+        if activeTextField != nil { commitActiveTextField() }
         guard let cg = renderedCGImage() else { return }
         let rep = NSBitmapImageRep(cgImage: cg)
         guard let png = rep.representation(using: .png, properties: [:]) else { return }
@@ -407,6 +442,9 @@ final class EditorImageView: NSView {
 
         if tool != .crop, let start = dragStart, let current = dragCurrent {
             switch tool {
+            case .callout:
+                drawCallout(text: "", head: start, bubbleAnchor: current,
+                            color: strokeColor, width: strokeWidth, alpha: 0.55)
             case .arrow:
                 draw(Annotation(kind: .arrow, start: start, end: current, color: strokeColor, width: strokeWidth))
             case .rectangle:
@@ -491,6 +529,11 @@ final class EditorImageView: NSView {
         switch annotation.kind {
         case .number(let value):
             drawNumber(value, at: annotation.start, color: annotation.color, width: annotation.width)
+        case .text(let value):
+            drawText(value, at: annotation.start, color: annotation.color, width: annotation.width)
+        case .callout(let value):
+            drawCallout(text: value, head: annotation.start, bubbleAnchor: annotation.end,
+                        color: annotation.color, width: annotation.width)
         case .arrow:
             drawArrow(from: annotation.start, to: annotation.end, width: annotation.width)
         case .rectangle:
@@ -592,6 +635,135 @@ final class EditorImageView: NSView {
         head.fill()
     }
 
+    private func showTextEditor(for pending: PendingTextAnnotation) {
+        cancelActiveTextField()
+        pendingTextAnnotation = pending
+
+        let fontSize = textFontSize(width: pending.width)
+        let fieldSize = pending.kind == .callout
+            ? CGSize(width: 240, height: max(34, fontSize + 16))
+            : CGSize(width: 220, height: max(28, fontSize + 10))
+        let origin = textEditorOrigin(anchor: pending.end, size: fieldSize)
+
+        let field = InlineTextField(frame: CGRect(origin: origin, size: fieldSize))
+        field.font = .systemFont(ofSize: fontSize, weight: .semibold)
+        field.textColor = pending.color
+        field.stringValue = ""
+        field.placeholderString = pending.kind == .callout ? "말풍선 텍스트" : "텍스트"
+        field.focusRingType = .none
+        field.isBordered = pending.kind == .callout
+        field.isBezeled = pending.kind == .callout
+        field.drawsBackground = pending.kind == .callout
+        field.backgroundColor = pending.kind == .callout ? .white.withAlphaComponent(0.96) : .clear
+        field.bezelStyle = .roundedBezel
+        field.onCommit = { [weak self] in self?.commitActiveTextField() }
+        field.onCancel = { [weak self] in self?.cancelActiveTextField() }
+        field.target = self
+        field.action = #selector(inlineTextCommitted)
+        addSubview(field)
+        activeTextField = field
+        window?.makeFirstResponder(field)
+    }
+
+    private func textEditorOrigin(anchor: CGPoint, size: CGSize) -> CGPoint {
+        let margin: CGFloat = 6
+        return CGPoint(x: min(max(margin, anchor.x), max(margin, bounds.width - size.width - margin)),
+                       y: min(max(margin, anchor.y), max(margin, bounds.height - size.height - margin)))
+    }
+
+    @objc private func inlineTextCommitted() {
+        commitActiveTextField()
+    }
+
+    private func commitActiveTextField() {
+        guard let field = activeTextField, let pending = pendingTextAnnotation else {
+            cancelActiveTextField()
+            return
+        }
+        let value = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        field.removeFromSuperview()
+        activeTextField = nil
+        pendingTextAnnotation = nil
+        window?.makeFirstResponder(self)
+        guard !value.isEmpty else {
+            needsDisplay = true
+            return
+        }
+
+        let kind: Annotation.Kind = pending.kind == .callout ? .callout(value) : .text(value)
+        pushUndo()
+        annotations.append(Annotation(kind: kind, start: pending.start, end: pending.end,
+                                      color: pending.color, width: pending.width))
+        needsDisplay = true
+    }
+
+    private func cancelActiveTextField() {
+        activeTextField?.removeFromSuperview()
+        activeTextField = nil
+        pendingTextAnnotation = nil
+        dragStart = nil
+        dragCurrent = nil
+        needsDisplay = true
+    }
+
+    private func textFontSize(width: CGFloat) -> CGFloat {
+        min(72, max(16, width * 5.2))
+    }
+
+    private func textAttributes(color: NSColor, width: CGFloat, alpha: CGFloat = 1) -> [NSAttributedString.Key: Any] {
+        [
+            .font: NSFont.systemFont(ofSize: textFontSize(width: width), weight: .semibold),
+            .foregroundColor: color.withAlphaComponent(alpha)
+        ]
+    }
+
+    private func drawText(_ value: String, at point: CGPoint, color: NSColor, width: CGFloat, alpha: CGFloat = 1) {
+        (value as NSString).draw(at: point, withAttributes: textAttributes(color: color, width: width, alpha: alpha))
+    }
+
+    private func calloutTextRect(text: String, anchor: CGPoint, width: CGFloat) -> CGRect {
+        let attributes = textAttributes(color: .labelColor, width: width)
+        let textSize = (text as NSString).size(withAttributes: attributes)
+        let padding = max(10, textFontSize(width: width) * 0.42)
+        let bubbleSize = CGSize(width: max(90, min(360, textSize.width + padding * 2)),
+                                height: max(38, textSize.height + padding * 1.55))
+        return CGRect(origin: textEditorOrigin(anchor: anchor, size: bubbleSize), size: bubbleSize)
+    }
+
+    private func drawCallout(text: String, head: CGPoint, bubbleAnchor: CGPoint,
+                             color: NSColor, width: CGFloat, alpha: CGFloat = 1) {
+        let displayText = text.isEmpty ? "말풍선" : text
+        let bubble = calloutTextRect(text: displayText, anchor: bubbleAnchor, width: width)
+        let radius = max(10, width * 2.2)
+        let path = NSBezierPath(roundedRect: bubble, xRadius: radius, yRadius: radius)
+        NSColor.white.withAlphaComponent(0.94 * alpha).setFill()
+        path.fill()
+        color.withAlphaComponent(alpha).setStroke()
+        path.lineWidth = max(1.5, width)
+        path.stroke()
+
+        let attach = pointOn(rect: bubble, toward: head)
+        color.withAlphaComponent(alpha).setStroke()
+        color.withAlphaComponent(alpha).setFill()
+        drawArrow(from: attach, to: head, width: max(2, width))
+
+        let padding = max(10, textFontSize(width: width) * 0.42)
+        let textPoint = CGPoint(x: bubble.minX + padding,
+                                y: bubble.minY + (bubble.height - textFontSize(width: width) * 1.2) / 2)
+        drawText(displayText, at: textPoint, color: color, width: width, alpha: alpha)
+    }
+
+    private func pointOn(rect: CGRect, toward point: CGPoint) -> CGPoint {
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let dx = point.x - center.x
+        let dy = point.y - center.y
+        guard dx != 0 || dy != 0 else { return center }
+        let scaleX = dx == 0 ? CGFloat.greatestFiniteMagnitude : (rect.width / 2) / abs(dx)
+        let scaleY = dy == 0 ? CGFloat.greatestFiniteMagnitude : (rect.height / 2) / abs(dy)
+        let scale = min(scaleX, scaleY)
+        return CGPoint(x: center.x + dx * scale, y: center.y + dy * scale)
+    }
+
     private func drawCropOverlay(_ rect: CGRect) {
         // 바깥 어둡게
         let mask = NSBezierPath(rect: bounds)
@@ -648,5 +820,19 @@ final class EditorImageView: NSView {
 
     private static func rect(_ a: CGPoint, _ b: CGPoint) -> CGRect {
         CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y))
+    }
+}
+
+private final class InlineTextField: NSTextField {
+    var onCommit: (() -> Void)?
+    var onCancel: (() -> Void)?
+
+    override func textDidEndEditing(_ notification: Notification) {
+        super.textDidEndEditing(notification)
+        onCommit?()
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
     }
 }
