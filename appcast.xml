@@ -6,17 +6,19 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.48</title>
-      <pubDate>Thu, 18 Jun 2026 02:33:33 +0000</pubDate>
-      <sparkle:version>49</sparkle:version>
-      <sparkle:shortVersionString>1.0.48</sparkle:shortVersionString>
+      <title>1.0.49</title>
+      <pubDate>Thu, 18 Jun 2026 13:24:27 +0000</pubDate>
+      <sparkle:version>50</sparkle:version>
+      <sparkle:shortVersionString>1.0.49</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.48</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.49</h2>
 <ul>
-<li>라이브러리 이미지 편집기에 텍스트와 말풍선 주석 도구 추가</li>
-<li>라이브러리에서 `Cmd+C`로 복사할 때 번호, 텍스트, 말풍선, 도형, 모자이크 등 편집 결과가 합성된 이미지로 복사되도록 보강</li>
+<li>라이브러리 텍스트 주석을 클릭 후 드래그해 위치를 조정할 수 있도록 개선</li>
+<li>텍스트 모드에서 빈 곳을 계속 클릭해 새 텍스트를 연속 입력할 수 있도록 수정</li>
+<li>말풍선 주석의 본문 위치와 화살표 끝점을 각각 드래그로 조정할 수 있도록 개선</li>
+<li>말풍선 생성 중 클릭 직후부터 미리보기가 보이도록 보강</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.48.zip" type="application/octet-stream" sparkle:edSignature="tE3as4FEWv05wV9lyzPUB/DU9RpkhSjf/4QfNf264a4pyeq0oA1ljgUkhOH/KS/m094NgOcq7783uL2pdZEGBQ==" length="3415645" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.49.zip" type="application/octet-stream" sparkle:edSignature="HAQNcTikwgZelbbQGzsq0ybDodjDoyiqDJh20JVLyQD2fTeu3nGeZvDXgAc655JTlexxuf0IaNREIrrw5jbMCg==" length="3418242" />
     </item>
   </channel>
 </rss>
