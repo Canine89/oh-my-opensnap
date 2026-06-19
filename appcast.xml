@@ -6,17 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.58</title>
-      <pubDate>Fri, 19 Jun 2026 04:35:00 +0000</pubDate>
-      <sparkle:version>59</sparkle:version>
-      <sparkle:shortVersionString>1.0.58</sparkle:shortVersionString>
+      <title>1.0.59</title>
+      <pubDate>Fri, 19 Jun 2026 04:48:51 +0000</pubDate>
+      <sparkle:version>60</sparkle:version>
+      <sparkle:shortVersionString>1.0.59</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.58</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.59</h2>
 <ul>
-<li>캡처 선택 HUD를 닫을 때 내용, 그림자, 알파를 먼저 제거해 화면 서버 잔상이 캡처에 남을 가능성을 줄임</li>
-<li>이미지 캡처와 영상 시작 모두 HUD 닫힘이 반영된 뒤 실행되도록 지연 시간을 조정</li>
+<li>라이브러리 이미지 바깥 클릭이나 Esc로 도구가 해제될 때 상단 도구 메뉴의 선택 상태도 함께 해제되도록 수정</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.58.zip" type="application/octet-stream" sparkle:edSignature="Il6C1kOS/mhjjWuSy+iF8Ndk14mv82/scQ53nYySkMt1n80bAZhEcdTcKV7xh4W8Y2qrUf4XozQX6UUvWijQAg==" length="3429952" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.59.zip" type="application/octet-stream" sparkle:edSignature="X5dNEBBJRlyc5xOzIix6DhBLWEcxagku44OHhJa3W/3dEiwaamczlwyfcxSLtXKzzgZNhScvGFOIC2TSGdTdAA==" length="3430658" />
     </item>
   </channel>
 </rss>
