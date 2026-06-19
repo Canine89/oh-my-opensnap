@@ -10,7 +10,7 @@ final class EditorImageView: NSView {
 
     struct Annotation {
         enum Kind { case number(Int), text(String), callout(String), arrow, rectangle, ellipse, mosaic }
-        let kind: Kind
+        var kind: Kind
         var start: CGPoint
         var end: CGPoint
         let color: NSColor
@@ -28,6 +28,19 @@ final class EditorImageView: NSView {
         let end: CGPoint
         let color: NSColor
         let width: CGFloat
+        let editingIndex: Int?
+        let initialText: String
+
+        init(kind: Kind, start: CGPoint, end: CGPoint, color: NSColor, width: CGFloat,
+             editingIndex: Int? = nil, initialText: String = "") {
+            self.kind = kind
+            self.start = start
+            self.end = end
+            self.color = color
+            self.width = width
+            self.editingIndex = editingIndex
+            self.initialText = initialText
+        }
     }
 
     private struct AnnotationDrag {
@@ -37,6 +50,8 @@ final class EditorImageView: NSView {
         let origin: CGPoint
         let initialStart: CGPoint
         let initialEnd: CGPoint
+        var didMove = false
+        var didPushUndo = false
     }
 
     private struct Snapshot {
@@ -198,6 +213,9 @@ final class EditorImageView: NSView {
             commitActiveTextField()
         }
         let point = clamp(convert(event.locationInWindow, from: nil))
+        if tool != .crop, beginAnnotationDrag(at: point, allowedKinds: [.text, .calloutHead, .calloutBubble]) {
+            return
+        }
         switch tool {
         case .number:
             pushUndo()
@@ -215,11 +233,9 @@ final class EditorImageView: NSView {
             cropLoupePoint = (activeHandle != nil && activeHandle != .center) ? point : nil
             needsDisplay = true
         case .text:
-            if beginAnnotationDrag(at: point, allowedKinds: [.text]) { return }
             showTextEditor(for: PendingTextAnnotation(kind: .text, start: point, end: point,
                                                       color: strokeColor, width: strokeWidth))
         case .callout:
-            if beginAnnotationDrag(at: point, allowedKinds: [.calloutHead, .calloutBubble]) { return }
             dragStart = point
             dragCurrent = point
             needsDisplay = true
@@ -384,16 +400,21 @@ final class EditorImageView: NSView {
     private func beginAnnotationDrag(at point: CGPoint, allowedKinds: [AnnotationDrag.Kind]) -> Bool {
         guard let hit = hitAnnotation(at: point), allowedKinds.contains(hit.kind) else { return false }
         let annotation = annotations[hit.index]
-        pushUndo()
         annotationDrag = AnnotationDrag(kind: hit.kind, index: hit.index, origin: point,
                                         initialStart: annotation.start, initialEnd: annotation.end)
         return true
     }
 
     private func updateAnnotationDrag(to point: CGPoint) -> Bool {
-        guard let drag = annotationDrag, annotations.indices.contains(drag.index) else { return false }
+        guard var drag = annotationDrag, annotations.indices.contains(drag.index) else { return false }
         let dx = point.x - drag.origin.x
         let dy = point.y - drag.origin.y
+        guard drag.didMove || hypot(dx, dy) > max(2, 3 / zoomScale) else { return true }
+        if !drag.didPushUndo {
+            pushUndo()
+            drag.didPushUndo = true
+        }
+        drag.didMove = true
         switch drag.kind {
         case .text:
             let start = clamp(CGPoint(x: drag.initialStart.x + dx, y: drag.initialStart.y + dy))
@@ -404,15 +425,36 @@ final class EditorImageView: NSView {
         case .calloutHead:
             annotations[drag.index].start = point
         }
+        annotationDrag = drag
         needsDisplay = true
         return true
     }
 
     private func finishAnnotationDrag() -> Bool {
-        guard annotationDrag != nil else { return false }
+        guard let drag = annotationDrag else { return false }
         annotationDrag = nil
+        if !drag.didMove {
+            beginEditingAnnotation(at: drag.index, dragKind: drag.kind)
+        }
         needsDisplay = true
         return true
+    }
+
+    private func beginEditingAnnotation(at index: Int, dragKind: AnnotationDrag.Kind) {
+        guard annotations.indices.contains(index), dragKind != .calloutHead else { return }
+        let annotation = annotations[index]
+        switch annotation.kind {
+        case .text(let value):
+            showTextEditor(for: PendingTextAnnotation(kind: .text, start: annotation.start, end: annotation.end,
+                                                      color: annotation.color, width: annotation.width,
+                                                      editingIndex: index, initialText: value))
+        case .callout(let value):
+            showTextEditor(for: PendingTextAnnotation(kind: .callout, start: annotation.start, end: annotation.end,
+                                                      color: annotation.color, width: annotation.width,
+                                                      editingIndex: index, initialText: value))
+        default:
+            break
+        }
     }
 
     private func hitAnnotation(at point: CGPoint) -> (index: Int, kind: AnnotationDrag.Kind)? {
@@ -515,7 +557,14 @@ final class EditorImageView: NSView {
     // MARK: 그리기
     override func draw(_ dirtyRect: NSRect) {
         backingImage?.draw(in: bounds)
-        for annotation in annotations { draw(annotation) }
+        for (index, annotation) in annotations.enumerated() where index != pendingTextAnnotation?.editingIndex {
+            draw(annotation)
+        }
+
+        if let pending = pendingTextAnnotation, pending.kind == .callout, let field = activeTextField {
+            drawCallout(text: field.stringValue, head: pending.start, bubbleAnchor: pending.end,
+                        color: pending.color, width: pending.width, drawsText: false)
+        }
 
         if tool != .crop, let start = dragStart, let current = dragCurrent {
             switch tool {
@@ -717,29 +766,46 @@ final class EditorImageView: NSView {
         pendingTextAnnotation = pending
 
         let fontSize = textFontSize(width: pending.width)
-        let fieldSize = pending.kind == .callout
-            ? CGSize(width: 240, height: max(34, fontSize + 16))
-            : CGSize(width: 220, height: max(28, fontSize + 10))
-        let origin = textEditorOrigin(anchor: pending.end, size: fieldSize)
+        let text = pending.initialText
+        let frame: CGRect
+        if pending.kind == .callout {
+            let bubble = calloutTextRect(text: text, anchor: pending.end, width: pending.width)
+            frame = calloutEditorFrame(in: bubble, width: pending.width)
+        } else {
+            let fieldSize = CGSize(width: 220, height: max(28, fontSize + 10))
+            frame = CGRect(origin: textEditorOrigin(anchor: pending.end, size: fieldSize), size: fieldSize)
+        }
 
-        let field = InlineTextField(frame: CGRect(origin: origin, size: fieldSize))
+        let field = InlineTextField(frame: frame)
         field.font = .systemFont(ofSize: fontSize, weight: .semibold)
         field.textColor = pending.color
-        field.stringValue = ""
+        field.stringValue = text
         field.placeholderString = pending.kind == .callout ? "말풍선 텍스트" : "텍스트"
         field.focusRingType = .none
-        field.isBordered = pending.kind == .callout
-        field.isBezeled = pending.kind == .callout
-        field.drawsBackground = pending.kind == .callout
-        field.backgroundColor = pending.kind == .callout ? .white.withAlphaComponent(0.96) : .clear
+        field.isBordered = false
+        field.isBezeled = false
+        field.drawsBackground = false
+        field.backgroundColor = .clear
         field.bezelStyle = .roundedBezel
         field.onCommit = { [weak self] in self?.commitActiveTextField() }
         field.onCancel = { [weak self] in self?.cancelActiveTextField() }
+        field.onChange = { [weak self] in self?.updateActiveTextFieldFrame() }
         field.target = self
         field.action = #selector(inlineTextCommitted)
         addSubview(field)
         activeTextField = field
         window?.makeFirstResponder(field)
+        field.currentEditor()?.selectAll(nil)
+    }
+
+    private func updateActiveTextFieldFrame() {
+        guard let field = activeTextField, let pending = pendingTextAnnotation, pending.kind == .callout else {
+            needsDisplay = true
+            return
+        }
+        let bubble = calloutTextRect(text: field.stringValue, anchor: pending.end, width: pending.width)
+        field.frame = calloutEditorFrame(in: bubble, width: pending.width)
+        needsDisplay = true
     }
 
     private func textEditorOrigin(anchor: CGPoint, size: CGSize) -> CGPoint {
@@ -768,10 +834,28 @@ final class EditorImageView: NSView {
         }
 
         let kind: Annotation.Kind = pending.kind == .callout ? .callout(value) : .text(value)
-        pushUndo()
-        annotations.append(Annotation(kind: kind, start: pending.start, end: pending.end,
-                                      color: pending.color, width: pending.width))
+        if let index = pending.editingIndex, annotations.indices.contains(index) {
+            guard !sameText(kind, as: annotations[index].kind) else {
+                needsDisplay = true
+                return
+            }
+            pushUndo()
+            annotations[index].kind = kind
+        } else {
+            pushUndo()
+            annotations.append(Annotation(kind: kind, start: pending.start, end: pending.end,
+                                          color: pending.color, width: pending.width))
+        }
         needsDisplay = true
+    }
+
+    private func sameText(_ lhs: Annotation.Kind, as rhs: Annotation.Kind) -> Bool {
+        switch (lhs, rhs) {
+        case (.text(let a), .text(let b)), (.callout(let a), .callout(let b)):
+            return a == b
+        default:
+            return false
+        }
     }
 
     private func cancelActiveTextField() {
@@ -806,16 +890,22 @@ final class EditorImageView: NSView {
 
     private func calloutTextRect(text: String, anchor: CGPoint, width: CGFloat) -> CGRect {
         let attributes = textAttributes(color: .labelColor, width: width)
-        let textSize = (text as NSString).size(withAttributes: attributes)
+        let effectiveText = text.isEmpty ? "말풍선 텍스트" : text
+        let textSize = (effectiveText as NSString).size(withAttributes: attributes)
         let padding = max(10, textFontSize(width: width) * 0.42)
         let bubbleSize = CGSize(width: max(90, min(360, textSize.width + padding * 2)),
                                 height: max(38, textSize.height + padding * 1.55))
         return CGRect(origin: textEditorOrigin(anchor: anchor, size: bubbleSize), size: bubbleSize)
     }
 
+    private func calloutEditorFrame(in bubble: CGRect, width: CGFloat) -> CGRect {
+        let padding = max(10, textFontSize(width: width) * 0.42)
+        return bubble.insetBy(dx: padding, dy: max(6, padding * 0.35))
+    }
+
     private func drawCallout(text: String, head: CGPoint, bubbleAnchor: CGPoint,
-                             color: NSColor, width: CGFloat, alpha: CGFloat = 1) {
-        let displayText = text.isEmpty ? "말풍선" : text
+                             color: NSColor, width: CGFloat, alpha: CGFloat = 1, drawsText: Bool = true) {
+        let displayText = text.isEmpty ? "말풍선 텍스트" : text
         let bubble = calloutTextRect(text: displayText, anchor: bubbleAnchor, width: width)
         let radius = max(10, width * 2.2)
         let path = NSBezierPath(roundedRect: bubble, xRadius: radius, yRadius: radius)
@@ -833,7 +923,9 @@ final class EditorImageView: NSView {
         let padding = max(10, textFontSize(width: width) * 0.42)
         let textPoint = CGPoint(x: bubble.minX + padding,
                                 y: bubble.minY + (bubble.height - textFontSize(width: width) * 1.2) / 2)
-        drawText(displayText, at: textPoint, color: color, width: width, alpha: alpha)
+        if drawsText {
+            drawText(displayText, at: textPoint, color: color, width: width, alpha: alpha)
+        }
     }
 
     private func pointOn(rect: CGRect, toward point: CGPoint) -> CGPoint {
@@ -909,6 +1001,12 @@ final class EditorImageView: NSView {
 private final class InlineTextField: NSTextField {
     var onCommit: (() -> Void)?
     var onCancel: (() -> Void)?
+    var onChange: (() -> Void)?
+
+    override func textDidChange(_ notification: Notification) {
+        super.textDidChange(notification)
+        onChange?()
+    }
 
     override func textDidEndEditing(_ notification: Notification) {
         super.textDidEndEditing(notification)
