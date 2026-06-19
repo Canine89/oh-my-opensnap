@@ -6,16 +6,18 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.54</title>
-      <pubDate>Fri, 19 Jun 2026 01:45:24 +0000</pubDate>
-      <sparkle:version>55</sparkle:version>
-      <sparkle:shortVersionString>1.0.54</sparkle:shortVersionString>
+      <title>1.0.55</title>
+      <pubDate>Fri, 19 Jun 2026 02:01:16 +0000</pubDate>
+      <sparkle:version>56</sparkle:version>
+      <sparkle:shortVersionString>1.0.55</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.54</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.55</h2>
 <ul>
-<li>텍스트 입력 완료를 위해 빈 영역을 클릭한 직후 같은 클릭이 새 텍스트 입력까지 시작해 중복 텍스트가 생길 수 있던 문제 수정</li>
+<li>텍스트 입력 완료 후 이미지 바깥/빈 영역 클릭 시 텍스트 도구가 해제되도록 수정</li>
+<li>텍스트 커밋 중 포커스 종료 이벤트가 다시 들어와 같은 텍스트가 중복 생성될 수 있던 문제 보강</li>
+<li>텍스트 입력 완료 클릭 직후에도 기존 오브제를 바로 선택하거나 드래그 이동할 수 있도록 흐름 정리</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.54.zip" type="application/octet-stream" sparkle:edSignature="qptn7DB3HH+/hZV+VhqVMjjwQVF52g81PBzac6rU5hltw+ztsWWpVaqrCabSpJpIXJEzLpHeMJUIZTx9A6FMDg==" length="3427911" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.55.zip" type="application/octet-stream" sparkle:edSignature="udGAnFEKUWqwty9Ey9qAZ6wubHnZpY6TjYrbrZWI5HXX/41xOYIT1GWVyozYr77Bi2BKU2Hjot/CZIIljJB8CQ==" length="3428016" />
     </item>
   </channel>
 </rss>
