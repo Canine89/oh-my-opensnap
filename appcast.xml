@@ -6,17 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.56</title>
-      <pubDate>Fri, 19 Jun 2026 02:37:14 +0000</pubDate>
-      <sparkle:version>57</sparkle:version>
-      <sparkle:shortVersionString>1.0.56</sparkle:shortVersionString>
+      <title>1.0.57</title>
+      <pubDate>Fri, 19 Jun 2026 02:41:37 +0000</pubDate>
+      <sparkle:version>58</sparkle:version>
+      <sparkle:shortVersionString>1.0.57</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.56</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.57</h2>
 <ul>
-<li>캡처 모드 선택 HUD가 이미지 캡처 결과에 함께 찍힐 수 있던 문제 수정</li>
-<li>캡처 PNG 저장/복사 시 둥근 모서리 등 투명 영역의 알파가 채워지지 않도록 보존 처리 강화</li>
+<li>창 영역 자동 스냅 후 이미지 캡처 시 배경이 섞인 사각형 crop 대신 윈도우 전용 캡처를 사용하도록 수정</li>
+<li>자동 스냅된 전체 창은 둥근 모서리 바깥 배경이 캡처되지 않게 하고, 사용자가 크기/위치를 조정한 선택은 기존 영역 캡처를 유지</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.56.zip" type="application/octet-stream" sparkle:edSignature="hScvek9z438okLdzHPVv2vtdnOgWvlGq4FADlJIdUMvskHj3rktuZQLDrhti4S4Xkq6j/mt9h7QpEtPbI+uCDQ==" length="3428414" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.57.zip" type="application/octet-stream" sparkle:edSignature="SC0r4YBBt0f5EdH6hlOdMFHLJt9LLl2mCbZAhe0518vOBgOuSJNNaqMs+jQfl99bhdsRVRen7UoizdItjiyYCw==" length="3429633" />
     </item>
   </channel>
 </rss>
