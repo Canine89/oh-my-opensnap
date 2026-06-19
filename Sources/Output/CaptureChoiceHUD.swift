@@ -2,6 +2,8 @@ import AppKit
 
 @MainActor
 final class CaptureChoiceHUD {
+    private static let captureDismissalDelay: TimeInterval = 0.18
+
     private let panel: CaptureChoicePanel
     private let onImage: () -> Void
     private let onVideo: () -> Void
@@ -43,6 +45,10 @@ final class CaptureChoiceHUD {
     }
 
     func dismiss() {
+        panel.alphaValue = 0
+        panel.hasShadow = false
+        panel.contentView?.isHidden = true
+        panel.displayIfNeeded()
         panel.orderOut(nil)
     }
 
@@ -99,12 +105,12 @@ final class CaptureChoiceHUD {
 
     @objc private func captureImage() {
         dismiss()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [onImage] in onImage() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.captureDismissalDelay) { [onImage] in onImage() }
     }
 
     @objc private func recordVideo() {
         dismiss()
-        DispatchQueue.main.async { [onVideo] in onVideo() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.captureDismissalDelay) { [onVideo] in onVideo() }
     }
 
     @objc private func cancel() {
