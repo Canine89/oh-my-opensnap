@@ -240,6 +240,7 @@ final class EditorImageView: NSView {
         let wasEditingText = activeTextField != nil
         if wasEditingText {
             commitActiveTextField()
+            tool = .none
         }
         window?.makeFirstResponder(self)
         let rawPoint = convert(event.locationInWindow, from: nil)
@@ -1024,23 +1025,23 @@ final class EditorImageView: NSView {
 
     private func commitActiveTextField() {
         guard let field = activeTextField, let pending = pendingTextAnnotation else {
-            cancelActiveTextField()
             return
         }
         let value = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        field.removeFromSuperview()
+        let kind: Annotation.Kind = pending.kind == .callout ? .callout(value) : .text(value)
+        let calloutBubble = pending.kind == .callout
+            ? activeCalloutBubble(text: value, pending: pending)
+            : nil
+
         activeTextField = nil
         pendingTextAnnotation = nil
+        field.removeFromSuperview()
         window?.makeFirstResponder(self)
         guard !value.isEmpty else {
             needsDisplay = true
             return
         }
 
-        let kind: Annotation.Kind = pending.kind == .callout ? .callout(value) : .text(value)
-        let calloutBubble = pending.kind == .callout
-            ? activeCalloutBubble(text: value, pending: pending)
-            : nil
         if let index = pending.editingIndex, annotations.indices.contains(index) {
             guard !sameText(kind, as: annotations[index].kind) else {
                 needsDisplay = true
