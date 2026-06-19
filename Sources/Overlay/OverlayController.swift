@@ -301,6 +301,11 @@ final class OverlayController {
                                    onImage: { [weak self, weak view] in
                                        guard let self else { return }
                                        self.choiceHUD = nil
+                                       if let windowSelection = view?.currentWindowSelection {
+                                           self.teardown()
+                                           self.captureWindow(windowSelection.window)
+                                           return
+                                       }
                                        guard let rect = view?.currentSelection else { self.cancel(); return }
                                        let excluded = self.overlayWindows
                                        self.teardown()
