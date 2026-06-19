@@ -13,10 +13,22 @@ final class EditorImageView: NSView {
         var kind: Kind
         var start: CGPoint
         var end: CGPoint
+        var calloutBubble: CGRect?
         let color: NSColor
         let width: CGFloat
         /// 모자이크 전용: 영역을 다운샘플한 작은 이미지(그릴 때 보간 없이 확대 → 블록).
         var mosaicImage: CGImage? = nil
+
+        init(kind: Kind, start: CGPoint, end: CGPoint, color: NSColor, width: CGFloat,
+             calloutBubble: CGRect? = nil, mosaicImage: CGImage? = nil) {
+            self.kind = kind
+            self.start = start
+            self.end = end
+            self.calloutBubble = calloutBubble
+            self.color = color
+            self.width = width
+            self.mosaicImage = mosaicImage
+        }
     }
 
     private enum Handle { case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left, center }
@@ -30,9 +42,10 @@ final class EditorImageView: NSView {
         let width: CGFloat
         let editingIndex: Int?
         let initialText: String
+        let calloutBubble: CGRect?
 
         init(kind: Kind, start: CGPoint, end: CGPoint, color: NSColor, width: CGFloat,
-             editingIndex: Int? = nil, initialText: String = "") {
+             editingIndex: Int? = nil, initialText: String = "", calloutBubble: CGRect? = nil) {
             self.kind = kind
             self.start = start
             self.end = end
@@ -40,6 +53,7 @@ final class EditorImageView: NSView {
             self.width = width
             self.editingIndex = editingIndex
             self.initialText = initialText
+            self.calloutBubble = calloutBubble
         }
     }
 
@@ -50,6 +64,7 @@ final class EditorImageView: NSView {
         let origin: CGPoint
         let initialStart: CGPoint
         let initialEnd: CGPoint
+        let initialBubble: CGRect?
         var didMove = false
         var didPushUndo = false
     }
@@ -70,6 +85,7 @@ final class EditorImageView: NSView {
             dragStart = nil
             dragCurrent = nil
             annotationDrag = nil
+            selectedAnnotationIndex = nil
             cropLoupePoint = nil
             // 번호 도구로 바꾸면 현재 커서 위치에서 스탬프 미리보기를 즉시 띄운다.
             if tool == .number, let window {
@@ -113,6 +129,7 @@ final class EditorImageView: NSView {
     private var activeTextField: InlineTextField?
     private var pendingTextAnnotation: PendingTextAnnotation?
     private var annotationDrag: AnnotationDrag?
+    private var selectedAnnotationIndex: Int?
 
     /// 번호 도구에서 커서를 따라다니는 스탬프 미리보기 위치(뷰 좌표). nil이면 표시 안 함.
     private var hoverPoint: CGPoint?
@@ -139,6 +156,7 @@ final class EditorImageView: NSView {
         cancelActiveTextField()
         backingImage = image
         annotations.removeAll()
+        selectedAnnotationIndex = nil
         nextNumber = 1
         undoStack.removeAll()
         cropRect = (tool == .crop) ? CGRect(origin: .zero, size: image?.size ?? .zero) : nil
@@ -196,6 +214,7 @@ final class EditorImageView: NSView {
         cropRect = snapshot.cropRect      // 크롭 범위 조정도 되돌린다
         activeHandle = nil
         annotationDrag = nil
+        selectedAnnotationIndex = nil
         cropLoupePoint = nil
         if imageChanged {
             if let size = snapshot.image?.size { setFrameSize(size) }
@@ -213,9 +232,15 @@ final class EditorImageView: NSView {
             commitActiveTextField()
         }
         let point = clamp(convert(event.locationInWindow, from: nil))
+        if tool != .crop, event.clickCount >= 2, let hit = hitAnnotation(at: point) {
+            selectedAnnotationIndex = hit.index
+            beginEditingAnnotation(at: hit.index, dragKind: hit.kind)
+            return
+        }
         if tool != .crop, beginAnnotationDrag(at: point, allowedKinds: [.text, .calloutHead, .calloutBubble]) {
             return
         }
+        selectedAnnotationIndex = nil
         switch tool {
         case .number:
             pushUndo()
@@ -296,8 +321,10 @@ final class EditorImageView: NSView {
             guard let start = dragStart else { return }
             let end = clamp(convert(event.locationInWindow, from: nil))
             guard hypot(end.x - start.x, end.y - start.y) > 8 else { return }
+            let bubble = calloutTextRect(text: "", anchor: end, width: strokeWidth)
             showTextEditor(for: PendingTextAnnotation(kind: .callout, start: start, end: end,
-                                                      color: strokeColor, width: strokeWidth))
+                                                      color: strokeColor, width: strokeWidth,
+                                                      calloutBubble: bubble))
         case .mosaic:
             defer { dragStart = nil; dragCurrent = nil }
             guard let start = dragStart else { return }
@@ -364,8 +391,17 @@ final class EditorImageView: NSView {
         switch event.keyCode {
         case 53 where activeTextField != nil:
             cancelActiveTextField()
-        case 36, 76: applyCrop()        // Return / Enter
-        case 53: tool = .none           // Esc → 크롭 취소
+        case 36, 76:
+            if activeTextField != nil {
+                commitActiveTextField()
+            } else if tool == .crop {
+                applyCrop()             // Return / Enter
+            } else {
+                editSelectedAnnotation()
+            }
+        case 53:
+            selectedAnnotationIndex = nil
+            tool = .none                 // Esc → 선택/크롭 취소
         default: super.keyDown(with: event)
         }
     }
@@ -400,8 +436,16 @@ final class EditorImageView: NSView {
     private func beginAnnotationDrag(at point: CGPoint, allowedKinds: [AnnotationDrag.Kind]) -> Bool {
         guard let hit = hitAnnotation(at: point), allowedKinds.contains(hit.kind) else { return false }
         let annotation = annotations[hit.index]
+        let initialBubble: CGRect?
+        if case .callout(let value) = annotation.kind {
+            initialBubble = calloutRect(for: annotation, text: value)
+        } else {
+            initialBubble = nil
+        }
+        selectedAnnotationIndex = hit.index
         annotationDrag = AnnotationDrag(kind: hit.kind, index: hit.index, origin: point,
-                                        initialStart: annotation.start, initialEnd: annotation.end)
+                                        initialStart: annotation.start, initialEnd: annotation.end,
+                                        initialBubble: initialBubble)
         return true
     }
 
@@ -421,7 +465,14 @@ final class EditorImageView: NSView {
             annotations[drag.index].start = start
             annotations[drag.index].end = start
         case .calloutBubble:
-            annotations[drag.index].end = clamp(CGPoint(x: drag.initialEnd.x + dx, y: drag.initialEnd.y + dy))
+            if let bubble = drag.initialBubble {
+                let origin = clampBubbleOrigin(CGPoint(x: bubble.origin.x + dx, y: bubble.origin.y + dy),
+                                               size: bubble.size)
+                annotations[drag.index].calloutBubble = CGRect(origin: origin, size: bubble.size)
+                annotations[drag.index].end = origin
+            } else {
+                annotations[drag.index].end = clamp(CGPoint(x: drag.initialEnd.x + dx, y: drag.initialEnd.y + dy))
+            }
         case .calloutHead:
             annotations[drag.index].start = point
         }
@@ -431,13 +482,22 @@ final class EditorImageView: NSView {
     }
 
     private func finishAnnotationDrag() -> Bool {
-        guard let drag = annotationDrag else { return false }
+        guard annotationDrag != nil else { return false }
         annotationDrag = nil
-        if !drag.didMove {
-            beginEditingAnnotation(at: drag.index, dragKind: drag.kind)
-        }
         needsDisplay = true
         return true
+    }
+
+    private func editSelectedAnnotation() {
+        guard let index = selectedAnnotationIndex, annotations.indices.contains(index) else { return }
+        switch annotations[index].kind {
+        case .text:
+            beginEditingAnnotation(at: index, dragKind: .text)
+        case .callout:
+            beginEditingAnnotation(at: index, dragKind: .calloutBubble)
+        default:
+            break
+        }
     }
 
     private func beginEditingAnnotation(at index: Int, dragKind: AnnotationDrag.Kind) {
@@ -451,7 +511,8 @@ final class EditorImageView: NSView {
         case .callout(let value):
             showTextEditor(for: PendingTextAnnotation(kind: .callout, start: annotation.start, end: annotation.end,
                                                       color: annotation.color, width: annotation.width,
-                                                      editingIndex: index, initialText: value))
+                                                      editingIndex: index, initialText: value,
+                                                      calloutBubble: annotation.calloutBubble))
         default:
             break
         }
@@ -471,7 +532,7 @@ final class EditorImageView: NSView {
                 if hypot(point.x - annotation.start.x, point.y - annotation.start.y) <= headRadius {
                     return (index, .calloutHead)
                 }
-                if calloutTextRect(text: value, anchor: annotation.end, width: annotation.width)
+                if calloutRect(for: annotation, text: value)
                     .insetBy(dx: -hitInset, dy: -hitInset)
                     .contains(point) {
                     return (index, .calloutBubble)
@@ -563,14 +624,24 @@ final class EditorImageView: NSView {
 
         if let pending = pendingTextAnnotation, pending.kind == .callout, let field = activeTextField {
             drawCallout(text: field.stringValue, head: pending.start, bubbleAnchor: pending.end,
-                        color: pending.color, width: pending.width, drawsText: false)
+                        color: pending.color, width: pending.width,
+                        bubble: activeCalloutBubble(text: field.stringValue, pending: pending),
+                        drawsText: false)
+        }
+
+        if let index = selectedAnnotationIndex,
+           index != pendingTextAnnotation?.editingIndex,
+           annotations.indices.contains(index) {
+            drawSelection(for: annotations[index])
         }
 
         if tool != .crop, let start = dragStart, let current = dragCurrent {
             switch tool {
-            case .callout:
+        case .callout:
                 drawCallout(text: "", head: start, bubbleAnchor: current,
-                            color: strokeColor, width: strokeWidth, alpha: 0.55)
+                            color: strokeColor, width: strokeWidth,
+                            bubble: calloutTextRect(text: "", anchor: current, width: strokeWidth),
+                            alpha: 0.55)
             case .arrow:
                 draw(Annotation(kind: .arrow, start: start, end: current, color: strokeColor, width: strokeWidth))
             case .rectangle:
@@ -659,7 +730,8 @@ final class EditorImageView: NSView {
             drawText(value, at: annotation.start, color: annotation.color, width: annotation.width)
         case .callout(let value):
             drawCallout(text: value, head: annotation.start, bubbleAnchor: annotation.end,
-                        color: annotation.color, width: annotation.width)
+                        color: annotation.color, width: annotation.width,
+                        bubble: annotation.calloutBubble)
         case .arrow:
             drawArrow(from: annotation.start, to: annotation.end, width: annotation.width)
         case .rectangle:
@@ -675,6 +747,42 @@ final class EditorImageView: NSView {
                 drawMosaic(rect: Self.rect(annotation.start, annotation.end), small: small)
             }
         }
+    }
+
+    private func drawSelection(for annotation: Annotation) {
+        let rect: CGRect?
+        switch annotation.kind {
+        case .text(let value):
+            rect = textRect(value, at: annotation.start, width: annotation.width)
+                .insetBy(dx: -6 / zoomScale, dy: -5 / zoomScale)
+        case .callout(let value):
+            let bubble = calloutRect(for: annotation, text: value)
+            rect = bubble.insetBy(dx: -4 / zoomScale, dy: -4 / zoomScale)
+            drawSelectionHandle(at: annotation.start, fill: annotation.color, stroke: .white)
+        default:
+            rect = nil
+        }
+        guard let rect else { return }
+        let path = NSBezierPath(rect: rect)
+        path.lineWidth = 1.5 / zoomScale
+        path.setLineDash([5 / zoomScale, 4 / zoomScale], count: 2, phase: 0)
+        NSColor.white.withAlphaComponent(0.95).setStroke()
+        path.stroke()
+        drawSelectionHandle(at: CGPoint(x: rect.minX, y: rect.minY))
+        drawSelectionHandle(at: CGPoint(x: rect.maxX, y: rect.minY))
+        drawSelectionHandle(at: CGPoint(x: rect.maxX, y: rect.maxY))
+        drawSelectionHandle(at: CGPoint(x: rect.minX, y: rect.maxY))
+    }
+
+    private func drawSelectionHandle(at point: CGPoint, fill: NSColor = .white, stroke: NSColor = .black) {
+        let size = 8 / zoomScale
+        let rect = CGRect(x: point.x - size / 2, y: point.y - size / 2, width: size, height: size)
+        fill.setFill()
+        NSBezierPath(ovalIn: rect).fill()
+        stroke.withAlphaComponent(0.65).setStroke()
+        let outline = NSBezierPath(ovalIn: rect)
+        outline.lineWidth = 1 / zoomScale
+        outline.stroke()
     }
 
     /// 작은(다운샘플) 이미지를 보간 없이 영역에 확대해 그린다 → 블록 모자이크.
@@ -769,7 +877,7 @@ final class EditorImageView: NSView {
         let text = pending.initialText
         let frame: CGRect
         if pending.kind == .callout {
-            let bubble = calloutTextRect(text: text, anchor: pending.end, width: pending.width)
+            let bubble = activeCalloutBubble(text: text, pending: pending)
             frame = calloutEditorFrame(in: bubble, width: pending.width)
         } else {
             let fieldSize = CGSize(width: 220, height: max(28, fontSize + 10))
@@ -803,7 +911,7 @@ final class EditorImageView: NSView {
             needsDisplay = true
             return
         }
-        let bubble = calloutTextRect(text: field.stringValue, anchor: pending.end, width: pending.width)
+        let bubble = activeCalloutBubble(text: field.stringValue, pending: pending)
         field.frame = calloutEditorFrame(in: bubble, width: pending.width)
         needsDisplay = true
     }
@@ -834,6 +942,9 @@ final class EditorImageView: NSView {
         }
 
         let kind: Annotation.Kind = pending.kind == .callout ? .callout(value) : .text(value)
+        let calloutBubble = pending.kind == .callout
+            ? activeCalloutBubble(text: value, pending: pending)
+            : nil
         if let index = pending.editingIndex, annotations.indices.contains(index) {
             guard !sameText(kind, as: annotations[index].kind) else {
                 needsDisplay = true
@@ -841,10 +952,20 @@ final class EditorImageView: NSView {
             }
             pushUndo()
             annotations[index].kind = kind
+            annotations[index].calloutBubble = calloutBubble
+            if let calloutBubble {
+                annotations[index].end = calloutBubble.origin
+            }
+            selectedAnnotationIndex = index
         } else {
             pushUndo()
             annotations.append(Annotation(kind: kind, start: pending.start, end: pending.end,
-                                          color: pending.color, width: pending.width))
+                                          color: pending.color, width: pending.width,
+                                          calloutBubble: calloutBubble))
+            if let calloutBubble {
+                annotations[annotations.count - 1].end = calloutBubble.origin
+            }
+            selectedAnnotationIndex = annotations.count - 1
         }
         needsDisplay = true
     }
@@ -865,6 +986,7 @@ final class EditorImageView: NSView {
         dragStart = nil
         dragCurrent = nil
         annotationDrag = nil
+        selectedAnnotationIndex = nil
         needsDisplay = true
     }
 
@@ -895,7 +1017,22 @@ final class EditorImageView: NSView {
         let padding = max(10, textFontSize(width: width) * 0.42)
         let bubbleSize = CGSize(width: max(90, min(360, textSize.width + padding * 2)),
                                 height: max(38, textSize.height + padding * 1.55))
-        return CGRect(origin: textEditorOrigin(anchor: anchor, size: bubbleSize), size: bubbleSize)
+        return CGRect(origin: clampBubbleOrigin(anchor, size: bubbleSize), size: bubbleSize)
+    }
+
+    private func activeCalloutBubble(text: String, pending: PendingTextAnnotation) -> CGRect {
+        let anchor = pending.calloutBubble?.origin ?? pending.end
+        return calloutTextRect(text: text, anchor: anchor, width: pending.width)
+    }
+
+    private func calloutRect(for annotation: Annotation, text: String) -> CGRect {
+        annotation.calloutBubble ?? calloutTextRect(text: text, anchor: annotation.end, width: annotation.width)
+    }
+
+    private func clampBubbleOrigin(_ origin: CGPoint, size: CGSize) -> CGPoint {
+        let margin: CGFloat = 6
+        return CGPoint(x: min(max(margin, origin.x), max(margin, bounds.width - size.width - margin)),
+                       y: min(max(margin, origin.y), max(margin, bounds.height - size.height - margin)))
     }
 
     private func calloutEditorFrame(in bubble: CGRect, width: CGFloat) -> CGRect {
@@ -904,9 +1041,10 @@ final class EditorImageView: NSView {
     }
 
     private func drawCallout(text: String, head: CGPoint, bubbleAnchor: CGPoint,
-                             color: NSColor, width: CGFloat, alpha: CGFloat = 1, drawsText: Bool = true) {
+                             color: NSColor, width: CGFloat, bubble: CGRect? = nil,
+                             alpha: CGFloat = 1, drawsText: Bool = true) {
         let displayText = text.isEmpty ? "말풍선 텍스트" : text
-        let bubble = calloutTextRect(text: displayText, anchor: bubbleAnchor, width: width)
+        let bubble = bubble ?? calloutTextRect(text: displayText, anchor: bubbleAnchor, width: width)
         let radius = max(10, width * 2.2)
         let path = NSBezierPath(roundedRect: bubble, xRadius: radius, yRadius: radius)
         NSColor.white.withAlphaComponent(0.94 * alpha).setFill()
