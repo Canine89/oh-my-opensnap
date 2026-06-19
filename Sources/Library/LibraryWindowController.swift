@@ -706,6 +706,13 @@ final class CenteringClipView: NSClipView {
         return hit
     }
 
+    override func mouseDown(with event: NSEvent) {
+        if let editor = documentView as? EditorImageView {
+            editor.cancelSelectionAndToolFromMarginClick()
+        }
+        super.mouseDown(with: event)
+    }
+
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
         var rect = super.constrainBoundsRect(proposedBounds)
         guard let documentView else { return rect }

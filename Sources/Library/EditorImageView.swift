@@ -151,6 +151,16 @@ final class EditorImageView: NSView {
 
     private var zoomScale: CGFloat { enclosingScrollView?.magnification ?? 1 }
 
+    func cancelSelectionAndToolFromMarginClick() {
+        if activeTextField != nil { commitActiveTextField() }
+        selectedAnnotationIndex = nil
+        annotationDrag = nil
+        dragStart = nil
+        dragCurrent = nil
+        tool = .none
+        needsDisplay = true
+    }
+
     // MARK: 이미지 로드/교체
     private func load(_ image: NSImage?) {
         cancelActiveTextField()
@@ -231,7 +241,8 @@ final class EditorImageView: NSView {
         if activeTextField != nil {
             commitActiveTextField()
         }
-        let point = clamp(convert(event.locationInWindow, from: nil))
+        let rawPoint = convert(event.locationInWindow, from: nil)
+        let point = clamp(rawPoint)
         if tool != .crop, event.clickCount >= 2, let hit = hitAnnotation(at: point) {
             selectedAnnotationIndex = hit.index
             beginEditingAnnotation(at: hit.index, dragKind: hit.kind)
@@ -250,6 +261,10 @@ final class EditorImageView: NSView {
             hoverPoint = nil    // 방금 찍은 자리와 겹치지 않게; 커서를 움직이면 다음 번호 미리보기가 다시 뜬다
             needsDisplay = true
         case .crop:
+            if !bounds.contains(rawPoint), handle(at: point) == nil {
+                cancelSelectionAndToolFromMarginClick()
+                return
+            }
             if event.clickCount == 2, (cropRect ?? .zero).contains(point) { applyCrop(); return }
             activeHandle = handle(at: point) ?? ((cropRect ?? .zero).contains(point) ? .center : nil)
             dragOrigin = point
