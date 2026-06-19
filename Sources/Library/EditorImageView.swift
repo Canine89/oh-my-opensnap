@@ -237,10 +237,11 @@ final class EditorImageView: NSView {
 
     // MARK: 마우스
     override func mouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(self)
-        if activeTextField != nil {
+        let wasEditingText = activeTextField != nil
+        if wasEditingText {
             commitActiveTextField()
         }
+        window?.makeFirstResponder(self)
         let rawPoint = convert(event.locationInWindow, from: nil)
         let point = clamp(rawPoint)
         if tool != .crop, event.clickCount >= 2, let hit = hitAnnotation(at: point) {
@@ -249,6 +250,11 @@ final class EditorImageView: NSView {
             return
         }
         if tool != .crop, beginAnnotationDrag(at: point, allowedKinds: [.object, .calloutHead, .calloutBubble]) {
+            return
+        }
+        if wasEditingText {
+            selectedAnnotationIndex = nil
+            needsDisplay = true
             return
         }
         selectedAnnotationIndex = nil
