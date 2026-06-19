@@ -58,7 +58,7 @@ final class EditorImageView: NSView {
     }
 
     private struct AnnotationDrag {
-        enum Kind: Equatable { case text, calloutBubble, calloutHead }
+        enum Kind: Equatable { case object, calloutBubble, calloutHead }
         let kind: Kind
         let index: Int
         let origin: CGPoint
@@ -248,7 +248,7 @@ final class EditorImageView: NSView {
             beginEditingAnnotation(at: hit.index, dragKind: hit.kind)
             return
         }
-        if tool != .crop, beginAnnotationDrag(at: point, allowedKinds: [.text, .calloutHead, .calloutBubble]) {
+        if tool != .crop, beginAnnotationDrag(at: point, allowedKinds: [.object, .calloutHead, .calloutBubble]) {
             return
         }
         selectedAnnotationIndex = nil
@@ -257,6 +257,7 @@ final class EditorImageView: NSView {
             pushUndo()
             annotations.append(Annotation(kind: .number(nextNumber), start: point, end: point,
                                           color: strokeColor, width: strokeWidth))
+            selectedAnnotationIndex = annotations.count - 1
             nextNumber = nextNumber >= 9 ? 1 : nextNumber + 1
             hoverPoint = nil    // 방금 찍은 자리와 겹치지 않게; 커서를 움직이면 다음 번호 미리보기가 다시 뜬다
             needsDisplay = true
@@ -330,6 +331,7 @@ final class EditorImageView: NSView {
             pushUndo()
             annotations.append(Annotation(kind: kind, start: start, end: end,
                                           color: strokeColor, width: strokeWidth))
+            selectedAnnotationIndex = annotations.count - 1
             needsDisplay = true
         case .callout:
             defer { dragStart = nil; dragCurrent = nil }
@@ -349,6 +351,7 @@ final class EditorImageView: NSView {
             pushUndo()
             annotations.append(Annotation(kind: .mosaic, start: start, end: end,
                                           color: .clear, width: 0, mosaicImage: small))
+            selectedAnnotationIndex = annotations.count - 1
             needsDisplay = true
         default:
             break
@@ -414,6 +417,8 @@ final class EditorImageView: NSView {
             } else {
                 editSelectedAnnotation()
             }
+        case 51, 117:
+            deleteSelectedAnnotation()
         case 53:
             selectedAnnotationIndex = nil
             tool = .none                 // Esc → 선택/크롭 취소
@@ -424,6 +429,7 @@ final class EditorImageView: NSView {
     // 표준 Edit 메뉴(⌘Z/⌘C) 라우팅용 responder 액션
     @objc func undo(_ sender: Any?) { undo() }
     @objc func copy(_ sender: Any?) { copyToClipboard() }
+    @objc func delete(_ sender: Any?) { deleteSelectedAnnotation() }
 
     // MARK: 크롭
     private func applyCrop() {
@@ -475,10 +481,12 @@ final class EditorImageView: NSView {
         }
         drag.didMove = true
         switch drag.kind {
-        case .text:
-            let start = clamp(CGPoint(x: drag.initialStart.x + dx, y: drag.initialStart.y + dy))
+        case .object:
+            let offset = constrainedAnnotationOffset(dx: dx, dy: dy, drag: drag)
+            let start = CGPoint(x: drag.initialStart.x + offset.x, y: drag.initialStart.y + offset.y)
+            let end = CGPoint(x: drag.initialEnd.x + offset.x, y: drag.initialEnd.y + offset.y)
             annotations[drag.index].start = start
-            annotations[drag.index].end = start
+            annotations[drag.index].end = end
         case .calloutBubble:
             if let bubble = drag.initialBubble {
                 let origin = clampBubbleOrigin(CGPoint(x: bubble.origin.x + dx, y: bubble.origin.y + dy),
@@ -496,6 +504,25 @@ final class EditorImageView: NSView {
         return true
     }
 
+    private func constrainedAnnotationOffset(dx: CGFloat, dy: CGFloat, drag: AnnotationDrag) -> CGPoint {
+        guard annotations.indices.contains(drag.index) else { return CGPoint(x: dx, y: dy) }
+        let current = annotations[drag.index]
+        let initial = Annotation(kind: current.kind,
+                                 start: drag.initialStart,
+                                 end: drag.initialEnd,
+                                 color: current.color,
+                                 width: current.width,
+                                 calloutBubble: drag.initialBubble ?? current.calloutBubble,
+                                 mosaicImage: current.mosaicImage)
+        let rect = selectionRect(for: initial)
+        let minDX = bounds.minX - rect.minX
+        let maxDX = bounds.maxX - rect.maxX
+        let minDY = bounds.minY - rect.minY
+        let maxDY = bounds.maxY - rect.maxY
+        return CGPoint(x: min(max(dx, minDX), maxDX),
+                       y: min(max(dy, minDY), maxDY))
+    }
+
     private func finishAnnotationDrag() -> Bool {
         guard annotationDrag != nil else { return false }
         annotationDrag = nil
@@ -507,12 +534,24 @@ final class EditorImageView: NSView {
         guard let index = selectedAnnotationIndex, annotations.indices.contains(index) else { return }
         switch annotations[index].kind {
         case .text:
-            beginEditingAnnotation(at: index, dragKind: .text)
+            beginEditingAnnotation(at: index, dragKind: .object)
         case .callout:
             beginEditingAnnotation(at: index, dragKind: .calloutBubble)
         default:
             break
         }
+    }
+
+    private func deleteSelectedAnnotation() {
+        guard activeTextField == nil,
+              let index = selectedAnnotationIndex,
+              annotations.indices.contains(index)
+        else { return }
+        pushUndo()
+        annotations.remove(at: index)
+        selectedAnnotationIndex = nil
+        annotationDrag = nil
+        needsDisplay = true
     }
 
     private func beginEditingAnnotation(at index: Int, dragKind: AnnotationDrag.Kind) {
@@ -540,7 +579,7 @@ final class EditorImageView: NSView {
             switch annotation.kind {
             case .text(let value):
                 if textRect(value, at: annotation.start, width: annotation.width).insetBy(dx: -hitInset, dy: -hitInset).contains(point) {
-                    return (index, .text)
+                    return (index, .object)
                 }
             case .callout(let value):
                 let headRadius = max(10 / zoomScale, annotation.width * 4)
@@ -552,8 +591,26 @@ final class EditorImageView: NSView {
                     .contains(point) {
                     return (index, .calloutBubble)
                 }
-            default:
-                continue
+            case .number:
+                if selectionRect(for: annotation).insetBy(dx: -hitInset, dy: -hitInset).contains(point) {
+                    return (index, .object)
+                }
+            case .arrow:
+                if distanceFromPoint(point, toSegmentFrom: annotation.start, to: annotation.end) <= hitInset + annotation.width {
+                    return (index, .object)
+                }
+            case .rectangle:
+                if Self.rect(annotation.start, annotation.end).insetBy(dx: -hitInset, dy: -hitInset).contains(point) {
+                    return (index, .object)
+                }
+            case .ellipse:
+                if ellipseHit(point, in: Self.rect(annotation.start, annotation.end), tolerance: hitInset + annotation.width) {
+                    return (index, .object)
+                }
+            case .mosaic:
+                if Self.rect(annotation.start, annotation.end).insetBy(dx: -hitInset, dy: -hitInset).contains(point) {
+                    return (index, .object)
+                }
             }
         }
         return nil
@@ -765,7 +822,7 @@ final class EditorImageView: NSView {
     }
 
     private func drawSelection(for annotation: Annotation) {
-        let rect: CGRect?
+        let rect: CGRect
         switch annotation.kind {
         case .text(let value):
             rect = textRect(value, at: annotation.start, width: annotation.width)
@@ -775,9 +832,9 @@ final class EditorImageView: NSView {
             rect = bubble.insetBy(dx: -4 / zoomScale, dy: -4 / zoomScale)
             drawSelectionHandle(at: annotation.start, fill: annotation.color, stroke: .white)
         default:
-            rect = nil
+            rect = selectionRect(for: annotation)
+                .insetBy(dx: -5 / zoomScale, dy: -5 / zoomScale)
         }
-        guard let rect else { return }
         let path = NSBezierPath(rect: rect)
         path.lineWidth = 1.5 / zoomScale
         path.setLineDash([5 / zoomScale, 4 / zoomScale], count: 2, phase: 0)
@@ -787,6 +844,24 @@ final class EditorImageView: NSView {
         drawSelectionHandle(at: CGPoint(x: rect.maxX, y: rect.minY))
         drawSelectionHandle(at: CGPoint(x: rect.maxX, y: rect.maxY))
         drawSelectionHandle(at: CGPoint(x: rect.minX, y: rect.maxY))
+    }
+
+    private func selectionRect(for annotation: Annotation) -> CGRect {
+        switch annotation.kind {
+        case .number:
+            let radius = max(12, annotation.width * 3.5)
+            return CGRect(x: annotation.start.x - radius, y: annotation.start.y - radius,
+                          width: radius * 2, height: radius * 2)
+        case .text(let value):
+            return textRect(value, at: annotation.start, width: annotation.width)
+        case .callout(let value):
+            return calloutRect(for: annotation, text: value)
+        case .arrow:
+            return Self.rect(annotation.start, annotation.end)
+                .insetBy(dx: -max(8, annotation.width * 2), dy: -max(8, annotation.width * 2))
+        case .rectangle, .ellipse, .mosaic:
+            return Self.rect(annotation.start, annotation.end)
+        }
     }
 
     private func drawSelectionHandle(at point: CGPoint, fill: NSColor = .white, stroke: NSColor = .black) {
@@ -1121,6 +1196,27 @@ final class EditorImageView: NSView {
     }
 
     // MARK: 유틸
+    private func distanceFromPoint(_ point: CGPoint, toSegmentFrom start: CGPoint, to end: CGPoint) -> CGFloat {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let lengthSquared = dx * dx + dy * dy
+        guard lengthSquared > 0 else { return hypot(point.x - start.x, point.y - start.y) }
+        let t = max(0, min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared))
+        let projection = CGPoint(x: start.x + t * dx, y: start.y + t * dy)
+        return hypot(point.x - projection.x, point.y - projection.y)
+    }
+
+    private func ellipseHit(_ point: CGPoint, in rect: CGRect, tolerance: CGFloat) -> Bool {
+        let expanded = rect.insetBy(dx: -tolerance, dy: -tolerance)
+        guard expanded.width > 0, expanded.height > 0 else { return false }
+        let rx = expanded.width / 2
+        let ry = expanded.height / 2
+        guard rx > 0, ry > 0 else { return false }
+        let nx = (point.x - expanded.midX) / rx
+        let ny = (point.y - expanded.midY) / ry
+        return nx * nx + ny * ny <= 1
+    }
+
     private func clamp(_ point: CGPoint) -> CGPoint {
         CGPoint(x: min(max(0, point.x), bounds.width), y: min(max(0, point.y), bounds.height))
     }
