@@ -9,9 +9,7 @@ enum CaptureOutput {
                                  height: CGFloat(cgImage.height) / scale)
         let image = NSImage(cgImage: cgImage, size: logicalSize)
 
-        let rep = NSBitmapImageRep(cgImage: cgImage)
-        rep.size = logicalSize
-        let pngData = rep.representation(using: .png, properties: [:])
+        let pngData = pngDataPreservingAlpha(from: cgImage, logicalSize: logicalSize)
 
         copyToClipboard(image: image, pngData: pngData)
 
@@ -41,5 +39,29 @@ enum CaptureOutput {
         if let tiff = image.tiffRepresentation {
             pasteboard.setData(tiff, forType: .tiff)
         }
+    }
+
+    private static func pngDataPreservingAlpha(from cgImage: CGImage, logicalSize: NSSize) -> Data? {
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil,
+                                      width: cgImage.width,
+                                      height: cgImage.height,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: 0,
+                                      space: colorSpace,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else {
+            let fallback = NSBitmapImageRep(cgImage: cgImage)
+            fallback.size = logicalSize
+            return fallback.representation(using: .png, properties: [:])
+        }
+
+        let rect = CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height)
+        context.clear(rect)
+        context.draw(cgImage, in: rect)
+        guard let normalized = context.makeImage() else { return nil }
+        let rep = NSBitmapImageRep(cgImage: normalized)
+        rep.size = logicalSize
+        return rep.representation(using: .png, properties: [:])
     }
 }

@@ -23,6 +23,7 @@ final class CaptureChoiceHUD {
                                    defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        panel.sharingType = .none
         // 오버레이(.screenSaver)와 같은 레벨이면 영역 조정 클릭으로 오버레이 창이
         // 앞으로 올라올 때 HUD가 뒤로 숨는다 → 한 단계 높은 레벨로 항상 위에 둔다.
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
@@ -98,7 +99,7 @@ final class CaptureChoiceHUD {
 
     @objc private func captureImage() {
         dismiss()
-        DispatchQueue.main.async { [onImage] in onImage() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [onImage] in onImage() }
     }
 
     @objc private func recordVideo() {
