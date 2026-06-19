@@ -6,18 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.53</title>
-      <pubDate>Fri, 19 Jun 2026 01:40:29 +0000</pubDate>
-      <sparkle:version>54</sparkle:version>
-      <sparkle:shortVersionString>1.0.53</sparkle:shortVersionString>
+      <title>1.0.54</title>
+      <pubDate>Fri, 19 Jun 2026 01:45:24 +0000</pubDate>
+      <sparkle:version>55</sparkle:version>
+      <sparkle:shortVersionString>1.0.54</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.53</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.54</h2>
 <ul>
-<li>라이브러리 편집 오브제 전체를 클릭해 선택하고 드래그로 이동할 수 있도록 개선</li>
-<li>번호, 화살표, 사각형, 원, 모자이크도 선택 테두리로 현재 대상을 표시하도록 보강</li>
-<li>선택된 편집 오브제를 Delete 또는 Backspace로 삭제할 수 있도록 추가</li>
+<li>텍스트 입력 완료를 위해 빈 영역을 클릭한 직후 같은 클릭이 새 텍스트 입력까지 시작해 중복 텍스트가 생길 수 있던 문제 수정</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.53.zip" type="application/octet-stream" sparkle:edSignature="hYjYYDIVYiRHo/oO0KITy296u6cGukd9MadoUG+7sUP2urxkOQc63CzeuYBKI9z0MJD6QSrSqKCcd/2HRXBjCg==" length="3427903" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.54.zip" type="application/octet-stream" sparkle:edSignature="qptn7DB3HH+/hZV+VhqVMjjwQVF52g81PBzac6rU5hltw+ztsWWpVaqrCabSpJpIXJEzLpHeMJUIZTx9A6FMDg==" length="3427911" />
     </item>
   </channel>
 </rss>
