@@ -96,6 +96,7 @@ final class EditorImageView: NSView {
             }
             notifyCropProgress()
             needsDisplay = true
+            onToolChanged?(tool)
         }
     }
     var strokeColor: NSColor = Brand.red
@@ -109,6 +110,8 @@ final class EditorImageView: NSView {
     /// → 라이브러리 파일을 현재 상태로 다시 저장해 디스크와 화면을 일치시키는 데 쓴다.
     /// (주석만 추가/제거되는 편집은 기존처럼 원본을 건드리지 않으므로 발생시키지 않는다.)
     var onEditCommitted: (() -> Void)?
+    /// 내부 이벤트로 도구가 바뀌면 툴바 선택 상태도 맞추도록 알린다.
+    var onToolChanged: ((Tool) -> Void)?
 
     /// 새 이미지 로드 (편집/undo 전부 초기화).
     var image: NSImage? {

@@ -19,6 +19,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private let widthSlider = NSSlider()
     private let widthLabel = NSTextField(labelWithString: "")
     private let cropDoneButton = NSButton(title: "완료", target: nil, action: nil)
+    private lazy var toolControl = NSSegmentedControl(labels: [], trackingMode: .selectOne,
+                                                      target: self, action: #selector(toolChanged(_:)))
 
     // 편집 도구 (세그먼트 인덱스 → 도구)
     private let tools: [EditorImageView.Tool] = [.none, .crop, .number, .text, .callout, .arrow, .rectangle, .ellipse, .mosaic]
@@ -168,6 +170,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         editorView.onEditCommitted = { [weak self] in
             self?.persistCurrentEdit()
         }
+        editorView.onToolChanged = { [weak self] tool in
+            self?.syncToolControl(to: tool)
+        }
         videoEditorView.onToast = { [weak self] message in
             self?.showToast(message)
         }
@@ -273,7 +278,6 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         }
 
         // 편집 도구: 포인터 / 크롭 / 번호 / 텍스트 / 말풍선 / 화살표 / 사각형 / 원 / 모자이크
-        let toolControl = NSSegmentedControl(labels: [], trackingMode: .selectOne, target: self, action: #selector(toolChanged(_:)))
         let symbols = ["cursorarrow", "crop", "number.circle", "textformat", "bubble.left", "arrow.up.right", "rectangle", "circle", "square.grid.3x3.fill"]
         let tips = ["선택", "크롭 (드래그 후 ⏎ 적용)", "번호 ➊–➒", "텍스트", "말풍선", "화살표", "사각형", "원", "모자이크 (드래그)"]
         toolControl.segmentCount = symbols.count
@@ -282,7 +286,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             toolControl.setToolTip(tips[i], forSegment: i)
             toolControl.setWidth(34, forSegment: i)
         }
-        toolControl.selectedSegment = 0
+        toolControl.selectedSegment = -1
 
         // 색상 (기본 빨강)
         let colorWell = NSColorWell()
@@ -452,9 +456,26 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     // MARK: 편집 도구 액션
     @objc private func toolChanged(_ sender: NSSegmentedControl) {
         let index = sender.selectedSegment
-        guard tools.indices.contains(index) else { return }
+        guard tools.indices.contains(index) else {
+            editorView.tool = .none
+            return
+        }
         editorView.tool = tools[index]
         window?.makeFirstResponder(editorView)
+    }
+
+    private func syncToolControl(to tool: EditorImageView.Tool) {
+        switch tool {
+        case .none: toolControl.selectedSegment = -1
+        case .crop: toolControl.selectedSegment = 1
+        case .number: toolControl.selectedSegment = 2
+        case .text: toolControl.selectedSegment = 3
+        case .callout: toolControl.selectedSegment = 4
+        case .arrow: toolControl.selectedSegment = 5
+        case .rectangle: toolControl.selectedSegment = 6
+        case .ellipse: toolControl.selectedSegment = 7
+        case .mosaic: toolControl.selectedSegment = 8
+        }
     }
 
     @objc private func colorChanged(_ sender: NSColorWell) {
