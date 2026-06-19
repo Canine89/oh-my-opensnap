@@ -6,19 +6,18 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.49</title>
-      <pubDate>Thu, 18 Jun 2026 13:24:27 +0000</pubDate>
-      <sparkle:version>50</sparkle:version>
-      <sparkle:shortVersionString>1.0.49</sparkle:shortVersionString>
+      <title>1.0.50</title>
+      <pubDate>Fri, 19 Jun 2026 00:38:04 +0000</pubDate>
+      <sparkle:version>51</sparkle:version>
+      <sparkle:shortVersionString>1.0.50</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.49</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.50</h2>
 <ul>
-<li>라이브러리 텍스트 주석을 클릭 후 드래그해 위치를 조정할 수 있도록 개선</li>
-<li>텍스트 모드에서 빈 곳을 계속 클릭해 새 텍스트를 연속 입력할 수 있도록 수정</li>
-<li>말풍선 주석의 본문 위치와 화살표 끝점을 각각 드래그로 조정할 수 있도록 개선</li>
-<li>말풍선 생성 중 클릭 직후부터 미리보기가 보이도록 보강</li>
+<li>말풍선 입력 중 실제 말풍선 배경과 꼬리 위에서 바로 입력되도록 개선</li>
+<li>입력 중 텍스트 길이에 맞춰 말풍선 크기가 즉시 따라오도록 보강</li>
+<li>도구 모드와 무관하게 기존 텍스트/말풍선을 클릭해 수정하거나 드래그해 위치를 조정할 수 있도록 개선</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.49.zip" type="application/octet-stream" sparkle:edSignature="HAQNcTikwgZelbbQGzsq0ybDodjDoyiqDJh20JVLyQD2fTeu3nGeZvDXgAc655JTlexxuf0IaNREIrrw5jbMCg==" length="3418242" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.50.zip" type="application/octet-stream" sparkle:edSignature="FYPL030vaBLQdNESRvXykg3JlaUDpJCfja73i6ot76XkpNJmd3h78kLRnW2cDCGvMVBDy53cteEtyEBveqQKBg==" length="3420765" />
     </item>
   </channel>
 </rss>
