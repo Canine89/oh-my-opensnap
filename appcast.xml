@@ -6,18 +6,19 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.50</title>
-      <pubDate>Fri, 19 Jun 2026 00:38:04 +0000</pubDate>
-      <sparkle:version>51</sparkle:version>
-      <sparkle:shortVersionString>1.0.50</sparkle:shortVersionString>
+      <title>1.0.51</title>
+      <pubDate>Fri, 19 Jun 2026 00:50:38 +0000</pubDate>
+      <sparkle:version>52</sparkle:version>
+      <sparkle:shortVersionString>1.0.51</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.50</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.51</h2>
 <ul>
-<li>말풍선 입력 중 실제 말풍선 배경과 꼬리 위에서 바로 입력되도록 개선</li>
-<li>입력 중 텍스트 길이에 맞춰 말풍선 크기가 즉시 따라오도록 보강</li>
-<li>도구 모드와 무관하게 기존 텍스트/말풍선을 클릭해 수정하거나 드래그해 위치를 조정할 수 있도록 개선</li>
+<li>텍스트/말풍선을 선택 가능한 캔버스 객체처럼 다루도록 UX 개선</li>
+<li>한 번 클릭으로 선택, 드래그로 이동, 더블클릭 또는 Return으로 텍스트 편집하도록 동작 정리</li>
+<li>선택된 텍스트/말풍선에 점선 테두리와 핸들을 표시해 편집 대상을 명확히 구분</li>
+<li>말풍선 박스 위치를 별도 상태로 저장해 입력 중/완료 후/이동 후 위치가 일관되도록 개선</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.50.zip" type="application/octet-stream" sparkle:edSignature="FYPL030vaBLQdNESRvXykg3JlaUDpJCfja73i6ot76XkpNJmd3h78kLRnW2cDCGvMVBDy53cteEtyEBveqQKBg==" length="3420765" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.51.zip" type="application/octet-stream" sparkle:edSignature="Rr4WTLM6N6K2YO2t2QfruGeCcIWB+HA7HH3wGj1+e0QrAKMF+kmgcec6VOrspGU4ln+kyKTHGpIZ5LrgPJvrAA==" length="3425531" />
     </item>
   </channel>
 </rss>
