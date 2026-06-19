@@ -85,15 +85,14 @@ final class OverlayController {
                                                overlayWindow: window)
                 }
             }
-            view.onWindowCapture = { [weak self] scWindow, windowRect in
+            view.onWindowCapture = { [weak self] windowSelection in
                 switch mode {
                 case .stillImage:
-                    self?.finishWindow(scWindow)
+                    self?.finishWindowSelection(windowSelection)
                 case .video:
-                    self?.finishVideo(viewRect: windowRect, scale: scale, display: scDisplay, displayID: displayID)
+                    self?.finishVideo(viewRect: windowSelection.rect, scale: scale, display: scDisplay, displayID: displayID)
                 case .askAfterSelection:
-                    self?.finishWindowWithChoice(scWindow,
-                                                 windowRect: windowRect,
+                    self?.finishWindowWithChoice(windowSelection,
                                                  scale: scale,
                                                  display: scDisplay,
                                                  displayID: displayID,
@@ -303,7 +302,7 @@ final class OverlayController {
                                        self.choiceHUD = nil
                                        if let windowSelection = view?.currentWindowSelection {
                                            self.teardown()
-                                           self.captureWindow(windowSelection.window)
+                                           self.captureWindowSelection(windowSelection)
                                            return
                                        }
                                        guard let rect = view?.currentSelection else { self.cancel(); return }
@@ -334,21 +333,20 @@ final class OverlayController {
         hud.show()
     }
 
-    private func finishWindowWithChoice(_ window: SCWindow,
-                                        windowRect: CGRect,
+    private func finishWindowWithChoice(_ windowSelection: OverlayView.WindowSelection,
                                         scale: CGFloat,
                                         display: SCDisplay,
                                         displayID: CGDirectDisplayID,
                                         overlayWindow: OverlayWindow) {
         let excluded = overlayWindows
-        let anchor = screenRect(for: windowRect, in: overlayWindow)
+        let anchor = screenRect(for: windowSelection.rect, in: overlayWindow)
         teardown()
         presentChoice(anchor: anchor,
                       imageAction: { [weak self] in
-                          self?.captureWindow(window)
+                          self?.captureWindowSelection(windowSelection)
                       },
                       videoAction: { [weak self] in
-                          self?.startVideo(viewRect: windowRect,
+                          self?.startVideo(viewRect: windowSelection.rect,
                                            scale: scale,
                                            display: display,
                                            displayID: displayID,
@@ -415,16 +413,27 @@ final class OverlayController {
         }
     }
 
-    private func captureWindow(_ window: SCWindow) {
+    private func captureWindowSelection(_ selection: OverlayView.WindowSelection) {
         Task {
             do {
-                let result = try await StillImageCapturer.captureWindow(window)
+                let result = try await StillImageCapturer.captureWindow(selection.window)
                 await MainActor.run {
-                    CaptureOutput.deliver(cgImage: result.image, scale: result.scale)
-                    LibraryWindowController.shared.restoreAfterCapture()
+                    defer { LibraryWindowController.shared.restoreAfterCapture() }
+                    let localRect = CGRect(x: selection.rect.minX - selection.fullRect.minX,
+                                           y: selection.rect.minY - selection.fullRect.minY,
+                                           width: selection.rect.width,
+                                           height: selection.rect.height)
+                    let pxRect = CGRect(x: localRect.minX * result.scale,
+                                        y: localRect.minY * result.scale,
+                                        width: localRect.width * result.scale,
+                                        height: localRect.height * result.scale).integral
+                    let imageBounds = CGRect(x: 0, y: 0, width: result.image.width, height: result.image.height)
+                    let clamped = pxRect.intersection(imageBounds)
+                    guard !clamped.isEmpty, let crop = result.image.cropping(to: clamped) else { return }
+                    CaptureOutput.deliver(cgImage: crop, scale: result.scale)
                 }
             } catch {
-                NSLog("Window capture failed: \(error)")
+                NSLog("Window selection capture failed: \(error)")
                 await MainActor.run { LibraryWindowController.shared.restoreAfterCapture() }
             }
         }
@@ -437,20 +446,9 @@ final class OverlayController {
                height: viewRect.height)
     }
 
-    private func finishWindow(_ window: SCWindow) {
+    private func finishWindowSelection(_ selection: OverlayView.WindowSelection) {
         teardown()
-        Task {
-            do {
-                let result = try await StillImageCapturer.captureWindow(window)
-                await MainActor.run {
-                    CaptureOutput.deliver(cgImage: result.image, scale: result.scale)
-                    LibraryWindowController.shared.restoreAfterCapture()
-                }
-            } catch {
-                NSLog("Window capture failed: \(error)")
-                await MainActor.run { LibraryWindowController.shared.restoreAfterCapture() }
-            }
-        }
+        captureWindowSelection(selection)
     }
 
     private func cancel() {

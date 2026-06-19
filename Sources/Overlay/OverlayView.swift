@@ -30,6 +30,7 @@ final class OverlayView: NSView {
     struct WindowSelection {
         let window: SCWindow
         let rect: CGRect
+        let fullRect: CGRect
     }
 
     // OverlayController가 주입
@@ -40,7 +41,7 @@ final class OverlayView: NSView {
     weak var hitTester: WindowHitTester?
     var onFinish: ((CGRect) -> Void)?
     var onCancel: (() -> Void)?
-    var onWindowCapture: ((SCWindow, CGRect) -> Void)?
+    var onWindowCapture: ((WindowSelection) -> Void)?
     /// 선택이 조정(확정 대기) 단계로 처음 들어갈 때 호출 —
     /// 컨트롤러가 커서를 되살리고 워치독을 해제하는 데 쓴다.
     var onAdjustingStarted: (() -> Void)?
@@ -220,14 +221,12 @@ final class OverlayView: NSView {
                 if didDrag { windowSelection = nil }
             }
         case .resizing(let handle):
-            windowSelection = nil
             // 화면 밖으로 못 나가게 클램프 — 선택이 디스플레이를 벗어나는 걸 막는다.
             let clamped = CGPoint(x: max(0, min(point.x, bounds.width)),
                                   y: max(0, min(point.y, bounds.height)))
             selection = resize(resizeBase, handle: handle, to: clamped, square: square)
             if let sel = selection { onSelectionChanged?(sel) }   // HUD가 실시간으로 따라오게
         case .moving:
-            windowSelection = nil
             if let sel = selection {
                 var origin = CGPoint(x: point.x - moveOffset.x, y: point.y - moveOffset.y)
                 origin.x = max(0, min(origin.x, bounds.width - sel.width))
@@ -269,7 +268,7 @@ final class OverlayView: NSView {
                 enterAdjusting()
             } else if let hoveredWindow, let windowRect = hoveredWindowRect {
                 // 클릭(드래그 없음) + 감지된 윈도우 → 그 윈도우 영역을 조정 가능한 선택으로 전환.
-                selectInitialRegion(windowRect, window: fullWindowSelection(for: hoveredWindow, rect: windowRect))
+                selectInitialRegion(windowRect, windowSelection: windowSelection(for: hoveredWindow, rect: windowRect))
             } else {
                 onCancel?()
                 return
@@ -292,11 +291,11 @@ final class OverlayView: NSView {
         if selectionLocked { updateAdjustCursor(at: point) }
     }
 
-    private func selectInitialRegion(_ rect: CGRect, window: SCWindow?) {
+    private func selectInitialRegion(_ rect: CGRect, windowSelection: WindowSelection?) {
         let clipped = rect.intersection(bounds)
         guard clipped.width > 2, clipped.height > 2 else { return }
         selection = clipped
-        windowSelection = window.map { WindowSelection(window: $0, rect: clipped) }
+        self.windowSelection = windowSelection
         phase = .adjusting
         onAdjustingStarted?()
         onSelectionChanged?(clipped)
@@ -320,9 +319,11 @@ final class OverlayView: NSView {
         guard selectionLocked,
               let selection,
               let windowSelection,
-              nearlyEqual(selection, windowSelection.rect)
+              contains(windowSelection.fullRect, selection)
         else { return nil }
-        return windowSelection
+        return WindowSelection(window: windowSelection.window,
+                               rect: selection,
+                               fullRect: windowSelection.fullRect)
     }
 
     /// 조정 단계라면 현재 선택으로 캡처를 확정한다. (⏎ 모니터/키 입력에서 호출)
@@ -337,7 +338,7 @@ final class OverlayView: NSView {
         guard let sel = selection, sel.width > 2, sel.height > 2 else { return }
         if let windowSelection = currentWindowSelection {
             phase = .idle
-            onWindowCapture?(windowSelection.window, windowSelection.rect)
+            onWindowCapture?(windowSelection)
             return
         }
         phase = .idle
@@ -388,18 +389,20 @@ final class OverlayView: NSView {
         }
     }
 
-    private func fullWindowSelection(for window: SCWindow, rect: CGRect) -> SCWindow? {
-        guard let full = hoveredFullWindowRect,
-              nearlyEqual(rect.intersection(bounds), full.intersection(bounds))
+    private func windowSelection(for window: SCWindow, rect: CGRect) -> WindowSelection? {
+        guard let full = hoveredFullWindowRect
         else { return nil }
-        return window
+        let clipped = rect.intersection(bounds)
+        let clippedFull = full.intersection(bounds)
+        guard contains(clippedFull, clipped) else { return nil }
+        return WindowSelection(window: window, rect: clipped, fullRect: clippedFull)
     }
 
-    private func nearlyEqual(_ lhs: CGRect, _ rhs: CGRect, tolerance: CGFloat = 1.5) -> Bool {
-        abs(lhs.minX - rhs.minX) <= tolerance
-            && abs(lhs.minY - rhs.minY) <= tolerance
-            && abs(lhs.width - rhs.width) <= tolerance
-            && abs(lhs.height - rhs.height) <= tolerance
+    private func contains(_ outer: CGRect, _ inner: CGRect, tolerance: CGFloat = 1.5) -> Bool {
+        inner.minX >= outer.minX - tolerance
+            && inner.minY >= outer.minY - tolerance
+            && inner.maxX <= outer.maxX + tolerance
+            && inner.maxY <= outer.maxY + tolerance
     }
 
     private func clearHoveredWindow() {
