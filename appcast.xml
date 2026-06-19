@@ -6,19 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.51</title>
-      <pubDate>Fri, 19 Jun 2026 00:50:38 +0000</pubDate>
-      <sparkle:version>52</sparkle:version>
-      <sparkle:shortVersionString>1.0.51</sparkle:shortVersionString>
+      <title>1.0.52</title>
+      <pubDate>Fri, 19 Jun 2026 00:58:39 +0000</pubDate>
+      <sparkle:version>53</sparkle:version>
+      <sparkle:shortVersionString>1.0.52</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.51</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.52</h2>
 <ul>
-<li>텍스트/말풍선을 선택 가능한 캔버스 객체처럼 다루도록 UX 개선</li>
-<li>한 번 클릭으로 선택, 드래그로 이동, 더블클릭 또는 Return으로 텍스트 편집하도록 동작 정리</li>
-<li>선택된 텍스트/말풍선에 점선 테두리와 핸들을 표시해 편집 대상을 명확히 구분</li>
-<li>말풍선 박스 위치를 별도 상태로 저장해 입력 중/완료 후/이동 후 위치가 일관되도록 개선</li>
+<li>라이브러리 이미지 바깥 여백을 클릭하면 선택된 텍스트/말풍선과 현재 편집 도구가 해제되도록 개선</li>
+<li>크롭 모드에서는 가장자리 핸들 보정은 유지하되, 핸들이 아닌 바깥 여백 클릭은 편집 취소로 처리</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.51.zip" type="application/octet-stream" sparkle:edSignature="Rr4WTLM6N6K2YO2t2QfruGeCcIWB+HA7HH3wGj1+e0QrAKMF+kmgcec6VOrspGU4ln+kyKTHGpIZ5LrgPJvrAA==" length="3425531" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.52.zip" type="application/octet-stream" sparkle:edSignature="PHLlHedvSpWnnPi+SH5E3JbHXhGx7uExRMAIPXR/2jefQMPWc1GZ5zxAWaP1XOJ6dpekBaACU4y9JAhhyZEADA==" length="3425709" />
     </item>
   </channel>
 </rss>
