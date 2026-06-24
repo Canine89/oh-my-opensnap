@@ -34,16 +34,6 @@
 
 ## 📥 설치
 
-Homebrew를 쓴다면:
-
-```bash
-brew tap canine89/oh-my-opensnap
-brew trust canine89/oh-my-opensnap
-brew install --cask oh-my-opensnap
-```
-
-수동으로 설치하려면:
-
 1. [**Releases**](../../releases/latest) 에서 최신 `.dmg` 파일을 받습니다.
 2. `.dmg` 를 열고 **`oh-my-opensnap` 아이콘을 `Applications` 폴더로 드래그**합니다.
 3. `Applications` 폴더에서 앱을 실행합니다.
