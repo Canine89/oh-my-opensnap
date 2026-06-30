@@ -158,7 +158,7 @@ if [ -z "$VERSION_ARG" ]; then
 fi
 
 echo "▸ EdDSA 서명 + appcast.xml 생성"
-SIGN_UPDATE="$(find "$HOME/Library/Developer/Xcode/DerivedData" -name sign_update -path '*sparkle*' -type f 2>/dev/null | head -1)"
+SIGN_UPDATE="$(find "$DD/SourcePackages" "$HOME/Library/Developer/Xcode/DerivedData" -name sign_update -path '*sparkle*' -type f 2>/dev/null | head -1)"
 [ -x "$SIGN_UPDATE" ] || { echo "✗ sign_update 도구를 못 찾음 (Sparkle 패키지 해석 필요)"; exit 1; }
 # 예: sparkle:edSignature="..." length="12345"
 SIG_ATTRS="$("$SIGN_UPDATE" "$ZIP")"
