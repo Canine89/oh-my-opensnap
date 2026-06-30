@@ -1,8 +1,8 @@
 cask "oh-my-opensnap" do
-  version "1.0.60"
-  sha256 "2d623f6f55d6de2675a13df91cce29a37059f6d03c4d569cacd6467916e9ee65"
+  version "1.0.61"
+  sha256 "b52971b16df1ba2f287704fa5b7b81b3a742a0445039245d5a93bd4b4fa19db2"
 
-  url "https://github.com/Canine89/oh-my-opensnap/releases/download/v#{version}/oh-my-opensnap-#{version}-notarized.dmg"
+  url "https://github.com/Canine89/oh-my-opensnap/releases/download/v#{version}/oh-my-opensnap-#{version}.dmg"
   name "oh-my-opensnap"
   desc "Fast, precise screen capture tool"
   homepage "https://github.com/Canine89/oh-my-opensnap"

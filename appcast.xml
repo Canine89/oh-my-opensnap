@@ -6,17 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.60</title>
-      <pubDate>Fri, 19 Jun 2026 04:56:52 +0000</pubDate>
-      <sparkle:version>61</sparkle:version>
-      <sparkle:shortVersionString>1.0.60</sparkle:shortVersionString>
+      <title>1.0.61</title>
+      <pubDate>Tue, 30 Jun 2026 17:15:00 +0000</pubDate>
+      <sparkle:version>62</sparkle:version>
+      <sparkle:shortVersionString>1.0.61</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.60</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.61</h2>
 <ul>
-<li>창 자동 스냅에서 전체 창이 아닌 윈도우 내부/부분 영역을 이미지 캡처할 때도 윈도우 캡처 원본을 기준으로 잘라 둥근 모서리 알파가 보존되도록 개선</li>
-<li>자동 스냅 영역을 이동/리사이즈해도 선택이 원래 윈도우 안에 남아 있으면 윈도우 기반 이미지 캡처를 유지하고, 벗어나면 기존 영역 캡처로 처리</li>
+<li>설정 창에 `macOS 로그인 시 자동 실행` 옵션 추가</li>
+<li>macOS 로그인 아이템 상태를 실제 시스템 설정과 동기화해 체크박스에 반영</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.60.zip" type="application/octet-stream" sparkle:edSignature="taXKYVVEGcydwwc2enPpko3V/WlRgQF9zKXOPtrKOKomr4h/ngS2LHhaxgJKbeci32CsaC7wC3o6ET6eyeg9CQ==" length="3431523" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.61.zip" type="application/octet-stream" sparkle:edSignature="p3gub1W1K5rKNFXGN4wBFCiR7gevO2MqEaN4wCO0D2r2XE9w7+oMfKWV2rbSdBuz1GeLKyyriXqQBwECarFADA==" length="3470636" />
     </item>
   </channel>
 </rss>
