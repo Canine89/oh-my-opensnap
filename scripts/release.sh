@@ -172,7 +172,7 @@ if [ -f "$CASK" ]; then
   DMG_SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
   sed -i '' "s/version \"[^\"]*\"/version \"$VERSION\"/" "$CASK"
   sed -i '' "s/sha256 \"[^\"]*\"/sha256 \"$DMG_SHA\"/" "$CASK"
-  sed -i '' 's#oh-my-opensnap-#{version}[^"]*\.dmg#oh-my-opensnap-#{version}.dmg#' "$CASK"
+  sed -i '' 's@oh-my-opensnap-#{version}[^"]*\.dmg@oh-my-opensnap-#{version}.dmg@' "$CASK"
   echo "  Homebrew Cask 갱신 ✓ ($DMG_SHA)"
 fi
 
