@@ -6,18 +6,20 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var pathLabel: NSTextField?
     private var recordButton: NSButton?
+    private var launchAtLoginCheck: NSButton?
     private var recordingMonitor: Any?
     private var isRecording = false
 
     func showWindow() {
         if window == nil { buildWindow() }
+        refreshLaunchAtLoginState()
         NSApp.activate(ignoringOtherApps: true)
         window?.center()
         window?.makeKeyAndOrderFront(nil)
     }
 
     private func buildWindow() {
-        let contentRect = NSRect(x: 0, y: 0, width: 440, height: 260)
+        let contentRect = NSRect(x: 0, y: 0, width: 440, height: 300)
         let window = NSWindow(contentRect: contentRect,
                               styleMask: [.titled, .closable],
                               backing: .buffered, defer: false)
@@ -50,6 +52,11 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
                                   target: self, action: #selector(toggleSound(_:)))
         soundCheck.state = Settings.shared.playSound ? .on : .off
 
+        let launchAtLoginCheck = NSButton(checkboxWithTitle: "macOS 로그인 시 자동 실행",
+                                          target: self, action: #selector(toggleLaunchAtLogin(_:)))
+        launchAtLoginCheck.state = LaunchAtLoginController.isEnabled ? .on : .off
+        self.launchAtLoginCheck = launchAtLoginCheck
+
         let folderRow = NSStackView()
         folderRow.orientation = .horizontal
         folderRow.spacing = 8
@@ -71,6 +78,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
 
         stack.addArrangedSubview(shortcutRow)
         stack.addArrangedSubview(soundCheck)
+        stack.addArrangedSubview(launchAtLoginCheck)
         stack.addArrangedSubview(folderRow)
         stack.addArrangedSubview(hint)
 
@@ -134,6 +142,32 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
 
     @objc private func toggleSound(_ sender: NSButton) {
         Settings.shared.playSound = (sender.state == .on)
+    }
+
+    @objc private func toggleLaunchAtLogin(_ sender: NSButton) {
+        do {
+            try LaunchAtLoginController.setEnabled(sender.state == .on)
+            refreshLaunchAtLoginState()
+        } catch {
+            refreshLaunchAtLoginState()
+            showLaunchAtLoginError(error)
+        }
+    }
+
+    private func refreshLaunchAtLoginState() {
+        launchAtLoginCheck?.state = LaunchAtLoginController.isEnabled ? .on : .off
+    }
+
+    private func showLaunchAtLoginError(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "자동 실행 설정을 변경하지 못했습니다."
+        alert.informativeText = "앱을 Applications 폴더에서 실행한 뒤 다시 시도하세요.\n\n\(error.localizedDescription)"
+        alert.alertStyle = .warning
+        if let window {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
     }
 
     @objc private func chooseFolder() {

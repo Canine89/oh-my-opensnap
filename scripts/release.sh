@@ -38,6 +38,7 @@ DD="$ROOT/build/dd"
 DIST="$ROOT/dist"
 UPDATES="$ROOT/updates"
 APPCAST="$ROOT/appcast.xml"
+CASK="$ROOT/Casks/oh-my-opensnap.rb"
 
 # --- 인자 파싱: [버전] [--publish] ---
 VERSION_ARG=""
@@ -167,6 +168,14 @@ cp "$ZIP" "$UPDATE_ZIP"
 ZIP_URL="https://raw.githubusercontent.com/$REPO/main/updates/oh-my-opensnap-$VERSION.zip"
 PUBDATE="$(date -u "+%a, %d %b %Y %H:%M:%S +0000")"
 
+if [ -f "$CASK" ]; then
+  DMG_SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
+  sed -i '' "s/version \"[^\"]*\"/version \"$VERSION\"/" "$CASK"
+  sed -i '' "s/sha256 \"[^\"]*\"/sha256 \"$DMG_SHA\"/" "$CASK"
+  sed -i '' 's#oh-my-opensnap-#{version}[^"]*\.dmg#oh-my-opensnap-#{version}.dmg#' "$CASK"
+  echo "  Homebrew Cask 갱신 ✓ ($DMG_SHA)"
+fi
+
 # 릴리스 노트: CHANGELOG.md 의 "## <버전>" 섹션을 읽어
 #  - Sparkle 업데이트 창(appcast description, HTML)
 #  - GitHub 릴리스 노트(markdown)
@@ -208,8 +217,9 @@ if [ "$PUBLISH" = "1" ]; then
   command -v gh >/dev/null || { echo "✗ 'brew install gh' 필요"; exit 1; }
   TAG="v$VERSION"
   # 1) appcast/버전 먼저 푸시 → 릴리스 태그가 최신 커밋을 가리키도록
-  echo "▸ appcast.xml + project.yml(버전) + updates ZIP 커밋/푸시"
+  echo "▸ appcast.xml + project.yml(버전) + updates ZIP + Cask 커밋/푸시"
   git add appcast.xml project.yml "$UPDATE_ZIP"
+  [ -f "$CASK" ] && git add "$CASK"
   git commit -q -m "release: v$VERSION (appcast 갱신)" || true
   git push
   echo "▸ 공개 업데이트 ZIP 다운로드 확인"
