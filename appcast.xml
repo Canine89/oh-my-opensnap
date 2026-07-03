@@ -6,17 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.61</title>
-      <pubDate>Tue, 30 Jun 2026 17:15:00 +0000</pubDate>
-      <sparkle:version>62</sparkle:version>
-      <sparkle:shortVersionString>1.0.61</sparkle:shortVersionString>
+      <title>1.0.62</title>
+      <pubDate>Fri, 03 Jul 2026 10:48:54 +0000</pubDate>
+      <sparkle:version>63</sparkle:version>
+      <sparkle:shortVersionString>1.0.62</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.61</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.62</h2>
 <ul>
-<li>설정 창에 `macOS 로그인 시 자동 실행` 옵션 추가</li>
-<li>macOS 로그인 아이템 상태를 실제 시스템 설정과 동기화해 체크박스에 반영</li>
+<li>화면 녹화 권한 안내를 보강해 권한 허용 후 앱을 다시 열도록 명확히 안내</li>
+<li>기존 서명 권한 기록이 남은 사용자를 위해 권한 토글/초기화 안내 추가</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.61.zip" type="application/octet-stream" sparkle:edSignature="p3gub1W1K5rKNFXGN4wBFCiR7gevO2MqEaN4wCO0D2r2XE9w7+oMfKWV2rbSdBuz1GeLKyyriXqQBwECarFADA==" length="3470636" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.62.zip" type="application/octet-stream" sparkle:edSignature="bkNXv09Plc2inG0jOysjT+hvTXebYqRkpP3BYEtVzAJjgzjbW8aSEjIwGg0fgjkjr9fBBEzh7iWjRLzW4CBQDw==" length="3470675" />
     </item>
   </channel>
 </rss>
