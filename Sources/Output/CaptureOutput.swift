@@ -11,7 +11,7 @@ enum CaptureOutput {
 
         let pngData = pngDataPreservingAlpha(from: cgImage, logicalSize: logicalSize)
 
-        copyToClipboard(image: image, pngData: pngData)
+        copyToClipboard(pngData: pngData)
 
         if let pngData {
             // 저장 폴더(기본: 바탕화면/oh-my-opensnap, 설정에서 변경 가능)에 보관
@@ -27,17 +27,16 @@ enum CaptureOutput {
         ThumbnailHUD.show(image)
     }
 
-    private static func copyToClipboard(image: NSImage, pngData: Data?) {
+    private static func copyToClipboard(pngData: Data?) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
 
         if let pngData {
-            // 모던 PNG + 레거시 PNGf + TIFF 폴백으로 호환성 최대화
+            // 클립보드도 저장 파일과 같은 무손실 PNG를 그대로 사용한다.
+            // TIFF 폴백은 일부 붙여넣기 대상 앱에서 우선 선택되며, Retina 논리 크기(point)를
+            // 거치는 과정에서 축소/리샘플된 것처럼 보일 수 있어 제외한다.
             pasteboard.setData(pngData, forType: .png)
             pasteboard.setData(pngData, forType: NSPasteboard.PasteboardType("com.apple.pboard.type.PNGf"))
-        }
-        if let tiff = image.tiffRepresentation {
-            pasteboard.setData(tiff, forType: .tiff)
         }
     }
 
