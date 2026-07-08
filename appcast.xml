@@ -6,17 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.62</title>
-      <pubDate>Fri, 03 Jul 2026 10:48:54 +0000</pubDate>
-      <sparkle:version>63</sparkle:version>
-      <sparkle:shortVersionString>1.0.62</sparkle:shortVersionString>
+      <title>1.0.63</title>
+      <pubDate>Wed, 08 Jul 2026 08:53:44 +0000</pubDate>
+      <sparkle:version>64</sparkle:version>
+      <sparkle:shortVersionString>1.0.63</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.62</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.63</h2>
 <ul>
-<li>화면 녹화 권한 안내를 보강해 권한 허용 후 앱을 다시 열도록 명확히 안내</li>
-<li>기존 서명 권한 기록이 남은 사용자를 위해 권한 토글/초기화 안내 추가</li>
+<li>캡처 직후 클립보드에 TIFF 폴백 대신 저장본과 같은 무손실 PNG만 올리도록 변경</li>
+<li>일부 앱에 바로 붙여넣을 때 Retina 캡처가 살짝 흐리게 보일 수 있던 경로 제거</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.62.zip" type="application/octet-stream" sparkle:edSignature="bkNXv09Plc2inG0jOysjT+hvTXebYqRkpP3BYEtVzAJjgzjbW8aSEjIwGg0fgjkjr9fBBEzh7iWjRLzW4CBQDw==" length="3470675" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.63.zip" type="application/octet-stream" sparkle:edSignature="vgIFcsmduFv/fiWNWo8EDEnCuXZZ7ciu9hSA01wCdHRpHs95WLiKNADcdtrOJqu31qda+kZtj6/b7Ywb1G1sDg==" length="3470631" />
     </item>
   </channel>
 </rss>
