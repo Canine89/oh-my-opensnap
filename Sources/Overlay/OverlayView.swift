@@ -12,7 +12,6 @@ import ScreenCaptureKit
 /// - 조정 단계: 핸들 드래그로 크기 조절(루페 표시), 내부 드래그로 이동,
 ///   바깥 드래그로 새 선택, ⏎(Return)/더블클릭으로 캡처 확정
 final class OverlayView: NSView {
-    private static var didRequestAccessibilityTrust = false
 
     private struct ContentCandidate {
         let rect: CGRect
@@ -496,11 +495,8 @@ final class OverlayView: NSView {
 
     private func accessibilityContentRect(pid: pid_t, globalFullRect: CGRect, globalCursor: CGPoint) -> CGRect? {
         guard AXIsProcessTrusted() else {
-            if !Self.didRequestAccessibilityTrust {
-                let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-                AXIsProcessTrustedWithOptions(options)
-                Self.didRequestAccessibilityTrust = true
-            }
+            // 접근성 정보는 브라우저 콘텐츠 영역을 더 정밀하게 잡기 위한 선택 기능이다.
+            // 캡처 자체에는 필요하지 않으므로 시스템 권한 prompt를 자동으로 띄우지 않는다.
             NSLog("Accessibility permission is not trusted; falling back to browser chrome heuristic")
             return nil
         }

@@ -4,6 +4,7 @@ import AppKit
 @MainActor
 final class CaptureCoordinator {
     static let shared = CaptureCoordinator()
+    private var didRequestPermissionThisLaunch = false
     private init() {}
 
     func startAreaCapture() {
@@ -19,12 +20,18 @@ final class CaptureCoordinator {
     private func ensurePermission() -> Bool {
         if ScreenCapturePermission.isGranted { return true }
 
-        // 최초 진입이면 시스템 prompt를 띄운다.
-        ScreenCapturePermission.request()
+        // 시스템 prompt와 자체 안내창을 한 번의 캡처 시도에서 연달아 띄우지 않는다.
+        // 최초 요청에서는 macOS 표준 prompt만 맡기고, 같은 실행 중 다시 시도할 때만
+        // 설정 안내를 보여 준다. 권한을 켠 뒤 재실행하면 preflight에서 바로 통과한다.
+        if !didRequestPermissionThisLaunch {
+            didRequestPermissionThisLaunch = true
+            if ScreenCapturePermission.request() || ScreenCapturePermission.isGranted {
+                return true
+            }
+            return false
+        }
 
-        if ScreenCapturePermission.isGranted { return true }
-
-        // 아직 허용되지 않았으면 설정으로 안내. 권한 부여 후 재실행이 필요할 수 있다.
+        // 이미 표준 요청을 했는데도 허용되지 않은 경우에만 설정으로 안내한다.
         PermissionAlert.show()
         return false
     }
