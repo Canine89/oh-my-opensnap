@@ -6,17 +6,18 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.63</title>
-      <pubDate>Wed, 08 Jul 2026 08:53:44 +0000</pubDate>
-      <sparkle:version>64</sparkle:version>
-      <sparkle:shortVersionString>1.0.63</sparkle:shortVersionString>
+      <title>1.0.64</title>
+      <pubDate>Sat, 11 Jul 2026 02:08:30 +0000</pubDate>
+      <sparkle:version>65</sparkle:version>
+      <sparkle:shortVersionString>1.0.64</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.63</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.64</h2>
 <ul>
-<li>캡처 직후 클립보드에 TIFF 폴백 대신 저장본과 같은 무손실 PNG만 올리도록 변경</li>
-<li>일부 앱에 바로 붙여넣을 때 Retina 캡처가 살짝 흐리게 보일 수 있던 경로 제거</li>
+<li>선택 기능인 브라우저 영역 정밀 감지를 위해 접근성 권한 창을 반복해서 띄우지 않도록 수정</li>
+<li>화면 녹화 시스템 권한 창과 앱 자체 안내창이 한 번에 연달아 표시되지 않도록 수정</li>
+<li>업데이트 실패 후 Sparkle 확인 주기를 복구해 다음 자동/수동 업데이트를 다시 시도할 수 있도록 개선</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.63.zip" type="application/octet-stream" sparkle:edSignature="vgIFcsmduFv/fiWNWo8EDEnCuXZZ7ciu9hSA01wCdHRpHs95WLiKNADcdtrOJqu31qda+kZtj6/b7Ywb1G1sDg==" length="3470631" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.64.zip" type="application/octet-stream" sparkle:edSignature="9rnulH4EdxfBpZ6sS4hMNarMgszcPXtqQfBEh5lCL/1AhA1dTXPrRwYzJV3yERaadi+3QcsIGtCN3g+Go5QrCQ==" length="3471744" />
     </item>
   </channel>
 </rss>
