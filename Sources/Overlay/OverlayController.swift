@@ -17,6 +17,8 @@ final class OverlayController {
     private var windows: [OverlayWindow] = []
     private var choiceHUD: CaptureChoiceHUD?
     private var providers: [CGDirectDisplayID: DisplayStreamProvider] = [:]
+    private var providerDisplays: [CGDirectDisplayID: SCDisplay] = [:]
+    private var activeLoupeDisplayID: CGDirectDisplayID?
     // 우리 오버레이 윈도우들의 SCWindow 매핑. 루페/스틸 캡처에서 이것만 제외해
     // 자기참조(자기 자신이 캡처에 찍힘)를 막는다. OBS 등 외부 녹화엔 그대로 보인다.
     private var overlayWindows: [SCWindow] = []
@@ -53,10 +55,6 @@ final class OverlayController {
 
         let tester = WindowHitTester(content: content)
         hitTester = tester
-
-        // (provider, scDisplay) 쌍. 오버레이를 화면에 올린 뒤에야 SCWindow 매핑이 가능하므로
-        // 루페 스트림 시작은 윈도우 생성 루프가 끝난 뒤로 미룬다.
-        var pending: [(provider: DisplayStreamProvider, display: SCDisplay)] = []
 
         for screen in NSScreen.screens {
             let displayID = screen.displayID
@@ -137,12 +135,15 @@ final class OverlayController {
                 guard let self, let window, let hud = self.choiceHUD else { return }
                 hud.move(near: self.screenRect(for: rect, in: window))
             }
+            view.onBecomeActiveDisplay = { [weak self] in
+                self?.activateLoupe(for: displayID)
+            }
 
             let provider = DisplayStreamProvider(displayID: displayID, scale: scale)
             view.provider = provider
             providers[displayID] = provider
+            providerDisplays[displayID] = scDisplay
             windows.append(window)
-            pending.append((provider, scDisplay))
         }
 
         guard !windows.isEmpty else {
@@ -153,11 +154,9 @@ final class OverlayController {
 
         for window in windows { window.orderFrontRegardless() }
 
-        // 오버레이가 화면에 올라온 뒤 SCWindow로 매핑하고, 그 제외 목록으로 루페 스트림을 시작한다.
+        // 오버레이가 화면에 올라온 뒤 SCWindow로 매핑한다.
+        // 루페 스트림은 커서가 있는 디스플레이에서만 켠다(아래 primeCursor → activateLoupe).
         overlayWindows = await Self.resolveOverlayWindows(windows)
-        for item in pending {
-            await item.provider.start(display: item.display, excluding: overlayWindows)
-        }
 
         if let keyWindow = windows.first {
             // 전역 단축키로 떴을 때 앱이 활성/key가 못 돼 ESC가 안 먹는 경우가 있어,
@@ -186,6 +185,22 @@ final class OverlayController {
         let ids = Set(windows.compactMap { $0.windowNumber > 0 ? CGWindowID($0.windowNumber) : nil })
         guard !ids.isEmpty, let content = try? await SCShareableContent.current else { return [] }
         return content.windows.filter { ids.contains($0.windowID) }
+    }
+
+    /// 커서가 있는 디스플레이의 루페 스트림만 켠다. 다른 디스플레이 스트림은 끈다.
+    private func activateLoupe(for displayID: CGDirectDisplayID) {
+        guard active, activeLoupeDisplayID != displayID else { return }
+        activeLoupeDisplayID = displayID
+        let excluded = overlayWindows
+        for (id, provider) in providers {
+            if id == displayID {
+                if !provider.isRunning, let scDisplay = providerDisplays[id] {
+                    Task { await provider.start(display: scDisplay, excluding: excluded) }
+                }
+            } else if provider.isRunning {
+                provider.stop()
+            }
+        }
     }
 
     /// 어떤 상황에서도 오버레이를 닫을 수 있도록 보장하는 안전장치.
@@ -222,18 +237,14 @@ final class OverlayController {
 
         Task {
             do {
-                let full = try await StillImageCapturer.capture(display: display, scale: scale, excluding: excluded)
+                let image = try await StillImageCapturer.capture(display: display,
+                                                                 scale: scale,
+                                                                 sourceRect: viewRect,
+                                                                 excluding: excluded)
                 await MainActor.run {
                     // 스틸 픽셀을 다 읽은 뒤에만 라이브러리 창을 되돌린다(자르기 실패 경로 포함).
                     defer { LibraryWindowController.shared.restoreAfterCapture() }
-                    let pxRect = CGRect(x: viewRect.minX * scale,
-                                        y: viewRect.minY * scale,
-                                        width: viewRect.width * scale,
-                                        height: viewRect.height * scale).integral
-                    let imageBounds = CGRect(x: 0, y: 0, width: full.width, height: full.height)
-                    let clamped = pxRect.intersection(imageBounds)
-                    guard !clamped.isEmpty, let crop = full.cropping(to: clamped) else { return }
-                    CaptureOutput.deliver(cgImage: crop, scale: scale)
+                    CaptureOutput.deliver(cgImage: image, scale: scale)
                 }
             } catch {
                 NSLog("Still capture failed: \(error)")
@@ -375,17 +386,13 @@ final class OverlayController {
     private func captureStillImage(viewRect: CGRect, scale: CGFloat, display: SCDisplay, excluding excluded: [SCWindow]) {
         Task {
             do {
-                let full = try await StillImageCapturer.capture(display: display, scale: scale, excluding: excluded)
+                let image = try await StillImageCapturer.capture(display: display,
+                                                                 scale: scale,
+                                                                 sourceRect: viewRect,
+                                                                 excluding: excluded)
                 await MainActor.run {
                     defer { LibraryWindowController.shared.restoreAfterCapture() }
-                    let pxRect = CGRect(x: viewRect.minX * scale,
-                                        y: viewRect.minY * scale,
-                                        width: viewRect.width * scale,
-                                        height: viewRect.height * scale).integral
-                    let imageBounds = CGRect(x: 0, y: 0, width: full.width, height: full.height)
-                    let clamped = pxRect.intersection(imageBounds)
-                    guard !clamped.isEmpty, let crop = full.cropping(to: clamped) else { return }
-                    CaptureOutput.deliver(cgImage: crop, scale: scale)
+                    CaptureOutput.deliver(cgImage: image, scale: scale)
                 }
             } catch {
                 NSLog("Still capture failed: \(error)")
@@ -467,6 +474,8 @@ final class OverlayController {
         escMonitors.removeAll()
         for provider in providers.values { provider.stop() }
         providers.removeAll()
+        providerDisplays.removeAll()
+        activeLoupeDisplayID = nil
         overlayWindows.removeAll()
         hitTester = nil
         for window in windows { window.orderOut(nil) }

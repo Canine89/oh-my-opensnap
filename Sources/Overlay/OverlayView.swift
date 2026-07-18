@@ -138,13 +138,10 @@ final class OverlayView: NSView {
             owner: self))
     }
 
-    override func mouseEntered(with event: NSEvent) {
-        // 진입 이벤트에도 실제 위치를 반영해야 첫 mouseMoved 전 (0,0) 크로스헤어가 안 보인다.
-        cursor = convert(event.locationInWindow, from: nil)
-        cursorInside = true
-        if !selectionLocked, !suppressed { updateHoveredWindow() }
-        needsDisplay = true
-    }
+    /// 이 디스플레이의 루페 스트림을 켜 달라고 컨트롤러에 알린다.
+    /// (커서가 있는 화면만 스트림해 CPU/GPU를 줄인다.)
+    var onBecomeActiveDisplay: (() -> Void)?
+
     override func mouseExited(with event: NSEvent) { cursorInside = false; needsDisplay = true }
 
     /// 오버레이가 막 떠서 아직 마우스 이벤트가 오기 전, 현재 커서 위치로 초기화한다.
@@ -155,13 +152,24 @@ final class OverlayView: NSView {
         guard bounds.contains(local) else { return }
         cursor = local
         cursorInside = true
+        onBecomeActiveDisplay?()
         updateHoveredWindow()
+        needsDisplay = true
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        // 진입 이벤트에도 실제 위치를 반영해야 첫 mouseMoved 전 (0,0) 크로스헤어가 안 보인다.
+        cursor = convert(event.locationInWindow, from: nil)
+        cursorInside = true
+        onBecomeActiveDisplay?()
+        if !selectionLocked, !suppressed { updateHoveredWindow() }
         needsDisplay = true
     }
 
     override func mouseMoved(with event: NSEvent) {
         cursor = convert(event.locationInWindow, from: nil)
         cursorInside = true
+        onBecomeActiveDisplay?()
         if selectionLocked {
             // 조정 단계에선 크로스헤어 대신 위치별 커서 모양으로 피드백한다.
             updateAdjustCursor(at: cursor)
@@ -895,9 +903,10 @@ final class OverlayView: NSView {
         NSColor(white: 0.12, alpha: 0.92).setFill()
         bg.fill()
 
-        // 라이브 픽셀
-        let centerX = Int((cursor.x * scale).rounded())
-        let centerY = Int((cursor.y * scale).rounded())
+        // 라이브 픽셀 — 스트림이 축소되어 있으면 bufferScale로 좌표를 맞춘다.
+        let sampleScale = provider?.bufferScale ?? scale
+        let centerX = Int((cursor.x * sampleScale).rounded())
+        let centerY = Int((cursor.y * sampleScale).rounded())
         if let buffer = provider?.latestBuffer(),
            let region = PixelSampling.sample(buffer, centerX: centerX, centerY: centerY, radius: loupeRadius) {
             ctx.saveGState()

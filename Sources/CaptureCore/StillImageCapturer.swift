@@ -6,18 +6,40 @@ import CoreGraphics
 enum StillImageCapturer {
     enum CaptureError: Error { case noImage }
 
-    /// 디스플레이 전체를 캡처한다. 선택 영역 crop은 호출 측에서 픽셀 단위로 수행.
-    /// (sourceRect 좌표 미묘함을 피하고 정확도를 우선 — 전체 캡처 후 crop)
-    static func capture(display: SCDisplay, scale: CGFloat, excluding: [SCWindow] = []) async throws -> CGImage {
+    /// 디스플레이의 일부(또는 전체)를 캡처한다.
+    /// `sourceRect`(디스플레이 좌상단 기준 point)가 있으면 그 영역만 요청하고,
+    /// 실패하거나 결과가 기대와 다르면 전체 캡처 후 crop으로 폴백한다.
+    static func capture(display: SCDisplay,
+                        scale: CGFloat,
+                        sourceRect: CGRect? = nil,
+                        excluding: [SCWindow] = []) async throws -> CGImage {
         let filter = SCContentFilter(display: display, excludingWindows: excluding)
 
-        let config = SCStreamConfiguration()
-        config.width = Int((CGFloat(display.width) * scale).rounded())
-        config.height = Int((CGFloat(display.height) * scale).rounded())
-        config.pixelFormat = kCVPixelFormatType_32BGRA
-        config.showsCursor = false
+        if let sourceRect, sourceRect.width > 2, sourceRect.height > 2 {
+            let integral = sourceRect.integral
+            if let cropped = try? await captureRegion(filter: filter, scale: scale, sourceRect: integral) {
+                let expectedW = Int((integral.width * scale).rounded())
+                let expectedH = Int((integral.height * scale).rounded())
+                // 허용 오차 2px — sourceRect 경로가 유효하면 그대로 반환.
+                if abs(cropped.width - expectedW) <= 2, abs(cropped.height - expectedH) <= 2 {
+                    return cropped
+                }
+            }
+        }
 
-        return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+        let full = try await captureFull(filter: filter, display: display, scale: scale)
+        guard let sourceRect, sourceRect.width > 2, sourceRect.height > 2 else { return full }
+
+        let pxRect = CGRect(x: sourceRect.minX * scale,
+                            y: sourceRect.minY * scale,
+                            width: sourceRect.width * scale,
+                            height: sourceRect.height * scale).integral
+        let bounds = CGRect(x: 0, y: 0, width: full.width, height: full.height)
+        let clamped = pxRect.intersection(bounds)
+        guard !clamped.isEmpty, let crop = full.cropping(to: clamped) else {
+            throw CaptureError.noImage
+        }
+        return crop
     }
 
     /// 단일 윈도우를 풀 픽셀 해상도로 캡처한다. 가려져 있어도 캡처된다.
@@ -35,5 +57,29 @@ enum StillImageCapturer {
 
         let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
         return (image, scale)
+    }
+
+    private static func captureRegion(filter: SCContentFilter,
+                                      scale: CGFloat,
+                                      sourceRect: CGRect) async throws -> CGImage {
+        let config = SCStreamConfiguration()
+        config.sourceRect = sourceRect
+        config.width = max(2, Int((sourceRect.width * scale).rounded()))
+        config.height = max(2, Int((sourceRect.height * scale).rounded()))
+        config.scalesToFit = false
+        config.pixelFormat = kCVPixelFormatType_32BGRA
+        config.showsCursor = false
+        return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+    }
+
+    private static func captureFull(filter: SCContentFilter,
+                                    display: SCDisplay,
+                                    scale: CGFloat) async throws -> CGImage {
+        let config = SCStreamConfiguration()
+        config.width = Int((CGFloat(display.width) * scale).rounded())
+        config.height = Int((CGFloat(display.height) * scale).rounded())
+        config.pixelFormat = kCVPixelFormatType_32BGRA
+        config.showsCursor = false
+        return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
     }
 }

@@ -3,21 +3,21 @@ name: macos-app-blueprint
 description: >
   새 macOS 유틸리티/메뉴바 앱을 oh-my-opensnap에서 검증된 스택으로 흔들림 없이 스캐폴딩하고
   개발하는 청사진. Swift 5 언어모드 + AppKit(코드 부트스트랩) + XcodeGen(project.yml) +
-  SPM + Sparkle 자동 업데이트 + 자체서명 코드서명(TCC 권한 유지). 사용 시점: "새 macOS 앱
-  시작/스캐폴딩", "메뉴바 앱 만들어줘", "macOS 데스크톱 앱 프로젝트 구성", "Swift 맥 앱
-  처음부터", "이 프로젝트처럼 새 앱" 같은 요청. 배포/릴리스/자동 업데이트 파이프라인 자체는
-  전역 스킬 mac-app-release로 위임한다.
+  SPM + Sparkle 자동 업데이트 + 안정적 코드서명(TCC 권한 유지; 이 저장소는 Developer ID+공증).
+  사용 시점: "새 macOS 앱 시작/스캐폴딩", "메뉴바 앱 만들어줘", "macOS 데스크톱 앱 프로젝트 구성",
+  "Swift 맥 앱 처음부터", "이 프로젝트처럼 새 앱" 같은 요청. 배포/릴리스/자동 업데이트 파이프라인
+  자체는 전역 스킬 mac-app-release로 위임한다(멤버십 있으면 Developer ID+공증 권장).
 ---
 
 # macOS 앱 청사진 (oh-my-opensnap 검증 스택)
 
 새 macOS 데스크톱/메뉴바 유틸리티를 **매번 다시 고민하지 말고** 이 기본형에서 출발한다.
-이 스킬은 oh-my-opensnap의 실제 구성(v1.0.60까지 운영)을 일반화한 것이다. "무엇을/왜"의 근거는
+이 스킬은 oh-my-opensnap의 실제 구성(v1.0.65까지 운영)을 일반화한 것이다. "무엇을/왜"의 근거는
 이 프로젝트 루트 `CLAUDE.md` §2를 함께 보라.
 
 > **역할 분담**
 > - **이 스킬** = 새 앱을 *개발*하기 위한 스택 선택 + 프로젝트 골격 + 아키텍처 패턴.
-> - **`mac-app-release` (전역 스킬)** = 빌드 *배포* + 자동 업데이트 파이프라인(자체서명·EdDSA·appcast·GitHub Release). 릴리스 단계는 그쪽 템플릿(`release.sh`/`make-signing-cert.sh`)을 쓴다.
+> - **`mac-app-release` (전역 스킬)** = 빌드 *배포* + 자동 업데이트 파이프라인. oh-my-opensnap 본가의 `scripts/release.sh`는 **Developer ID + 공증 + EdDSA appcast** 경로다. 멤버십이 없을 때만 스킬 템플릿의 자체서명 경로를 쓴다.
 
 ---
 
@@ -106,7 +106,7 @@ description: >
 
 5. **`xcodegen generate` → 빌드 확인.**
 
-6. **자동 업데이트/배포는 `mac-app-release` 스킬로** — 자체서명 인증서·EdDSA 키 1회 생성, `scripts/release.sh` 복사, `Info.plist`에 `SUPublicEDKey` 채우기.
+6. **자동 업데이트/배포는 `mac-app-release` + 이 저장소 `scripts/release.sh` 참고** — Developer ID·notarytool 프로필·EdDSA 키 1회 준비, `SUPublicEDKey` 채우기. TCC가 필요한 앱은 ad-hoc 금지.
 
 ---
 
@@ -124,7 +124,7 @@ description: >
 
 - `.xcodeproj`/`Config/Info.plist` 직접 편집 ❌ → `project.yml` 고치고 `xcodegen generate`.
 - `GENERATE_INFOPLIST_FILE` ❌ → Sparkle 커스텀 키 때문에 명시적 `Info.plist`.
-- ad-hoc 서명 ❌ → TCC 권한이 업데이트마다 풀린다. 고정 자체서명 인증서로(`mac-app-release` §A).
+- ad-hoc 서명 ❌ → TCC 권한이 업데이트마다 풀린다. Developer ID(권장) 또는 고정 자체서명으로 안정적 신원 유지.
 - 빌드 번호(`CURRENT_PROJECT_VERSION`) 고정 ❌ → Sparkle이 업데이트 감지 못 함.
 - 시크릿(`.p12`/EdDSA 개인키) 커밋 ❌ (`.gitignore`에 `*.p12`).
 - 숨은 앱 설정으로 권한 강요 ❌ → 표준 시스템 권한 UX.

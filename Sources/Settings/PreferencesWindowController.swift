@@ -1,25 +1,29 @@
 import AppKit
 
-/// 최소 환경설정 창: 파일 저장 토글 / 저장 폴더 / 사운드 토글.
+/// 환경설정 창: 단축키 / 사운드 / 로그인 실행 / 라이브러리 / 화면 녹화 권한.
 @MainActor
 final class PreferencesWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var pathLabel: NSTextField?
     private var recordButton: NSButton?
     private var launchAtLoginCheck: NSButton?
+    private var permissionStatusLabel: NSTextField?
+    private var permissionTimer: Timer?
     private var recordingMonitor: Any?
     private var isRecording = false
 
     func showWindow() {
         if window == nil { buildWindow() }
         refreshLaunchAtLoginState()
+        refreshPermissionStatus()
+        startPermissionMonitor()
         NSApp.activate(ignoringOtherApps: true)
         window?.center()
         window?.makeKeyAndOrderFront(nil)
     }
 
     private func buildWindow() {
-        let contentRect = NSRect(x: 0, y: 0, width: 440, height: 300)
+        let contentRect = NSRect(x: 0, y: 0, width: 480, height: 420)
         let window = NSWindow(contentRect: contentRect,
                               styleMask: [.titled, .closable],
                               backing: .buffered, defer: false)
@@ -52,6 +56,10 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
                                   target: self, action: #selector(toggleSound(_:)))
         soundCheck.state = Settings.shared.playSound ? .on : .off
 
+        let openLibraryCheck = NSButton(checkboxWithTitle: "캡처 후 라이브러리 자동으로 열기",
+                                        target: self, action: #selector(toggleOpenLibrary(_:)))
+        openLibraryCheck.state = Settings.shared.openLibraryAfterCapture ? .on : .off
+
         let launchAtLoginCheck = NSButton(checkboxWithTitle: "macOS 로그인 시 자동 실행",
                                           target: self, action: #selector(toggleLaunchAtLogin(_:)))
         launchAtLoginCheck.state = LaunchAtLoginController.isEnabled ? .on : .off
@@ -72,14 +80,48 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         folderRow.addArrangedSubview(resetButton)
         folderRow.addArrangedSubview(label)
 
+        let folderHint = NSTextField(wrappingLabelWithString: "새 설치의 기본 저장 위치는 Application Support입니다. 바탕화면 폴더가 이미 있으면 그대로 유지됩니다.")
+        folderHint.font = .systemFont(ofSize: 11)
+        folderHint.textColor = .tertiaryLabelColor
+
+        // 화면 녹화 권한
+        let permissionTitle = NSTextField(labelWithString: "화면 녹화 권한")
+        permissionTitle.font = .boldSystemFont(ofSize: 12)
+
+        let permissionStatus = NSTextField(labelWithString: "")
+        permissionStatus.font = .systemFont(ofSize: 12)
+        permissionStatusLabel = permissionStatus
+
+        let permissionRow = NSStackView()
+        permissionRow.orientation = .horizontal
+        permissionRow.spacing = 8
+        let openSettingsButton = NSButton(title: "시스템 설정 열기",
+                                          target: self, action: #selector(openScreenCaptureSettings))
+        openSettingsButton.bezelStyle = .rounded
+        let quitHintButton = NSButton(title: "설정 열고 앱 종료",
+                                      target: self, action: #selector(openSettingsAndQuit))
+        quitHintButton.bezelStyle = .rounded
+        permissionRow.addArrangedSubview(openSettingsButton)
+        permissionRow.addArrangedSubview(quitHintButton)
+
+        let permissionHint = NSTextField(wrappingLabelWithString: "권한을 켠 뒤에는 앱을 다시 실행해야 macOS가 반영하는 경우가 있습니다. 이미 켜져 있는데도 캡처가 막히면 토글을 한 번 끄고 다시 켠 뒤 재실행하세요.")
+        permissionHint.font = .systemFont(ofSize: 11)
+        permissionHint.textColor = .secondaryLabelColor
+
         let hint = NSTextField(wrappingLabelWithString: "윈도우 위에서 클릭하면 해당 윈도우를, 드래그하면 지정 영역을 캡처합니다(취소는 Esc 또는 우클릭). 캡처 이미지는 클립보드에 복사되고 위 저장 폴더에 보관됩니다.")
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
 
         stack.addArrangedSubview(shortcutRow)
         stack.addArrangedSubview(soundCheck)
+        stack.addArrangedSubview(openLibraryCheck)
         stack.addArrangedSubview(launchAtLoginCheck)
         stack.addArrangedSubview(folderRow)
+        stack.addArrangedSubview(folderHint)
+        stack.addArrangedSubview(permissionTitle)
+        stack.addArrangedSubview(permissionStatus)
+        stack.addArrangedSubview(permissionRow)
+        stack.addArrangedSubview(permissionHint)
         stack.addArrangedSubview(hint)
 
         let content = NSView(frame: contentRect)
@@ -91,6 +133,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         ])
         window.contentView = content
         self.window = window
+        refreshPermissionStatus()
     }
 
     private func currentShortcutString() -> String {
@@ -138,10 +181,15 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         stopRecording()
+        stopPermissionMonitor()
     }
 
     @objc private func toggleSound(_ sender: NSButton) {
         Settings.shared.playSound = (sender.state == .on)
+    }
+
+    @objc private func toggleOpenLibrary(_ sender: NSButton) {
+        Settings.shared.openLibraryAfterCapture = (sender.state == .on)
     }
 
     @objc private func toggleLaunchAtLogin(_ sender: NSButton) {
@@ -156,6 +204,39 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
 
     private func refreshLaunchAtLoginState() {
         launchAtLoginCheck?.state = LaunchAtLoginController.isEnabled ? .on : .off
+    }
+
+    private func startPermissionMonitor() {
+        stopPermissionMonitor()
+        permissionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.refreshPermissionStatus()
+            }
+        }
+    }
+
+    private func stopPermissionMonitor() {
+        permissionTimer?.invalidate()
+        permissionTimer = nil
+    }
+
+    private func refreshPermissionStatus() {
+        if ScreenCapturePermission.isGranted {
+            permissionStatusLabel?.stringValue = "상태: 허용됨"
+            permissionStatusLabel?.textColor = .systemGreen
+        } else {
+            permissionStatusLabel?.stringValue = "상태: 필요함 — 캡처 전에 시스템 설정에서 허용하세요"
+            permissionStatusLabel?.textColor = .systemOrange
+        }
+    }
+
+    @objc private func openScreenCaptureSettings() {
+        ScreenCapturePermission.openSystemSettings()
+    }
+
+    @objc private func openSettingsAndQuit() {
+        ScreenCapturePermission.openSystemSettings()
+        NSApp.terminate(nil)
     }
 
     private func showLaunchAtLoginError(_ error: Error) {

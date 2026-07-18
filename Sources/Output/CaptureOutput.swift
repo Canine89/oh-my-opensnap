@@ -3,28 +3,34 @@ import AppKit
 /// 캡처 결과를 클립보드에 복사하고(핵심 기능), 저장 폴더에 보관 + HUD 표시.
 @MainActor
 enum CaptureOutput {
+    private static let encodeQueue = DispatchQueue(label: "com.goldenrabbit.ohmyopensnap.capture-encode",
+                                                   qos: .userInitiated)
+
     static func deliver(cgImage: CGImage, scale: CGFloat) {
         // 논리 크기(point)를 지정해 붙여넣기 시 올바른 크기로 들어가게 한다.
         let logicalSize = NSSize(width: CGFloat(cgImage.width) / scale,
                                  height: CGFloat(cgImage.height) / scale)
         let image = NSImage(cgImage: cgImage, size: logicalSize)
 
-        let pngData = pngDataPreservingAlpha(from: cgImage, logicalSize: logicalSize)
-
-        copyToClipboard(pngData: pngData)
-
-        if let pngData {
-            // 저장 폴더(기본: 바탕화면/oh-my-opensnap, 설정에서 변경 가능)에 보관
-            CaptureLibrary.shared.save(pngData: pngData, date: Date())
-            // 캡처 완료 → 라이브러리 자동 열기 (방금 캡처한 최신 항목을 선택해 보여줌)
-            LibraryWindowController.shared.showWindowSelectingLatest()
-        }
-
         if Settings.shared.playSound {
             NSSound(named: NSSound.Name("Pop"))?.play()
         }
-
         ThumbnailHUD.show(image)
+
+        // PNG 인코딩은 메인 밖에서 — 큰 Retina 캡처에서 짧은 멈춤을 피한다.
+        let openLibrary = Settings.shared.openLibraryAfterCapture
+        encodeQueue.async {
+            let pngData = pngDataPreservingAlpha(from: cgImage, logicalSize: logicalSize)
+            DispatchQueue.main.async {
+                copyToClipboard(pngData: pngData)
+                if let pngData {
+                    CaptureLibrary.shared.save(pngData: pngData, date: Date())
+                    if openLibrary {
+                        LibraryWindowController.shared.showWindowSelectingLatest()
+                    }
+                }
+            }
+        }
     }
 
     private static func copyToClipboard(pngData: Data?) {

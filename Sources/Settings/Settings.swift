@@ -8,6 +8,7 @@ final class Settings {
 
     private enum Keys {
         static let playSound = "playSound"
+        static let openLibraryAfterCapture = "openLibraryAfterCapture"
         static let libraryDirectory = "libraryDirectoryPath"
         static let hotKeyCode = "hotKeyCode"
         static let hotKeyModifiers = "hotKeyModifiers"
@@ -36,8 +37,18 @@ final class Settings {
         set { defaults.set(newValue, forKey: Keys.playSound) }
     }
 
-    /// 캡처본 저장(라이브러리) 폴더. 기본값은 바탕화면/oh-my-opensnap,
-    /// 사용자가 직접 고르면 그 폴더로 바뀐다.
+    /// 캡처 직후 라이브러리 창을 자동으로 열지. 기본값 true(기존 동작).
+    var openLibraryAfterCapture: Bool {
+        get {
+            defaults.object(forKey: Keys.openLibraryAfterCapture) == nil
+                ? true
+                : defaults.bool(forKey: Keys.openLibraryAfterCapture)
+        }
+        set { defaults.set(newValue, forKey: Keys.openLibraryAfterCapture) }
+    }
+
+    /// 캡처본 저장(라이브러리) 폴더.
+    /// 기본값은 Application Support(바탕화면 TCC 회피). 이미 바탕화면 폴더가 있으면 그걸 유지한다.
     var libraryDirectory: URL {
         get {
             if let path = defaults.string(forKey: Keys.libraryDirectory) {
@@ -53,15 +64,28 @@ final class Settings {
         defaults.string(forKey: Keys.libraryDirectory) != nil
     }
 
-    /// 저장 폴더를 기본값(바탕화면/oh-my-opensnap)으로 되돌린다.
+    /// 저장 폴더를 기본값으로 되돌린다.
     func resetLibraryDirectory() {
         defaults.removeObject(forKey: Keys.libraryDirectory)
     }
 
-    /// 기본 저장 폴더: 바탕화면/oh-my-opensnap.
+    /// 신규 설치: Application Support/oh-my-opensnap.
+    /// 기존에 바탕화면 라이브러리가 있으면 그대로 써서 캡처본이 사라지지 않게 한다.
     static var defaultLibraryDirectory: URL {
-        let base = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+        let desktop = (FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser)
+            .appendingPathComponent(Brand.folderName, isDirectory: true)
+        if FileManager.default.fileExists(atPath: desktop.path) {
+            return desktop
+        }
+        return preferredLibraryDirectory
+    }
+
+    /// 바탕화면 TCC를 피한 권장 기본 경로.
+    static var preferredLibraryDirectory: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
         return base.appendingPathComponent(Brand.folderName, isDirectory: true)
     }
 }

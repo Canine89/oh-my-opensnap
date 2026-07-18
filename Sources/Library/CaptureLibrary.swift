@@ -28,8 +28,8 @@ extension Notification.Name {
     static let libraryDidChange = Notification.Name("com.goldenrabbit.appresizer.libraryDidChange")
 }
 
-/// 캡처본을 바탕화면 `oh-my-opensnap` 폴더에 영구 보관하고 목록을 제공한다.
-/// 사용자의 '저장 폴더' 옵션과는 별개의 라이브러리 저장소.
+/// 캡처본을 라이브러리 폴더에 영구 보관하고 목록을 제공한다.
+/// 기본 경로는 Application Support(신규 설치). 기존 바탕화면 폴더가 있으면 그걸 유지한다.
 ///
 /// ⚠️ macOS 26(Tahoe)에서 바탕화면은 TCC 보호 폴더라, 첫 접근 시 "바탕화면 접근"
 /// 동의창이 뜬다. 이 동의 검사는 호출 스레드를 블로킹하므로, **모든 디스크 I/O를
