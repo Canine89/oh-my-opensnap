@@ -6,18 +6,21 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.64</title>
-      <pubDate>Sat, 11 Jul 2026 02:08:30 +0000</pubDate>
-      <sparkle:version>65</sparkle:version>
-      <sparkle:shortVersionString>1.0.64</sparkle:shortVersionString>
+      <title>1.0.65</title>
+      <pubDate>Sat, 18 Jul 2026 05:46:12 +0000</pubDate>
+      <sparkle:version>66</sparkle:version>
+      <sparkle:shortVersionString>1.0.65</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.64</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.65</h2>
 <ul>
-<li>선택 기능인 브라우저 영역 정밀 감지를 위해 접근성 권한 창을 반복해서 띄우지 않도록 수정</li>
-<li>화면 녹화 시스템 권한 창과 앱 자체 안내창이 한 번에 연달아 표시되지 않도록 수정</li>
-<li>업데이트 실패 후 Sparkle 확인 주기를 복구해 다음 자동/수동 업데이트를 다시 시도할 수 있도록 개선</li>
+<li>설정 창에 화면 녹화 권한 상태를 표시하고, 시스템 설정으로 바로 이동할 수 있게 개선</li>
+<li>화면 녹화 권한 허용 직후 단축키를 다시 누르지 않아도 캡처가 이어지도록 폴링 추가</li>
+<li>캡처 후 라이브러리 자동 열기를 설정에서 끌 수 있게 추가</li>
+<li>신규 설치의 기본 저장 폴더를 Application Support로 바꿔 바탕화면 접근 권한 요청을 줄임(기존 바탕화면 폴더는 유지)</li>
+<li>루페용 화면 스트림을 축소·저fps로 바꾸고, 커서가 있는 디스플레이만 스트림해 캡처 모드 부하를 줄임</li>
+<li>영역 이미지 캡처에 sourceRect 경로를 쓰고, PNG 인코딩을 메인 스레드 밖으로 옮겨 캡처 직후 멈춤을 완화</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.64.zip" type="application/octet-stream" sparkle:edSignature="9rnulH4EdxfBpZ6sS4hMNarMgszcPXtqQfBEh5lCL/1AhA1dTXPrRwYzJV3yERaadi+3QcsIGtCN3g+Go5QrCQ==" length="3471744" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.65.zip" type="application/octet-stream" sparkle:edSignature="NqcrHJKZ08/Mn+CXwkQa7Ww9a6OJ7r9aLXcQq+bWDmkJvs5zZnFgifvPdpSopiZjfRkGnQAvACZNDMmRJgfvBA==" length="3480323" />
     </item>
   </channel>
 </rss>
