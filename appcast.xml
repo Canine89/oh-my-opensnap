@@ -6,21 +6,18 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.65</title>
-      <pubDate>Sat, 18 Jul 2026 05:46:12 +0000</pubDate>
-      <sparkle:version>66</sparkle:version>
-      <sparkle:shortVersionString>1.0.65</sparkle:shortVersionString>
+      <title>1.0.66</title>
+      <pubDate>Wed, 22 Jul 2026 13:39:37 +0000</pubDate>
+      <sparkle:version>67</sparkle:version>
+      <sparkle:shortVersionString>1.0.66</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.65</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.66</h2>
 <ul>
-<li>설정 창에 화면 녹화 권한 상태를 표시하고, 시스템 설정으로 바로 이동할 수 있게 개선</li>
-<li>화면 녹화 권한 허용 직후 단축키를 다시 누르지 않아도 캡처가 이어지도록 폴링 추가</li>
-<li>캡처 후 라이브러리 자동 열기를 설정에서 끌 수 있게 추가</li>
-<li>신규 설치의 기본 저장 폴더를 Application Support로 바꿔 바탕화면 접근 권한 요청을 줄임(기존 바탕화면 폴더는 유지)</li>
-<li>루페용 화면 스트림을 축소·저fps로 바꾸고, 커서가 있는 디스플레이만 스트림해 캡처 모드 부하를 줄임</li>
-<li>영역 이미지 캡처에 sourceRect 경로를 쓰고, PNG 인코딩을 메인 스레드 밖으로 옮겨 캡처 직후 멈춤을 완화</li>
+<li>화면 녹화 권한 안내창이 다른 앱 뒤에 가려지지 않고 항상 앞에 표시되도록 수정</li>
+<li>예전 저장 폴더 이관 시 PNG 외 파일(gif/영상 등)이 남아 있으면 폴더를 삭제하지 않도록 안전화</li>
+<li>라이브러리 저장 경로 처리 내부 안정성 개선</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.65.zip" type="application/octet-stream" sparkle:edSignature="NqcrHJKZ08/Mn+CXwkQa7Ww9a6OJ7r9aLXcQq+bWDmkJvs5zZnFgifvPdpSopiZjfRkGnQAvACZNDMmRJgfvBA==" length="3480323" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.66.zip" type="application/octet-stream" sparkle:edSignature="/3aVWZIfpbCjDDBn1sEmduvwnV/AqoE97KKH1hbLGJnsQ8K7gYHYFqkIiSZx2ePt+ny4X2kWCnW95e2nN7G4Aw==" length="3480429" />
     </item>
   </channel>
 </rss>
