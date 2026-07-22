@@ -10,6 +10,7 @@ final class Settings {
         static let playSound = "playSound"
         static let openLibraryAfterCapture = "openLibraryAfterCapture"
         static let libraryDirectory = "libraryDirectoryPath"
+        static let libraryDirectoryBookmark = "libraryDirectoryBookmark"
         static let hotKeyCode = "hotKeyCode"
         static let hotKeyModifiers = "hotKeyModifiers"
     }
@@ -51,13 +52,73 @@ final class Settings {
     /// 기본값은 Application Support(바탕화면 TCC 회피). 이미 바탕화면 폴더가 있으면 그걸 유지한다.
     var libraryDirectory: URL {
         get {
+            #if MAS
+            return masLibraryDirectory()
+            #else
             if let path = defaults.string(forKey: Keys.libraryDirectory) {
                 return URL(fileURLWithPath: path, isDirectory: true)
             }
             return Self.defaultLibraryDirectory
+            #endif
         }
-        set { defaults.set(newValue.path, forKey: Keys.libraryDirectory) }
+        set {
+            defaults.set(newValue.path, forKey: Keys.libraryDirectory)
+            #if MAS
+            bookmarkLock.lock()
+            defer { bookmarkLock.unlock() }
+            if let data = try? newValue.bookmarkData(options: .withSecurityScope,
+                                                    includingResourceValuesForKeys: nil,
+                                                    relativeTo: nil) {
+                defaults.set(data, forKey: Keys.libraryDirectoryBookmark)
+            } else {
+                defaults.removeObject(forKey: Keys.libraryDirectoryBookmark)
+            }
+            scopedLibraryURL?.stopAccessingSecurityScopedResource()
+            scopedLibraryURL = resolveLibraryBookmarkLocked()
+            didResolveBookmark = true
+            #endif
+        }
     }
+
+    #if MAS
+    // 샌드박스: 컨테이너 밖 폴더는 security-scoped bookmark로만 접근이 유지된다.
+    // 이 getter는 캡처 저장(ioQueue)과 설정 창(메인)에서 동시에 불리므로
+    // 북마크 상태는 전부 bookmarkLock 아래에서만 만진다.
+    private let bookmarkLock = NSLock()
+    /// 현재 security scope를 연 채 유지 중인 URL. 앱 수명 동안 접근을 붙잡아 둔다.
+    private var scopedLibraryURL: URL?
+    private var didResolveBookmark = false
+
+    private func masLibraryDirectory() -> URL {
+        bookmarkLock.lock()
+        defer { bookmarkLock.unlock() }
+        if !didResolveBookmark {
+            scopedLibraryURL = resolveLibraryBookmarkLocked()
+            didResolveBookmark = true
+        }
+        if let url = scopedLibraryURL { return url }
+        // 북마크가 없거나 해석 실패(폴더 삭제·볼륨 분리 등): 저장된 raw path는
+        // 샌드박스에서 접근 불가이므로 항상 컨테이너 기본 폴더로 폴백한다.
+        return Self.defaultLibraryDirectory
+    }
+
+    /// bookmarkLock을 잡은 상태에서만 호출. 북마크를 해석해 scope를 열고 URL을 돌려준다.
+    private func resolveLibraryBookmarkLocked() -> URL? {
+        guard let data = defaults.data(forKey: Keys.libraryDirectoryBookmark) else { return nil }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: data,
+                                 options: .withSecurityScope,
+                                 relativeTo: nil,
+                                 bookmarkDataIsStale: &stale),
+              url.startAccessingSecurityScopedResource() else { return nil }
+        if stale, let fresh = try? url.bookmarkData(options: .withSecurityScope,
+                                                    includingResourceValuesForKeys: nil,
+                                                    relativeTo: nil) {
+            defaults.set(fresh, forKey: Keys.libraryDirectoryBookmark)
+        }
+        return url
+    }
+    #endif
 
     /// 사용자가 폴더를 직접 지정했는지.
     var hasCustomLibraryDirectory: Bool {
@@ -67,6 +128,14 @@ final class Settings {
     /// 저장 폴더를 기본값으로 되돌린다.
     func resetLibraryDirectory() {
         defaults.removeObject(forKey: Keys.libraryDirectory)
+        #if MAS
+        bookmarkLock.lock()
+        defer { bookmarkLock.unlock() }
+        defaults.removeObject(forKey: Keys.libraryDirectoryBookmark)
+        scopedLibraryURL?.stopAccessingSecurityScopedResource()
+        scopedLibraryURL = nil
+        didResolveBookmark = true
+        #endif
     }
 
     /// 신규 설치: Application Support/oh-my-opensnap.

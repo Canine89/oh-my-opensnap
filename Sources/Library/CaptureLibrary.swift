@@ -122,7 +122,12 @@ final class CaptureLibrary {
                 let date = (try? old.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()
                 try? fm.moveItem(at: old, to: uniqueURL(for: date))
             }
-            try? fm.removeItem(at: legacy)
+            // PNG 외 파일(gif/mp4, 사용자가 넣어둔 것)이 남아 있으면 폴더를 지우지 않는다.
+            let remaining = ((try? fm.contentsOfDirectory(atPath: legacy.path)) ?? [])
+                .filter { $0 != ".DS_Store" }
+            if remaining.isEmpty {
+                try? fm.removeItem(at: legacy)
+            }
         }
     }
 

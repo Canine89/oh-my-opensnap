@@ -7,6 +7,8 @@ xcuserdata/
 # XcodeGen 생성물 (project.yml 에서 재생성)
 oh-my-opensnap.xcodeproj/
 Config/Info.plist
+Config/Info-MAS.plist
+Config/OhMyOpenSnap-MAS.entitlements
 
 # 배포 산출물
 dist/

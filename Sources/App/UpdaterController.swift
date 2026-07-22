@@ -1,3 +1,4 @@
+#if !MAS
 import AppKit
 import Sparkle
 
@@ -81,3 +82,4 @@ final class UpdaterController: NSObject, SPUUpdaterDelegate {
             || title.contains("new version")
     }
 }
+#endif

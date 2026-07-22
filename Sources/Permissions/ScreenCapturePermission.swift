@@ -38,6 +38,8 @@ enum PermissionAlert {
         alert.alertStyle = .informational
         alert.addButton(withTitle: "설정 열고 앱 종료")
         alert.addButton(withTitle: "취소")
+        // accessory 앱은 활성화하지 않으면 알림창이 다른 앱 뒤에 묻힌다.
+        NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn {
             ScreenCapturePermission.openSystemSettings()
             NSApp.terminate(nil)
