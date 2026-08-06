@@ -69,4 +69,43 @@ enum PixelSampling {
 
         return SampledRegion(image: image, centerColor: centerColor)
     }
+
+    /// 정지 화면(CGImage)에서 커서 주변 정사각형 영역을 잘라낸다.
+    /// 좌표는 CGImage와 같은 좌상단 원점 픽셀 좌표. 화면 밖으로 나간 부분은 비워 둔다.
+    static func sample(_ image: CGImage, centerX: Int, centerY: Int, radius: Int) -> SampledRegion? {
+        let side = radius * 2 + 1
+        let dstStride = side * 4
+        // 메모리 순서 BGRA == little-endian 32bit ARGB(premultipliedFirst) — 스트림 경로와 동일.
+        let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+        guard let ctx = CGContext(data: nil,
+                                  width: side,
+                                  height: side,
+                                  bitsPerComponent: 8,
+                                  bytesPerRow: dstStride,
+                                  space: image.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: bitmapInfo)
+        else { return nil }
+        ctx.interpolationQuality = .none
+
+        let requested = CGRect(x: centerX - radius, y: centerY - radius, width: side, height: side)
+        let visible = requested.intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        if !visible.isEmpty, let piece = image.cropping(to: visible) {
+            // 컨텍스트는 좌하단 원점이라 위에서 잰 오프셋을 아래 기준으로 뒤집는다.
+            let insetTop = visible.minY - requested.minY
+            ctx.draw(piece, in: CGRect(x: visible.minX - requested.minX,
+                                       y: CGFloat(side) - insetTop - visible.height,
+                                       width: visible.width,
+                                       height: visible.height))
+        }
+
+        guard let data = ctx.data else { return nil }
+        let pixels = data.assumingMemoryBound(to: UInt8.self)
+        let centerOffset = radius * dstStride + radius * 4
+        let centerColor = (r: pixels[centerOffset + 2],
+                           g: pixels[centerOffset + 1],
+                           b: pixels[centerOffset + 0])
+
+        guard let region = ctx.makeImage() else { return nil }
+        return SampledRegion(image: region, centerColor: centerColor)
+    }
 }

@@ -23,7 +23,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     }
 
     private func buildWindow() {
-        let contentRect = NSRect(x: 0, y: 0, width: 480, height: 420)
+        let contentRect = NSRect(x: 0, y: 0, width: 480, height: 456)
         let window = NSWindow(contentRect: contentRect,
                               styleMask: [.titled, .closable],
                               backing: .buffered, defer: false)
@@ -59,6 +59,11 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         let openLibraryCheck = NSButton(checkboxWithTitle: "캡처 후 라이브러리 자동으로 열기",
                                         target: self, action: #selector(toggleOpenLibrary(_:)))
         openLibraryCheck.state = Settings.shared.openLibraryAfterCapture ? .on : .off
+
+        let freezeCheck = NSButton(checkboxWithTitle: "캡처 모드에서 화면 정지",
+                                   target: self, action: #selector(toggleFreezeScreen(_:)))
+        freezeCheck.state = Settings.shared.freezeScreenDuringCapture ? .on : .off
+        freezeCheck.toolTip = "캡처 모드에 들어간 순간의 화면에서 영역을 고르고, 그 화면을 그대로 저장합니다."
 
         let launchAtLoginCheck = NSButton(checkboxWithTitle: "macOS 로그인 시 자동 실행",
                                           target: self, action: #selector(toggleLaunchAtLogin(_:)))
@@ -115,6 +120,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         stack.addArrangedSubview(shortcutRow)
         stack.addArrangedSubview(soundCheck)
         stack.addArrangedSubview(openLibraryCheck)
+        stack.addArrangedSubview(freezeCheck)
         stack.addArrangedSubview(launchAtLoginCheck)
         stack.addArrangedSubview(folderRow)
         stack.addArrangedSubview(folderHint)
@@ -190,6 +196,10 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
 
     @objc private func toggleOpenLibrary(_ sender: NSButton) {
         Settings.shared.openLibraryAfterCapture = (sender.state == .on)
+    }
+
+    @objc private func toggleFreezeScreen(_ sender: NSButton) {
+        Settings.shared.freezeScreenDuringCapture = (sender.state == .on)
     }
 
     @objc private func toggleLaunchAtLogin(_ sender: NSButton) {

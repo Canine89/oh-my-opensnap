@@ -2,7 +2,7 @@ import AppKit
 import ApplicationServices
 import ScreenCaptureKit
 
-/// 디밍 + 크로스헤어 + 라이브 확대경(루페) + 선택 사각형 + 윈도우 하이라이트를 그리는 뷰.
+/// 디밍 + 크로스헤어 + 확대경(루페) + 선택 사각형 + 윈도우 하이라이트를 그리는 뷰.
 /// `isFlipped == true`라 좌상단 기준 point 좌표를 쓴다(픽셀 좌표와 동일 방향).
 ///
 /// 인터랙션 분기:
@@ -30,12 +30,16 @@ final class OverlayView: NSView {
         let window: SCWindow
         let rect: CGRect
         let fullRect: CGRect
+        let displayID: CGDirectDisplayID
     }
 
     // OverlayController가 주입
     var scale: CGFloat = 1
     var displayID: CGDirectDisplayID = 0
     var cgOrigin: CGPoint = .zero          // 이 디스플레이의 CG 전역 좌상단 원점(point)
+    /// 캡처 모드 진입 순간의 정지 화면. 있으면 루페도 라이브 스트림 대신 여기서 샘플링해
+    /// 배경(정지)과 확대경(라이브)이 서로 다른 프레임을 보여 주는 일이 없게 한다.
+    var frozenImage: CGImage?
     weak var provider: DisplayStreamProvider?
     weak var hitTester: WindowHitTester?
     var onFinish: ((CGRect) -> Void)?
@@ -330,7 +334,8 @@ final class OverlayView: NSView {
         else { return nil }
         return WindowSelection(window: windowSelection.window,
                                rect: selection,
-                               fullRect: windowSelection.fullRect)
+                               fullRect: windowSelection.fullRect,
+                               displayID: displayID)
     }
 
     /// 조정 단계라면 현재 선택으로 캡처를 확정한다. (⏎ 모니터/키 입력에서 호출)
@@ -402,7 +407,7 @@ final class OverlayView: NSView {
         let clipped = rect.intersection(bounds)
         let clippedFull = full.intersection(bounds)
         guard contains(clippedFull, clipped) else { return nil }
-        return WindowSelection(window: window, rect: clipped, fullRect: clippedFull)
+        return WindowSelection(window: window, rect: clipped, fullRect: clippedFull, displayID: displayID)
     }
 
     private func contains(_ outer: CGRect, _ inner: CGRect, tolerance: CGFloat = 1.5) -> Bool {
@@ -691,8 +696,9 @@ final class OverlayView: NSView {
     }
 
     /// 타이머가 호출 — 커서가 멈춰 있어도 루페 픽셀을 갱신.
+    /// 정지 화면에서는 커서가 움직일 때만 픽셀이 바뀌므로(마우스 이벤트가 이미 무효화한다) 건너뛴다.
     func refreshLoupe() {
-        guard cursorInside, loupeDirtyFrame != .zero else { return }
+        guard frozenImage == nil, cursorInside, loupeDirtyFrame != .zero else { return }
         setNeedsDisplay(loupeDirtyFrame)
     }
 
@@ -903,12 +909,19 @@ final class OverlayView: NSView {
         NSColor(white: 0.12, alpha: 0.92).setFill()
         bg.fill()
 
-        // 라이브 픽셀 — 스트림이 축소되어 있으면 bufferScale로 좌표를 맞춘다.
-        let sampleScale = provider?.bufferScale ?? scale
+        // 정지 화면은 풀 해상도 그대로, 라이브 스트림은 축소되어 있으므로 bufferScale로 좌표를 맞춘다.
+        let sampleScale = frozenImage != nil ? scale : (provider?.bufferScale ?? scale)
         let centerX = Int((cursor.x * sampleScale).rounded())
         let centerY = Int((cursor.y * sampleScale).rounded())
-        if let buffer = provider?.latestBuffer(),
-           let region = PixelSampling.sample(buffer, centerX: centerX, centerY: centerY, radius: loupeRadius) {
+        let sampled: SampledRegion?
+        if let frozenImage {
+            sampled = PixelSampling.sample(frozenImage, centerX: centerX, centerY: centerY, radius: loupeRadius)
+        } else if let buffer = provider?.latestBuffer() {
+            sampled = PixelSampling.sample(buffer, centerX: centerX, centerY: centerY, radius: loupeRadius)
+        } else {
+            sampled = nil
+        }
+        if let region = sampled {
             ctx.saveGState()
             bg.addClip()
             // flipped 뷰에서 CGContext.draw는 상하 반전되므로, flip을 처리해 주는 NSImage로 그린다.

@@ -16,6 +16,8 @@ final class OverlayController {
 
     private var windows: [OverlayWindow] = []
     private var choiceHUD: CaptureChoiceHUD?
+    /// 캡처 모드에 들어간 순간의 디스플레이별 정지 화면. 오버레이 배경 + 확정 시 잘라낼 원본이다.
+    private var snapshots: [CGDirectDisplayID: DisplaySnapshot] = [:]
     private var providers: [CGDirectDisplayID: DisplayStreamProvider] = [:]
     private var providerDisplays: [CGDirectDisplayID: SCDisplay] = [:]
     private var activeLoupeDisplayID: CGDirectDisplayID?
@@ -56,13 +58,27 @@ final class OverlayController {
         let tester = WindowHitTester(content: content)
         hitTester = tester
 
+        var targets: [(screen: NSScreen, display: SCDisplay, scale: CGFloat)] = []
         for screen in NSScreen.screens {
-            let displayID = screen.displayID
-            guard let scDisplay = content.displays.first(where: { $0.displayID == displayID }) else { continue }
-            let scale = screen.backingScaleFactor
+            guard let scDisplay = content.displays.first(where: { $0.displayID == screen.displayID }) else { continue }
+            targets.append((screen, scDisplay, screen.backingScaleFactor))
+        }
 
-            let window = OverlayWindow(screen: screen)
+        // 오버레이가 올라오기 전에 정지 화면을 먼저 찍는다. 이 순서라야 오버레이 자신이 스냅샷에 찍히지 않는다.
+        if Settings.shared.freezeScreenDuringCapture {
+            snapshots = await Self.captureSnapshots(targets.map { (display: $0.display, scale: $0.scale) })
+        }
+
+        for target in targets {
+            let screen = target.screen
+            let scDisplay = target.display
+            let scale = target.scale
+            let displayID = scDisplay.displayID
+            let snapshot = snapshots[displayID]
+
+            let window = OverlayWindow(screen: screen, frozenImage: snapshot?.image)
             let view = window.captureView
+            view.frozenImage = snapshot?.image
             view.scale = scale
             view.displayID = displayID
             view.cgOrigin = CGDisplayBounds(displayID).origin   // CG 전역 좌상단 원점(point)
@@ -139,10 +155,13 @@ final class OverlayController {
                 self?.activateLoupe(for: displayID)
             }
 
-            let provider = DisplayStreamProvider(displayID: displayID, scale: scale)
-            view.provider = provider
-            providers[displayID] = provider
-            providerDisplays[displayID] = scDisplay
+            // 정지 화면이 있으면 루페도 그 스냅샷에서 읽으므로 라이브 스트림을 아예 켜지 않는다.
+            if snapshot == nil {
+                let provider = DisplayStreamProvider(displayID: displayID, scale: scale)
+                view.provider = provider
+                providers[displayID] = provider
+                providerDisplays[displayID] = scDisplay
+            }
             windows.append(window)
         }
 
@@ -176,6 +195,30 @@ final class OverlayController {
             MainActor.assumeIsolated {
                 self?.windows.forEach { $0.captureView.tick() }
             }
+        }
+    }
+
+    /// 각 디스플레이의 정지 화면을 병렬로 찍는다. 실패한 디스플레이는 빠지고 라이브 동작으로 폴백한다.
+    private static func captureSnapshots(_ targets: [(display: SCDisplay, scale: CGFloat)]) async
+        -> [CGDirectDisplayID: DisplaySnapshot] {
+        await withTaskGroup(of: (CGDirectDisplayID, DisplaySnapshot)?.self) { group in
+            for target in targets {
+                group.addTask {
+                    do {
+                        let image = try await StillImageCapturer.capture(display: target.display, scale: target.scale)
+                        return (target.display.displayID, DisplaySnapshot(image: image, scale: target.scale))
+                    } catch {
+                        NSLog("Freeze snapshot failed for display \(target.display.displayID): \(error)")
+                        return nil
+                    }
+                }
+            }
+            var result: [CGDirectDisplayID: DisplaySnapshot] = [:]
+            for await entry in group {
+                guard let entry else { continue }
+                result[entry.0] = entry.1
+            }
+            return result
         }
     }
 
@@ -232,25 +275,14 @@ final class OverlayController {
     private func finishStillImage(viewRect: CGRect, scale: CGFloat, display: SCDisplay) {
         // 너무 작은 선택은 취소로 간주
         guard viewRect.width > 2, viewRect.height > 2 else { cancel(); return }
-        let excluded = overlayWindows        // teardown 전에 제외 목록을 확보
+        let excluded = overlayWindows                    // teardown 전에 제외 목록/정지 화면을 확보
+        let snapshot = snapshots[display.displayID]
         teardown()
-
-        Task {
-            do {
-                let image = try await StillImageCapturer.capture(display: display,
-                                                                 scale: scale,
-                                                                 sourceRect: viewRect,
-                                                                 excluding: excluded)
-                await MainActor.run {
-                    // 스틸 픽셀을 다 읽은 뒤에만 라이브러리 창을 되돌린다(자르기 실패 경로 포함).
-                    defer { LibraryWindowController.shared.restoreAfterCapture() }
-                    CaptureOutput.deliver(cgImage: image, scale: scale)
-                }
-            } catch {
-                NSLog("Still capture failed: \(error)")
-                await MainActor.run { LibraryWindowController.shared.restoreAfterCapture() }
-            }
-        }
+        captureStillImage(viewRect: viewRect,
+                          scale: scale,
+                          display: display,
+                          excluding: excluded,
+                          snapshot: snapshot)
     }
 
     private func finishVideo(viewRect: CGRect, scale: CGFloat, display: SCDisplay, displayID: CGDirectDisplayID) {
@@ -278,6 +310,7 @@ final class OverlayController {
                                       displayID: CGDirectDisplayID,
                                       overlayWindow: OverlayWindow) {
         let excluded = overlayWindows
+        let snapshot = snapshots[displayID]
         let anchor = screenRect(for: viewRect, in: overlayWindow)
         teardown()
         presentChoice(anchor: anchor,
@@ -285,7 +318,8 @@ final class OverlayController {
                           self?.captureStillImage(viewRect: viewRect,
                                                   scale: scale,
                                                   display: display,
-                                                  excluding: excluded)
+                                                  excluding: excluded,
+                                                  snapshot: snapshot)
                       },
                       videoAction: { [weak self] in
                           self?.startVideo(viewRect: viewRect,
@@ -311,9 +345,10 @@ final class OverlayController {
                                    onImage: { [weak self, weak view] in
                                        guard let self else { return }
                                        self.choiceHUD = nil
+                                       let snapshot = self.snapshots[displayID]
                                        if let windowSelection = view?.currentWindowSelection {
                                            self.teardown()
-                                           self.captureWindowSelection(windowSelection)
+                                           self.captureWindowSelection(windowSelection, snapshot: snapshot)
                                            return
                                        }
                                        guard let rect = view?.currentSelection else { self.cancel(); return }
@@ -322,7 +357,8 @@ final class OverlayController {
                                        self.captureStillImage(viewRect: rect,
                                                               scale: scale,
                                                               display: display,
-                                                              excluding: excluded)
+                                                              excluding: excluded,
+                                                              snapshot: snapshot)
                                    },
                                    onVideo: { [weak self, weak view] in
                                        guard let self else { return }
@@ -350,11 +386,12 @@ final class OverlayController {
                                         displayID: CGDirectDisplayID,
                                         overlayWindow: OverlayWindow) {
         let excluded = overlayWindows
+        let snapshot = snapshots[windowSelection.displayID]
         let anchor = screenRect(for: windowSelection.rect, in: overlayWindow)
         teardown()
         presentChoice(anchor: anchor,
                       imageAction: { [weak self] in
-                          self?.captureWindowSelection(windowSelection)
+                          self?.captureWindowSelection(windowSelection, snapshot: snapshot)
                       },
                       videoAction: { [weak self] in
                           self?.startVideo(viewRect: windowSelection.rect,
@@ -383,7 +420,18 @@ final class OverlayController {
         hud.show()
     }
 
-    private func captureStillImage(viewRect: CGRect, scale: CGFloat, display: SCDisplay, excluding excluded: [SCWindow]) {
+    private func captureStillImage(viewRect: CGRect,
+                                   scale: CGFloat,
+                                   display: SCDisplay,
+                                   excluding excluded: [SCWindow],
+                                   snapshot: DisplaySnapshot?) {
+        // 정지 화면이 있으면 진입 순간의 픽셀을 그대로 잘라 쓴다 — 화면에서 조준한 프레임이 저장된다.
+        if let snapshot, let crop = snapshot.crop(viewRect: viewRect) {
+            defer { LibraryWindowController.shared.restoreAfterCapture() }
+            CaptureOutput.deliver(cgImage: crop, scale: snapshot.scale)
+            return
+        }
+
         Task {
             do {
                 let image = try await StillImageCapturer.capture(display: display,
@@ -420,7 +468,14 @@ final class OverlayController {
         }
     }
 
-    private func captureWindowSelection(_ selection: OverlayView.WindowSelection) {
+    private func captureWindowSelection(_ selection: OverlayView.WindowSelection, snapshot: DisplaySnapshot?) {
+        // 정지 화면이 있으면 오버레이에서 하이라이트로 보여 준 픽셀을 그대로 잘라낸다.
+        if let snapshot, let crop = snapshot.crop(viewRect: selection.rect) {
+            defer { LibraryWindowController.shared.restoreAfterCapture() }
+            CaptureOutput.deliver(cgImage: crop, scale: snapshot.scale)
+            return
+        }
+
         Task {
             do {
                 let result = try await StillImageCapturer.captureWindow(selection.window)
@@ -454,8 +509,9 @@ final class OverlayController {
     }
 
     private func finishWindowSelection(_ selection: OverlayView.WindowSelection) {
+        let snapshot = snapshots[selection.displayID]
         teardown()
-        captureWindowSelection(selection)
+        captureWindowSelection(selection, snapshot: snapshot)
     }
 
     private func cancel() {
@@ -474,6 +530,7 @@ final class OverlayController {
         escMonitors.removeAll()
         for provider in providers.values { provider.stop() }
         providers.removeAll()
+        snapshots.removeAll()        // 풀 해상도 스냅샷을 세션 밖으로 들고 있지 않는다
         providerDisplays.removeAll()
         activeLoupeDisplayID = nil
         overlayWindows.removeAll()

@@ -9,6 +9,7 @@ final class Settings {
     private enum Keys {
         static let playSound = "playSound"
         static let openLibraryAfterCapture = "openLibraryAfterCapture"
+        static let freezeScreenDuringCapture = "freezeScreenDuringCapture"
         static let libraryDirectory = "libraryDirectoryPath"
         static let libraryDirectoryBookmark = "libraryDirectoryBookmark"
         static let hotKeyCode = "hotKeyCode"
@@ -46,6 +47,17 @@ final class Settings {
                 : defaults.bool(forKey: Keys.openLibraryAfterCapture)
         }
         set { defaults.set(newValue, forKey: Keys.openLibraryAfterCapture) }
+    }
+
+    /// 캡처 모드에 들어간 순간의 화면을 정지시켜, 멈춘 화면에서 영역을 고르고 그 픽셀을 저장할지.
+    /// 기본값 true(영상 재생 중에도 조준한 프레임이 그대로 캡처된다).
+    var freezeScreenDuringCapture: Bool {
+        get {
+            defaults.object(forKey: Keys.freezeScreenDuringCapture) == nil
+                ? true
+                : defaults.bool(forKey: Keys.freezeScreenDuringCapture)
+        }
+        set { defaults.set(newValue, forKey: Keys.freezeScreenDuringCapture) }
     }
 
     /// 캡처본 저장(라이브러리) 폴더.
