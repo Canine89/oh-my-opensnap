@@ -6,18 +6,19 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.66</title>
-      <pubDate>Wed, 22 Jul 2026 13:39:37 +0000</pubDate>
-      <sparkle:version>67</sparkle:version>
-      <sparkle:shortVersionString>1.0.66</sparkle:shortVersionString>
+      <title>1.0.67</title>
+      <pubDate>Thu, 06 Aug 2026 15:05:07 +0000</pubDate>
+      <sparkle:version>68</sparkle:version>
+      <sparkle:shortVersionString>1.0.67</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.66</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.67</h2>
 <ul>
-<li>화면 녹화 권한 안내창이 다른 앱 뒤에 가려지지 않고 항상 앞에 표시되도록 수정</li>
-<li>예전 저장 폴더 이관 시 PNG 외 파일(gif/영상 등)이 남아 있으면 폴더를 삭제하지 않도록 안전화</li>
-<li>라이브러리 저장 경로 처리 내부 안정성 개선</li>
+<li>캡처 모드에 들어가면 그 순간의 화면을 정지시켜, 뒤에서 영상이 재생 중이어도 멈춘 화면에서 영역을 고를 수 있게 개선</li>
+<li>정지 화면에서 고른 영역을 그대로 저장 — 조준한 프레임과 저장된 프레임이 달라지지 않음</li>
+<li>확대경(루페)도 정지 화면에서 읽어 배경과 같은 프레임을 보여 주고, 캡처 중 화면 스트림을 켜지 않아 부하 감소</li>
+<li>설정에 "캡처 모드에서 화면 정지" 항목 추가(기본 켜짐, 끄면 기존처럼 라이브 화면에서 캡처)</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.66.zip" type="application/octet-stream" sparkle:edSignature="/3aVWZIfpbCjDDBn1sEmduvwnV/AqoE97KKH1hbLGJnsQ8K7gYHYFqkIiSZx2ePt+ny4X2kWCnW95e2nN7G4Aw==" length="3480429" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.67.zip" type="application/octet-stream" sparkle:edSignature="z1lcTYYBzk9zladiKl9Y0fR+bkk827FXUc/07enABwLbiqGZ3+NCH2hCiOWh/nheJ18VudHFQig8NGGoB5kXDQ==" length="3490173" />
     </item>
   </channel>
 </rss>
