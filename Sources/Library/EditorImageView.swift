@@ -1,12 +1,12 @@
 import AppKit
 
 /// 라이브러리 미리보기 겸 간단 편집 뷰.
-/// 도구: 크롭(핸들 방식) / 번호(➊–➒) / 텍스트 / 말풍선 / 화살표 / 사각형 / 원. 좌상단 원점(isFlipped).
+/// 도구: 크롭(핸들 방식) / 중간 잘라내기 / 번호(➊–➒) / 텍스트 / 말풍선 / 화살표 / 사각형 / 원. 좌상단 원점(isFlipped).
 /// 좌표는 이미지 픽셀과 1:1 (캡처 PNG는 72dpi라 size(point) == 픽셀).
 /// ⌘Z 되돌리기는 스냅샷 스택으로 크롭 포함 모든 편집에 적용된다.
 final class EditorImageView: NSView {
 
-    enum Tool { case none, crop, number, text, callout, arrow, rectangle, ellipse, mosaic }
+    enum Tool { case none, crop, middleCut, number, text, callout, arrow, rectangle, ellipse, mosaic }
 
     struct Annotation {
         enum Kind { case number(Int), text(String), callout(String), arrow, rectangle, ellipse, mosaic }
@@ -74,6 +74,12 @@ final class EditorImageView: NSView {
         let annotations: [Annotation]
         let nextNumber: Int
         let cropRect: CGRect?      // 크롭 범위도 되돌림 대상
+    }
+
+    private struct MiddleCutSelection {
+        let axis: MiddleCutAxis
+        let lower: CGFloat
+        let upper: CGFloat
     }
 
     // MARK: 공개 상태
@@ -290,7 +296,7 @@ final class EditorImageView: NSView {
             dragStart = point
             dragCurrent = point
             needsDisplay = true
-        case .arrow, .rectangle, .ellipse, .mosaic:
+        case .middleCut, .arrow, .rectangle, .ellipse, .mosaic:
             dragStart = point
             dragCurrent = point
         case .none:
@@ -313,7 +319,7 @@ final class EditorImageView: NSView {
             // Shift: 사각형/원은 1:1, 화살표는 45° 단위로 반듯하게. 말풍선은 자유 배치.
             dragCurrent = (tool != .callout && event.modifierFlags.contains(.shift)) ? constrained(from: start, to: point) : point
             needsDisplay = true
-        case .mosaic:
+        case .middleCut, .mosaic:
             guard dragStart != nil else { return }
             dragCurrent = point
             needsDisplay = true
@@ -352,6 +358,11 @@ final class EditorImageView: NSView {
             showTextEditor(for: PendingTextAnnotation(kind: .callout, start: start, end: end,
                                                       color: strokeColor, width: strokeWidth,
                                                       calloutBubble: bubble))
+        case .middleCut:
+            defer { dragStart = nil; dragCurrent = nil; needsDisplay = true }
+            guard let start = dragStart else { return }
+            let end = clamp(convert(event.locationInWindow, from: nil))
+            applyMiddleCut(from: start, to: end)
         case .mosaic:
             defer { dragStart = nil; dragCurrent = nil }
             guard let start = dragStart else { return }
@@ -449,6 +460,71 @@ final class EditorImageView: NSView {
         pushUndo()
         replaceImage(NSImage(cgImage: cropped, size: pxRect.size), annotations: [], nextNumber: 1)
         onEditCommitted?()      // 크롭 결과를 라이브러리 파일에 반영
+    }
+
+    // MARK: 중간 잘라내기
+    /// 직선 좌우 드래그는 세로 띠, 직선 상하 드래그는 가로 띠를 제거한다.
+    /// 영역으로 드래그하면 가로로 긴 선택은 가로 띠, 세로로 긴 선택은 세로 띠로 판정한다.
+    /// 제거된 두 조각은 서로 당기되 최대 24px의 투명 간격을 남긴다.
+    private func applyMiddleCut(from start: CGPoint, to end: CGPoint) {
+        guard tool == .middleCut, let source = renderedCGImage() else { return }
+        let selection = middleCutSelection(from: start, to: end)
+        let axis = selection.axis
+        let sourceWidth = source.width
+        let sourceHeight = source.height
+
+        let axisLength: Int
+        switch axis {
+        case .verticalStrip:
+            axisLength = sourceWidth
+        case .horizontalStrip:
+            axisLength = sourceHeight
+        }
+
+        let cutStart = max(0, min(axisLength, Int(floor(selection.lower))))
+        let cutEnd = max(0, min(axisLength, Int(ceil(selection.upper))))
+        let removedLength = cutEnd - cutStart
+        // 짧은 실수 드래그와 한쪽 조각이 전혀 남지 않는 선택은 적용하지 않는다.
+        guard removedLength >= 12, cutStart > 0, cutEnd < axisLength else { return }
+
+        let transparentGap = min(24, max(6, Int((CGFloat(removedLength) * 0.12).rounded())))
+        guard let result = MiddleCutRenderer.makeImage(source: source, axis: axis,
+                                                       cutStart: cutStart, cutEnd: cutEnd,
+                                                       transparentGap: transparentGap) else { return }
+        pushUndo()
+        replaceImage(result, annotations: [], nextNumber: 1)
+        onEditCommitted?()
+    }
+
+    private func middleCutSelection(from start: CGPoint, to end: CGPoint) -> MiddleCutSelection {
+        let dx = abs(end.x - start.x)
+        let dy = abs(end.y - start.y)
+        let axis: MiddleCutAxis
+        if dx >= 12, dy >= 12 {
+            // 사각 영역 선택: 긴 변의 방향이 곧 사용자가 없애려는 띠의 방향이다.
+            axis = dx >= dy ? .horizontalStrip : .verticalStrip
+        } else {
+            // 거의 직선인 기존 제스처: 두 끝점 사이 구간을 제거한다.
+            axis = dx >= dy ? .verticalStrip : .horizontalStrip
+        }
+        switch axis {
+        case .verticalStrip:
+            return MiddleCutSelection(axis: axis, lower: min(start.x, end.x), upper: max(start.x, end.x))
+        case .horizontalStrip:
+            return MiddleCutSelection(axis: axis, lower: min(start.y, end.y), upper: max(start.y, end.y))
+        }
+    }
+
+    private func middleCutRect(from start: CGPoint, to end: CGPoint) -> CGRect {
+        let selection = middleCutSelection(from: start, to: end)
+        switch selection.axis {
+        case .verticalStrip:
+            return CGRect(x: selection.lower, y: 0,
+                          width: selection.upper - selection.lower, height: bounds.height)
+        case .horizontalStrip:
+            return CGRect(x: 0, y: selection.lower,
+                          width: bounds.width, height: selection.upper - selection.lower)
+        }
     }
 
     private func handlePoints(_ rect: CGRect) -> [(Handle, CGPoint)] {
@@ -699,6 +775,8 @@ final class EditorImageView: NSView {
 
     // MARK: 그리기
     override func draw(_ dirtyRect: NSRect) {
+        Self.transparencyPattern.setFill()
+        dirtyRect.fill()
         backingImage?.draw(in: bounds)
         for (index, annotation) in annotations.enumerated() where index != pendingTextAnnotation?.editingIndex {
             draw(annotation)
@@ -738,6 +816,8 @@ final class EditorImageView: NSView {
                 let border = NSBezierPath(rect: rect)
                 border.lineWidth = 1 / zoomScale
                 border.stroke()
+            case .middleCut:
+                drawMiddleCutOverlay(middleCutRect(from: start, to: current))
             default:
                 break
             }
@@ -1204,6 +1284,31 @@ final class EditorImageView: NSView {
             outline.stroke()
         }
     }
+
+    private func drawMiddleCutOverlay(_ rect: CGRect) {
+        guard !rect.isEmpty else { return }
+        Brand.red.withAlphaComponent(0.32).setFill()
+        rect.fill()
+
+        let border = NSBezierPath(rect: rect)
+        border.lineWidth = 2 / zoomScale
+        border.setLineDash([7 / zoomScale, 5 / zoomScale], count: 2, phase: 0)
+        NSColor.white.withAlphaComponent(0.95).setStroke()
+        border.stroke()
+    }
+
+    /// 알파가 있는 구간을 편집 화면에서 알아볼 수 있게 하는 체크무늬. 결과 PNG에는 포함되지 않는다.
+    private static let transparencyPattern: NSColor = {
+        let tile = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
+            NSColor(white: 0.88, alpha: 1).setFill()
+            rect.fill()
+            NSColor(white: 0.78, alpha: 1).setFill()
+            CGRect(x: 0, y: 0, width: 8, height: 8).fill()
+            CGRect(x: 8, y: 8, width: 8, height: 8).fill()
+            return true
+        }
+        return NSColor(patternImage: tile)
+    }()
 
     // MARK: 유틸
     private func distanceFromPoint(_ point: CGPoint, toSegmentFrom start: CGPoint, to end: CGPoint) -> CGFloat {

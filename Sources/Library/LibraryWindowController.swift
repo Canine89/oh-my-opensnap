@@ -23,7 +23,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
                                                       target: self, action: #selector(toolChanged(_:)))
 
     // 편집 도구 (세그먼트 인덱스 → 도구)
-    private let tools: [EditorImageView.Tool] = [.none, .crop, .number, .text, .callout, .arrow, .rectangle, .ellipse, .mosaic]
+    private let tools: [EditorImageView.Tool] = [.none, .crop, .middleCut, .number, .text, .callout, .arrow, .rectangle, .ellipse, .mosaic]
 
     private var items: [LibraryItem] = []
     private var selectedItem: LibraryItem?
@@ -277,9 +277,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             return b
         }
 
-        // 편집 도구: 포인터 / 크롭 / 번호 / 텍스트 / 말풍선 / 화살표 / 사각형 / 원 / 모자이크
-        let symbols = ["cursorarrow", "crop", "number.circle", "textformat", "bubble.left", "arrow.up.right", "rectangle", "circle", "square.grid.3x3.fill"]
-        let tips = ["선택", "크롭 (드래그 후 ⏎ 적용)", "번호 ➊–➒", "텍스트", "말풍선", "화살표", "사각형", "원", "모자이크 (드래그)"]
+        // 편집 도구: 포인터 / 크롭 / 중간 잘라내기 / 번호 / 텍스트 / 말풍선 / 화살표 / 사각형 / 원 / 모자이크
+        let symbols = ["cursorarrow", "crop", "rectangle.compress.vertical", "number.circle", "textformat", "bubble.left", "arrow.up.right", "rectangle", "circle", "square.grid.3x3.fill"]
+        let tips = ["선택", "크롭 (드래그 후 ⏎ 적용)", "중간 잘라내기 (없앨 가로/세로 영역을 드래그)", "번호 ➊–➒", "텍스트", "말풍선", "화살표", "사각형", "원", "모자이크 (드래그)"]
         toolControl.segmentCount = symbols.count
         for (i, symbol) in symbols.enumerated() {
             toolControl.setImage(NSImage(systemSymbolName: symbol, accessibilityDescription: tips[i]), forSegment: i)
@@ -468,13 +468,14 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         switch tool {
         case .none: toolControl.selectedSegment = -1
         case .crop: toolControl.selectedSegment = 1
-        case .number: toolControl.selectedSegment = 2
-        case .text: toolControl.selectedSegment = 3
-        case .callout: toolControl.selectedSegment = 4
-        case .arrow: toolControl.selectedSegment = 5
-        case .rectangle: toolControl.selectedSegment = 6
-        case .ellipse: toolControl.selectedSegment = 7
-        case .mosaic: toolControl.selectedSegment = 8
+        case .middleCut: toolControl.selectedSegment = 2
+        case .number: toolControl.selectedSegment = 3
+        case .text: toolControl.selectedSegment = 4
+        case .callout: toolControl.selectedSegment = 5
+        case .arrow: toolControl.selectedSegment = 6
+        case .rectangle: toolControl.selectedSegment = 7
+        case .ellipse: toolControl.selectedSegment = 8
+        case .mosaic: toolControl.selectedSegment = 9
         }
     }
 
