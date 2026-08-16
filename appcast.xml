@@ -6,19 +6,19 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.67</title>
-      <pubDate>Thu, 06 Aug 2026 15:05:07 +0000</pubDate>
-      <sparkle:version>68</sparkle:version>
-      <sparkle:shortVersionString>1.0.67</sparkle:shortVersionString>
+      <title>1.0.68</title>
+      <pubDate>Sun, 16 Aug 2026 23:34:11 +0000</pubDate>
+      <sparkle:version>69</sparkle:version>
+      <sparkle:shortVersionString>1.0.68</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.67</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.68</h2>
 <ul>
-<li>캡처 모드에 들어가면 그 순간의 화면을 정지시켜, 뒤에서 영상이 재생 중이어도 멈춘 화면에서 영역을 고를 수 있게 개선</li>
-<li>정지 화면에서 고른 영역을 그대로 저장 — 조준한 프레임과 저장된 프레임이 달라지지 않음</li>
-<li>확대경(루페)도 정지 화면에서 읽어 배경과 같은 프레임을 보여 주고, 캡처 중 화면 스트림을 켜지 않아 부하 감소</li>
-<li>설정에 "캡처 모드에서 화면 정지" 항목 추가(기본 켜짐, 끄면 기존처럼 라이브 화면에서 캡처)</li>
+<li>라이브러리에 중간 잘라내기 도구 추가: 좌우 또는 상하로 드래그한 띠를 제거하고 양쪽 이미지 사이에 투명 간격을 남김</li>
+<li>가로로 긴 영역 선택이 세로 절단으로 잘못 판정되던 방향 감지를 수정</li>
+<li>중간 잘라내기 결과를 즉시 라이브러리 PNG와 썸네일에 반영하고 `⌘Z` 되돌리기 지원</li>
+<li>영역 선택 크기 라벨을 그릴 때 폰트 예외로 앱이 안내 없이 종료되던 문제 수정</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.67.zip" type="application/octet-stream" sparkle:edSignature="z1lcTYYBzk9zladiKl9Y0fR+bkk827FXUc/07enABwLbiqGZ3+NCH2hCiOWh/nheJ18VudHFQig8NGGoB5kXDQ==" length="3490173" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.68.zip" type="application/octet-stream" sparkle:edSignature="WOeosvDBU7uNfhPCUVS/GwIUmtEXqMVP/oX5aaSWFy0mLJ1FLY6jQxfsJU8aDqk/TMJG3mImNWeLvFvTx4ghCA==" length="3493251" />
     </item>
   </channel>
 </rss>
