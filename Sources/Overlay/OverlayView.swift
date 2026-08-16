@@ -968,10 +968,7 @@ final class OverlayView: NSView {
     }
 
     private func drawReadout(_ text: String, below frame: CGRect, swatch: (r: UInt8, g: UInt8, b: UInt8)) {
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium),
-            .foregroundColor: NSColor.white
-        ]
+        let attributes = overlayLabelAttributes(weight: .medium)
         let textOrigin = CGPoint(x: frame.minX + 18, y: frame.maxY + 6)
         (text as NSString).draw(at: textOrigin, withAttributes: attributes)
 
@@ -987,12 +984,8 @@ final class OverlayView: NSView {
     private func drawDimensionLabel(for sel: CGRect) {
         let widthPx = Int((sel.width * scale).rounded())
         let heightPx = Int((sel.height * scale).rounded())
-        let text = "\(widthPx) × \(heightPx)" as NSString
-
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold),
-            .foregroundColor: NSColor.white
-        ]
+        let text = "\(widthPx) x \(heightPx)" as NSString
+        let attributes = overlayLabelAttributes(weight: .semibold)
         let textSize = text.size(withAttributes: attributes)
         let padding: CGFloat = 5
         var pill = CGRect(x: sel.minX,
@@ -1005,5 +998,20 @@ final class OverlayView: NSView {
         NSColor(white: 0, alpha: 0.75).setFill()
         pillPath.fill()
         text.draw(at: CGPoint(x: pill.minX + padding, y: pill.minY + padding), withAttributes: attributes)
+    }
+
+    /// `monospacedSystemFont`는 일부 macOS에서 CT 속성에 nil 폰트를 남겨
+    /// `sizeWithAttributes` / `draw` 중 프로세스가 abort 된다. 실재하는 서체만 쓴다.
+    private func overlayLabelAttributes(weight: NSFont.Weight) -> [NSAttributedString.Key: Any] {
+        [
+            .font: overlayLabelFont(ofSize: 11, weight: weight),
+            .foregroundColor: NSColor.white
+        ]
+    }
+
+    private func overlayLabelFont(ofSize size: CGFloat, weight: NSFont.Weight) -> NSFont {
+        let bold = weight.rawValue >= NSFont.Weight.semibold.rawValue
+        let named = NSFont(name: bold ? "Menlo-Bold" : "Menlo", size: size)
+        return named ?? NSFont.systemFont(ofSize: size, weight: weight)
     }
 }
