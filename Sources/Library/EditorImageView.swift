@@ -2,7 +2,7 @@ import AppKit
 
 /// 라이브러리 미리보기 겸 간단 편집 뷰.
 /// 도구: 크롭(핸들 방식) / 중간 잘라내기 / 번호(➊–➒) / 텍스트 / 말풍선 / 화살표 / 사각형 / 원. 좌상단 원점(isFlipped).
-/// 좌표는 이미지 픽셀과 1:1 (캡처 PNG는 72dpi라 size(point) == 픽셀).
+/// 좌표는 이미지 픽셀과 1:1. 로드 시 DPI 메타데이터와 무관하게 실제 픽셀 크기로 정규화한다.
 /// ⌘Z 되돌리기는 스냅샷 스택으로 크롭 포함 모든 편집에 적용된다.
 final class EditorImageView: NSView {
 
@@ -173,16 +173,31 @@ final class EditorImageView: NSView {
     // MARK: 이미지 로드/교체
     private func load(_ image: NSImage?) {
         cancelActiveTextField()
-        backingImage = image
+        backingImage = pixelSizedImage(image)
         annotations.removeAll()
         selectedAnnotationIndex = nil
         nextNumber = 1
         undoStack.removeAll()
-        cropRect = (tool == .crop) ? CGRect(origin: .zero, size: image?.size ?? .zero) : nil
-        if let size = image?.size { setFrameSize(size) }
+        cropRect = (tool == .crop) ? CGRect(origin: .zero, size: backingImage?.size ?? .zero) : nil
+        if let size = backingImage?.size { setFrameSize(size) }
         onImageChanged?()
         notifyCropProgress()
         needsDisplay = true
+    }
+
+    /// PNG의 DPI 메타데이터가 Retina 캡처의 논리 크기(point)를 가리킬 수 있다.
+    /// 에디터는 이미지 좌표를 곧 출력 픽셀로 쓰므로, 여기서 실제 CGImage 픽셀 크기로 맞춘다.
+    /// 그렇지 않으면 재복사 시 2x 캡처가 절반 해상도 캔버스에 다시 그려진다.
+    private func pixelSizedImage(_ image: NSImage?) -> NSImage? {
+        guard let image,
+              let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else { return image }
+
+        let pixelSize = NSSize(width: cg.width, height: cg.height)
+        guard abs(image.size.width - pixelSize.width) > 0.01
+                || abs(image.size.height - pixelSize.height) > 0.01
+        else { return image }
+        return NSImage(cgImage: cg, size: pixelSize)
     }
 
     private func replaceImage(_ image: NSImage?, annotations: [Annotation], nextNumber: Int) {

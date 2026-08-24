@@ -9,6 +9,23 @@ enum ScreenGeometry {
     static func screen(for displayID: CGDirectDisplayID) -> NSScreen? {
         NSScreen.screens.first { $0.displayID == displayID }
     }
+
+    /// AppKit 전역 원점이 있는 메인 화면 높이(point). AX 좌표를 CG 좌표로 뒤집을 때 쓴다.
+    static var primaryHeight: CGFloat {
+        (NSScreen.screens.first { $0.frame.origin == .zero } ?? NSScreen.main)?.frame.height ?? 0
+    }
+
+    /// AX/AppKit 전역 좌표(좌하단 원점, y 위) → CG 전역 좌표(좌상단 원점, y 아래).
+    static func cgRect(fromAX rect: CGRect, primaryHeight: CGFloat) -> CGRect {
+        CGRect(x: rect.origin.x,
+               y: primaryHeight - rect.origin.y - rect.height,
+               width: rect.width,
+               height: rect.height)
+    }
+
+    static func frameDelta(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        abs(a.minX - b.minX) + abs(a.minY - b.minY) + abs(a.width - b.width) + abs(a.height - b.height)
+    }
 }
 
 extension NSScreen {

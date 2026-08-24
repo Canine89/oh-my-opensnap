@@ -14,8 +14,8 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "5.0"            # Swift 5 language mode: AppKit/콜백 코드 안정성 우선
-    MARKETING_VERSION: "1.0.68"
-    CURRENT_PROJECT_VERSION: "69"
+    MARKETING_VERSION: "1.0.69"
+    CURRENT_PROJECT_VERSION: "70"
     SWIFT_STRICT_CONCURRENCY: minimal
     DEAD_CODE_STRIPPING: YES
 
@@ -33,7 +33,7 @@ targets:
       path: Config/Info.plist
       properties:
         LSUIElement: true                              # 메뉴바 상주, Dock 아이콘 숨김
-        CFBundleDisplayName: oh-my-opensnap
+        CFBundleDisplayName: Open Capture Record
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
@@ -70,7 +70,7 @@ targets:
       path: Config/Info-MAS.plist
       properties:
         LSUIElement: true
-        CFBundleDisplayName: oh-my-opensnap
+        CFBundleDisplayName: Open Capture Record
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
@@ -86,8 +86,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.goldenrabbit.ohmyopensnap.mas
-        # Finder/Applications에 보이는 이름. 무료판과 같은 이름이지만 타깃별로 빌드하므로 충돌 없음.
-        PRODUCT_NAME: oh-my-opensnap
+        # Finder/Applications에 보이는 Mac App Store용 앱 이름.
+        PRODUCT_NAME: Open Capture Record
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_APP_SANDBOX: YES

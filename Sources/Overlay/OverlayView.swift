@@ -13,11 +13,6 @@ import ScreenCaptureKit
 ///   바깥 드래그로 새 선택, ⏎(Return)/더블클릭으로 캡처 확정
 final class OverlayView: NSView {
 
-    private struct ContentCandidate {
-        let rect: CGRect
-        let score: CGFloat
-    }
-
     private struct HoverCache {
         let windowID: CGWindowID
         let globalFrame: CGRect
@@ -452,46 +447,47 @@ final class OverlayView: NSView {
     }
 
     private func contentRect(for window: SCWindow, localFullRect: CGRect) -> CGRect {
-        let topInset = chromeTopInset(for: window, windowHeight: localFullRect.height)
-        guard topInset > 0, localFullRect.height - topInset >= 40 else { return localFullRect }
-        return CGRect(x: localFullRect.minX,
-                      y: localFullRect.minY + topInset,
-                      width: localFullRect.width,
-                      height: localFullRect.height - topInset)
+        Self.contentRect(from: localFullRect, topInset: fallbackChromeTopInset(for: window, windowHeight: localFullRect.height))
+    }
+
+    private static func contentRect(from fullRect: CGRect, topInset: CGFloat) -> CGRect {
+        guard topInset > 0, fullRect.height - topInset >= 40 else { return fullRect }
+        return CGRect(x: fullRect.minX,
+                      y: fullRect.minY + topInset,
+                      width: fullRect.width,
+                      height: fullRect.height - topInset)
     }
 
     private func scheduleAccessibilityRefinement(for candidate: WindowCandidate, localFullRect: CGRect) {
         let windowID = candidate.scWindow.windowID
         guard pendingAccessibilityWindowID != windowID,
-              let pid = candidate.scWindow.owningApplication?.processID
+              let pid = candidate.scWindow.owningApplication?.processID,
+              AXIsProcessTrusted()
         else { return }
 
         pendingAccessibilityWindowID = windowID
         let globalFrame = candidate.cgFrame
         let globalCursor = CGPoint(x: cgOrigin.x + cursor.x, y: cgOrigin.y + cursor.y)
-        let localOrigin = cgOrigin
+        let primaryHeight = ScreenGeometry.primaryHeight
 
         accessibilityQueue.async { [weak self] in
-            let precise = self?.accessibilityContentRect(pid: pid,
-                                                         globalFullRect: globalFrame,
-                                                         globalCursor: globalCursor)
+            let inset = WindowChromeDetector.topInset(pid: pid,
+                                                      windowFrame: globalFrame,
+                                                      cursor: globalCursor,
+                                                      primaryHeight: primaryHeight)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 if self.pendingAccessibilityWindowID == windowID {
                     self.pendingAccessibilityWindowID = nil
                 }
-                guard let precise,
+                guard let inset,
                       let cache = self.hoverCache,
                       cache.windowID == windowID,
                       cache.globalFrame == globalFrame
                 else { return }
 
-                let localPrecise = CGRect(x: precise.minX - localOrigin.x,
-                                          y: precise.minY - localOrigin.y,
-                                          width: precise.width,
-                                          height: precise.height)
-                    .intersection(localFullRect)
-                guard localPrecise.width >= 40, localPrecise.height >= 40 else { return }
+                let localPrecise = Self.contentRect(from: localFullRect, topInset: inset)
+                guard localPrecise.height >= 40 else { return }
 
                 self.hoverCache = HoverCache(windowID: windowID,
                                              globalFrame: globalFrame,
@@ -506,144 +502,7 @@ final class OverlayView: NSView {
         }
     }
 
-    private func accessibilityContentRect(pid: pid_t, globalFullRect: CGRect, globalCursor: CGPoint) -> CGRect? {
-        guard AXIsProcessTrusted() else {
-            // 접근성 정보는 브라우저 콘텐츠 영역을 더 정밀하게 잡기 위한 선택 기능이다.
-            // 캡처 자체에는 필요하지 않으므로 시스템 권한 prompt를 자동으로 띄우지 않는다.
-            NSLog("Accessibility permission is not trusted; falling back to browser chrome heuristic")
-            return nil
-        }
-
-        let app = AXUIElementCreateApplication(pid)
-        guard let axWindow = matchingAXWindow(in: app, fullRect: globalFullRect),
-              let candidate = bestContentCandidate(in: axWindow, fullRect: globalFullRect, cursor: globalCursor)
-        else { return nil }
-
-        return candidate.rect
-    }
-
-    private func matchingAXWindow(in app: AXUIElement, fullRect: CGRect) -> AXUIElement? {
-        guard let windows = axElements(app, attribute: kAXWindowsAttribute) else { return nil }
-        if let matched = (windows
-            .compactMap { element -> (AXUIElement, CGFloat)? in
-                guard let rect = axRect(element) else { return nil }
-                let dx = abs(rect.minX - fullRect.minX)
-                let dy = abs(rect.minY - fullRect.minY)
-                let dw = abs(rect.width - fullRect.width)
-                let dh = abs(rect.height - fullRect.height)
-                return (element, dx + dy + dw + dh)
-            }
-            .filter { $0.1 < 160 }
-            .min { $0.1 < $1.1 }?
-            .0) {
-            return matched
-        }
-
-        return axElement(app, attribute: kAXFocusedWindowAttribute)
-            ?? axElement(app, attribute: kAXMainWindowAttribute)
-            ?? windows.first
-    }
-
-    private func bestContentCandidate(in root: AXUIElement, fullRect: CGRect, cursor: CGPoint) -> ContentCandidate? {
-        var bestContaining: ContentCandidate?
-        var bestOverall: ContentCandidate?
-        walkAX(root, depth: 0, maxDepth: 14) { element in
-            guard let role = axString(element, attribute: kAXRoleAttribute),
-                  let roleWeight = contentRoleWeight(role),
-                  let rect = axRect(element),
-                  let candidate = scoreContentRect(rect, roleWeight: roleWeight, fullRect: fullRect, cursor: cursor)
-            else { return }
-
-            if bestOverall == nil || candidate.score > bestOverall!.score {
-                bestOverall = candidate
-            }
-            if candidate.rect.contains(cursor), (bestContaining == nil || candidate.score > bestContaining!.score) {
-                bestContaining = candidate
-            }
-        }
-        return bestContaining ?? bestOverall
-    }
-
-    private func contentRoleWeight(_ role: String) -> CGFloat? {
-        switch role {
-        case "AXWebArea": return 120
-        case kAXScrollAreaRole: return 100
-        case kAXTableRole, kAXOutlineRole, kAXBrowserRole, kAXListRole: return 88
-        case kAXSplitGroupRole: return 64
-        case kAXGroupRole: return 40
-        default: return nil
-        }
-    }
-
-    private func scoreContentRect(_ rect: CGRect, roleWeight: CGFloat, fullRect: CGRect, cursor: CGPoint) -> ContentCandidate? {
-        let clipped = rect.intersection(fullRect)
-        guard clipped.width >= 120, clipped.height >= 80 else { return nil }
-
-        let fullArea = fullRect.width * fullRect.height
-        guard fullArea > 0 else { return nil }
-        let areaRatio = (clipped.width * clipped.height) / fullArea
-        guard areaRatio >= 0.10, areaRatio <= 0.98 else { return nil }
-
-        let topInset = clipped.minY - fullRect.minY
-        let removesTopChrome = topInset >= 24 ? CGFloat(45) : CGFloat(-35)
-        let cursorBonus = clipped.contains(cursor) ? CGFloat(80) : CGFloat(0)
-        let sizeScore = min(1, areaRatio) * 55
-        let leftPenalty = max(0, clipped.minX - fullRect.minX) > fullRect.width * 0.45 ? CGFloat(45) : CGFloat(0)
-
-        let score = roleWeight + removesTopChrome + cursorBonus + sizeScore - leftPenalty
-        return ContentCandidate(rect: clipped, score: score)
-    }
-
-    private func walkAX(_ element: AXUIElement, depth: Int, maxDepth: Int, visit: (AXUIElement) -> Void) {
-        guard depth <= maxDepth else { return }
-        visit(element)
-        guard let children = axElements(element, attribute: kAXChildrenAttribute) else { return }
-        for child in children {
-            walkAX(child, depth: depth + 1, maxDepth: maxDepth, visit: visit)
-        }
-    }
-
-    private func axRect(_ element: AXUIElement) -> CGRect? {
-        guard let positionValue = axValue(element, attribute: kAXPositionAttribute),
-              let sizeValue = axValue(element, attribute: kAXSizeAttribute)
-        else { return nil }
-
-        var position = CGPoint.zero
-        var size = CGSize.zero
-        guard AXValueGetValue(positionValue, .cgPoint, &position),
-              AXValueGetValue(sizeValue, .cgSize, &size)
-        else { return nil }
-
-        return CGRect(origin: position, size: size)
-    }
-
-    private func axElements(_ element: AXUIElement, attribute: String) -> [AXUIElement]? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
-        return value as? [AXUIElement]
-    }
-
-    private func axElement(_ element: AXUIElement, attribute: String) -> AXUIElement? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
-        guard let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
-        return unsafeBitCast(value, to: AXUIElement.self)
-    }
-
-    private func axString(_ element: AXUIElement, attribute: String) -> String? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
-        return value as? String
-    }
-
-    private func axValue(_ element: AXUIElement, attribute: String) -> AXValue? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
-        guard let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
-        return unsafeBitCast(value, to: AXValue.self)
-    }
-
-    private func chromeTopInset(for window: SCWindow, windowHeight: CGFloat) -> CGFloat {
+    private func fallbackChromeTopInset(for window: SCWindow, windowHeight: CGFloat) -> CGFloat {
         guard windowHeight >= 120 else { return 0 }
         let bundleID = (window.owningApplication?.bundleIdentifier ?? "").lowercased()
         let appName = (window.owningApplication?.applicationName ?? "").lowercased()
@@ -659,17 +518,32 @@ final class OverlayView: NSView {
             preferred = 72
         } else if bundleID.contains("com.apple.dt.xcode") {
             preferred = 104
-        } else if bundleID.contains("com.microsoft.vscode") || bundleID.contains("com.todesktop") || appName.contains("code") {
-            preferred = 78
+        } else if isVSCodeFamily(bundleID: bundleID, appName: appName) {
+            // custom titlebar 35 + tabs 35. 78은 브레드크럼/에디터를 가로지른다.
+            preferred = 70
+        } else if bundleID.contains("com.kakao.kakaotalk") || bundleID.contains("com.kakao.talk") {
+            // 네이티브 타이틀바(~28) + 대화방 헤더. 32만 빼면 프로필/검색 줄을 관통한다.
+            preferred = 88
         } else if bundleID.contains("com.apple.terminal") || bundleID.contains("com.googlecode.iterm2") {
             preferred = 34
         } else if bundleID.contains("com.apple.preview") {
             preferred = 64
         } else {
-            preferred = 74
+            // Tahoe 기본 타이틀바(~32pt). 접근성이 헤더를 재기 전에도 헤더/본문을 나눈다.
+            preferred = 32
         }
 
         return min(preferred, windowHeight * 0.35)
+    }
+
+    private func isVSCodeFamily(bundleID: String, appName: String) -> Bool {
+        bundleID.contains("com.microsoft.vscode")
+            || bundleID.contains("com.todesktop")
+            || bundleID.contains("vscodium")
+            || bundleID.contains("cursor")
+            || bundleID.contains("windsurf")
+            || appName == "code"
+            || appName == "cursor"
     }
 
     override func keyDown(with event: NSEvent) {

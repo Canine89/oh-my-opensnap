@@ -1,8 +1,8 @@
 import AppKit
 
-/// oh-my-opensnap 브랜드 상수.
+/// Open Capture Record 브랜드 상수.
 enum Brand {
-    static let name = "oh-my-opensnap"
+    static let name = "Open Capture Record"
     static let tagline = "빠르고 정밀한 화면 캡처"
 
     /// 브랜드 레드 (교정 빨강).
