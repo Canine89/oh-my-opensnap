@@ -109,3 +109,5 @@ brew install --cask oh-my-opensnap
 ---
 
 캡처본은 **바탕화면의 `oh-my-opensnap` 폴더**에 PNG로 보관됩니다.
+
+지원 및 개인정보: [지원](SUPPORT.md) · [개인정보 처리방침](PRIVACY.md)
