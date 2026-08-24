@@ -6,18 +6,18 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.70</title>
-      <pubDate>Mon, 24 Aug 2026 12:49:54 +0000</pubDate>
-      <sparkle:version>71</sparkle:version>
-      <sparkle:shortVersionString>1.0.70</sparkle:shortVersionString>
+      <title>1.0.71</title>
+      <pubDate>Mon, 24 Aug 2026 13:10:16 +0000</pubDate>
+      <sparkle:version>72</sparkle:version>
+      <sparkle:shortVersionString>1.0.71</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.70</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.71</h2>
 <ul>
-<li>접근성 권한을 허용하면 브라우저·터미널 등 각 앱이 공개한 창 구조(`AXWebArea`/스크롤·텍스트·목록·표 영역)를 기준으로 헤더와 본문을 구분하도록 보강</li>
-<li>접근성 창 목록을 제공하지 않는 Chromium/Electron 앱도 focused/main window를 프레임 검증 후 안전하게 보조 인식</li>
-<li>설정에 `창 구조 인식` 권한 상태·요청·시스템 설정 이동을 추가하고, 권한이 없을 때만 기존 앱별 추정값으로 폴백</li>
+<li>창 전체·앱 콘텐츠·주 작업 영역의 3단계 자동 스냅을 추가. 앱 내부의 헤더·탐색 사이드바와 실제 작업 패널을 한 번 더 구분</li>
+<li>웹 브라우저에 한정하지 않고, 접근성 트리와 화면의 가로·세로 경계를 함께 분석해 Finder·터미널·Electron 등 모든 앱에 같은 기준 적용</li>
+<li>구조가 불분명한 화면은 주 작업 영역을 억지로 자르지 않고 기존 앱 콘텐츠 선택으로 안전하게 폴백</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.70.zip" type="application/octet-stream" sparkle:edSignature="gc3KWXlu2LoVsXYQ3nlXkKKVNbR71ZVaZbpsbvFO42ppDT8rWH3yEoQ3rtIOFyPNWNfELs0ReKd9FHyu1LUwAw==" length="3500872" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.71.zip" type="application/octet-stream" sparkle:edSignature="nib892m4xv8RdfzcNxHfp5o/Wvys0k9q+tV2IDA3q28nKq9kQaYDyVOVDCNFL2krn+rAkI9Yw6+RmVqsQRCADQ==" length="3507198" />
     </item>
   </channel>
 </rss>
