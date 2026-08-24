@@ -6,19 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.68</title>
-      <pubDate>Sun, 16 Aug 2026 23:34:11 +0000</pubDate>
-      <sparkle:version>69</sparkle:version>
-      <sparkle:shortVersionString>1.0.68</sparkle:shortVersionString>
+      <title>1.0.69</title>
+      <pubDate>Mon, 24 Aug 2026 11:52:57 +0000</pubDate>
+      <sparkle:version>70</sparkle:version>
+      <sparkle:shortVersionString>1.0.69</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.68</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.69</h2>
 <ul>
-<li>라이브러리에 중간 잘라내기 도구 추가: 좌우 또는 상하로 드래그한 띠를 제거하고 양쪽 이미지 사이에 투명 간격을 남김</li>
-<li>가로로 긴 영역 선택이 세로 절단으로 잘못 판정되던 방향 감지를 수정</li>
-<li>중간 잘라내기 결과를 즉시 라이브러리 PNG와 썸네일에 반영하고 `⌘Z` 되돌리기 지원</li>
-<li>영역 선택 크기 라벨을 그릴 때 폰트 예외로 앱이 안내 없이 종료되던 문제 수정</li>
+<li>윈도우 자동 스냅을 헤더(타이틀바·툴바·탭) 실측 기준으로 재작성. 본문은 창에서 헤더만 빼서 잡고, 사이드바/웹뷰 추정으로 어긋나던 문제를 줄임</li>
+<li>라이브러리에서 Retina 캡처를 다시 복사할 때 DPI 논리 크기를 기준으로 축소되던 문제를 수정해 원본 픽셀 해상도를 유지</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.68.zip" type="application/octet-stream" sparkle:edSignature="WOeosvDBU7uNfhPCUVS/GwIUmtEXqMVP/oX5aaSWFy0mLJ1FLY6jQxfsJU8aDqk/TMJG3mImNWeLvFvTx4ghCA==" length="3493251" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.69.zip" type="application/octet-stream" sparkle:edSignature="sUXTR4GQqPCA5Prwg2C5ZeszuqS+IGqyLVx68xjJ6oDXedtUaAsdleUHqoDWNPonjnxZMnfyUQwqJ5Ze26gxCQ==" length="3498002" />
     </item>
   </channel>
 </rss>
