@@ -18,6 +18,7 @@ final class OverlayView: NSView {
         let globalFrame: CGRect
         let localFullRect: CGRect
         let localContentRect: CGRect
+        let localPrimaryRect: CGRect?
         let isPrecise: Bool
     }
 
@@ -390,7 +391,14 @@ final class OverlayView: NSView {
                                     y: fullRect.minY,
                                     width: fullRect.width,
                                     height: max(0, contentRect.minY - fullRect.minY))
-            hoveredWindowRect = chromeRect.contains(cursor) ? fullRect : contentRect
+            if chromeRect.contains(cursor) {
+                hoveredWindowRect = fullRect
+            } else if let primary = cached.localPrimaryRect, primary.contains(cursor) {
+                // 앱 내부 헤더/탐색 패널과 실제 작업 표면을 한 단계 더 나눈다.
+                hoveredWindowRect = primary
+            } else {
+                hoveredWindowRect = contentRect
+            }
         } else {
             clearHoveredWindow()
         }
@@ -433,9 +441,10 @@ final class OverlayView: NSView {
                               globalFrame: candidate.cgFrame,
                               localFullRect: fullRect,
                               localContentRect: content,
+                              localPrimaryRect: nil,
                               isPrecise: false)
         hoverCache = next
-        scheduleAccessibilityRefinement(for: candidate, localFullRect: fullRect)
+        scheduleContentRefinement(for: candidate, localFullRect: fullRect)
         return next
     }
 
@@ -458,42 +467,50 @@ final class OverlayView: NSView {
                       height: fullRect.height - topInset)
     }
 
-    private func scheduleAccessibilityRefinement(for candidate: WindowCandidate, localFullRect: CGRect) {
+    private func scheduleContentRefinement(for candidate: WindowCandidate, localFullRect: CGRect) {
         let windowID = candidate.scWindow.windowID
         guard pendingAccessibilityWindowID != windowID,
-              let pid = candidate.scWindow.owningApplication?.processID,
-              AccessibilityPermission.isGranted
+              let pid = candidate.scWindow.owningApplication?.processID
         else { return }
 
         pendingAccessibilityWindowID = windowID
         let globalFrame = candidate.cgFrame
         let globalCursor = CGPoint(x: cgOrigin.x + cursor.x, y: cgOrigin.y + cursor.y)
         let primaryHeight = ScreenGeometry.primaryHeight
+        let fallbackInset = fallbackChromeTopInset(for: candidate.scWindow, windowHeight: localFullRect.height)
+        let snapshot = frozenImage
+        let snapshotScale = self.scale
 
         accessibilityQueue.async { [weak self] in
-            let inset = WindowChromeDetector.topInset(pid: pid,
-                                                      windowFrame: globalFrame,
-                                                      cursor: globalCursor,
-                                                      primaryHeight: primaryHeight)
+            let inset = AccessibilityPermission.isGranted
+                ? WindowChromeDetector.topInset(pid: pid,
+                                                windowFrame: globalFrame,
+                                                cursor: globalCursor,
+                                                primaryHeight: primaryHeight)
+                : nil
+            let appContent = Self.contentRect(from: localFullRect, topInset: inset ?? fallbackInset)
+            let primarySurface = snapshot.flatMap {
+                WindowSurfaceDetector.primarySurface(in: $0,
+                                                     windowRect: localFullRect,
+                                                     appContentRect: appContent,
+                                                     scale: snapshotScale)
+            }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 if self.pendingAccessibilityWindowID == windowID {
                     self.pendingAccessibilityWindowID = nil
                 }
-                guard let inset,
-                      let cache = self.hoverCache,
+                guard let cache = self.hoverCache,
                       cache.windowID == windowID,
                       cache.globalFrame == globalFrame
                 else { return }
 
-                let localPrecise = Self.contentRect(from: localFullRect, topInset: inset)
-                guard localPrecise.height >= 40 else { return }
-
                 self.hoverCache = HoverCache(windowID: windowID,
                                              globalFrame: globalFrame,
                                              localFullRect: localFullRect,
-                                             localContentRect: localPrecise,
-                                             isPrecise: true)
+                                             localContentRect: appContent,
+                                             localPrimaryRect: primarySurface,
+                                             isPrecise: inset != nil || primarySurface != nil)
                 if !self.selectionLocked, !self.suppressed {
                     self.updateHoveredWindow()
                     self.needsDisplay = true
