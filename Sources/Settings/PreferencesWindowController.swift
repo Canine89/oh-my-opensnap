@@ -1,6 +1,6 @@
 import AppKit
 
-/// 환경설정 창: 단축키 / 사운드 / 로그인 실행 / 라이브러리 / 화면 녹화 권한.
+/// 환경설정 창: 단축키 / 사운드 / 로그인 실행 / 라이브러리 / 권한.
 @MainActor
 final class PreferencesWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
@@ -8,6 +8,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     private var recordButton: NSButton?
     private var launchAtLoginCheck: NSButton?
     private var permissionStatusLabel: NSTextField?
+    private var accessibilityStatusLabel: NSTextField?
     private var permissionTimer: Timer?
     private var recordingMonitor: Any?
     private var isRecording = false
@@ -23,7 +24,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     }
 
     private func buildWindow() {
-        let contentRect = NSRect(x: 0, y: 0, width: 480, height: 456)
+        let contentRect = NSRect(x: 0, y: 0, width: 480, height: 560)
         let window = NSWindow(contentRect: contentRect,
                               styleMask: [.titled, .closable],
                               backing: .buffered, defer: false)
@@ -113,6 +114,30 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         permissionHint.font = .systemFont(ofSize: 11)
         permissionHint.textColor = .secondaryLabelColor
 
+        // 접근성 권한: 다른 앱이 공개한 창 구조로 헤더/본문 경계를 계산한다.
+        let accessibilityTitle = NSTextField(labelWithString: "창 구조 인식 (선택 사항)")
+        accessibilityTitle.font = .boldSystemFont(ofSize: 12)
+
+        let accessibilityStatus = NSTextField(labelWithString: "")
+        accessibilityStatus.font = .systemFont(ofSize: 12)
+        accessibilityStatusLabel = accessibilityStatus
+
+        let accessibilityRow = NSStackView()
+        accessibilityRow.orientation = .horizontal
+        accessibilityRow.spacing = 8
+        let requestAccessibilityButton = NSButton(title: "권한 요청",
+                                                  target: self, action: #selector(requestAccessibilityPermission))
+        requestAccessibilityButton.bezelStyle = .rounded
+        let openAccessibilitySettingsButton = NSButton(title: "시스템 설정 열기",
+                                                       target: self, action: #selector(openAccessibilitySettings))
+        openAccessibilitySettingsButton.bezelStyle = .rounded
+        accessibilityRow.addArrangedSubview(requestAccessibilityButton)
+        accessibilityRow.addArrangedSubview(openAccessibilitySettingsButton)
+
+        let accessibilityHint = NSTextField(wrappingLabelWithString: "허용하면 브라우저·터미널 등 각 앱이 공개한 접근성 구조와 창 위치를 읽어 툴바/탭 영역과 본문을 구분합니다. 화면 픽셀·키 입력·문서 내용은 읽지 않습니다.")
+        accessibilityHint.font = .systemFont(ofSize: 11)
+        accessibilityHint.textColor = .secondaryLabelColor
+
         let hint = NSTextField(wrappingLabelWithString: "윈도우 위에서 클릭하면 해당 윈도우를, 드래그하면 지정 영역을 캡처합니다(취소는 Esc 또는 우클릭). 캡처 이미지는 클립보드에 복사되고 위 저장 폴더에 보관됩니다.")
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
@@ -128,6 +153,10 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         stack.addArrangedSubview(permissionStatus)
         stack.addArrangedSubview(permissionRow)
         stack.addArrangedSubview(permissionHint)
+        stack.addArrangedSubview(accessibilityTitle)
+        stack.addArrangedSubview(accessibilityStatus)
+        stack.addArrangedSubview(accessibilityRow)
+        stack.addArrangedSubview(accessibilityHint)
         stack.addArrangedSubview(hint)
 
         let content = NSView(frame: contentRect)
@@ -238,6 +267,14 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
             permissionStatusLabel?.stringValue = "상태: 필요함 — 캡처 전에 시스템 설정에서 허용하세요"
             permissionStatusLabel?.textColor = .systemOrange
         }
+
+        if AccessibilityPermission.isGranted {
+            accessibilityStatusLabel?.stringValue = "상태: 허용됨 — 앱별 구조를 기준으로 창 헤더와 본문을 구분합니다"
+            accessibilityStatusLabel?.textColor = .systemGreen
+        } else {
+            accessibilityStatusLabel?.stringValue = "상태: 선택 사항 — 현재는 앱별 기본 추정값을 사용합니다"
+            accessibilityStatusLabel?.textColor = .systemOrange
+        }
     }
 
     @objc private func openScreenCaptureSettings() {
@@ -247,6 +284,15 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     @objc private func openSettingsAndQuit() {
         ScreenCapturePermission.openSystemSettings()
         NSApp.terminate(nil)
+    }
+
+    @objc private func requestAccessibilityPermission() {
+        _ = AccessibilityPermission.request()
+        refreshPermissionStatus()
+    }
+
+    @objc private func openAccessibilitySettings() {
+        AccessibilityPermission.openSystemSettings()
     }
 
     private func showLaunchAtLoginError(_ error: Error) {

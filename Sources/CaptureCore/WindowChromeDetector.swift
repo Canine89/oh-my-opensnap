@@ -3,8 +3,9 @@ import ApplicationServices
 
 /// 다른 앱 창의 상단 헤더(타이틀바·툴바·탭바) 높이를 잰다.
 ///
-/// 콘텐츠(웹뷰/스크롤)를 추정하면 Electron·브라우저·스플릿 뷰에서 사이드바나
-/// 안쪽 패널을 집는다. 헤더 밴드를 직접 찾고, 본문은 `창 − 헤더`로 둔다.
+/// 다른 앱이 공개한 접근성 역할과 실제 프레임을 함께 읽는다. 따라서 브라우저,
+/// 터미널, 네이티브 앱, Electron 앱에서 앱 이름별 고정 높이에 의존하지 않는다.
+/// 본문은 창을 가로지르는 실제 콘텐츠 컨테이너의 시작점으로 정한다.
 enum WindowChromeDetector {
     /// CG 전역 좌표 창 프레임에서 잘라낼 상단 헤더 높이(point).
     static func topInset(pid: pid_t,
@@ -40,7 +41,7 @@ enum WindowChromeDetector {
     private static func matchingWindow(in app: AXUIElement,
                                        fullRect: CGRect,
                                        primaryHeight: CGFloat) -> (element: AXUIElement, align: (CGRect) -> CGRect)? {
-        guard let windows = elements(app, attribute: kAXWindowsAttribute) else { return nil }
+        let windows = elements(app, attribute: kAXWindowsAttribute) ?? []
         let matched = windows.compactMap { element -> (AXUIElement, CGFloat, (CGRect) -> CGRect)? in
             guard let raw = rect(element) else { return nil }
             let align = aligner(windowRaw: raw, fullRect: fullRect, primaryHeight: primaryHeight)
@@ -49,9 +50,19 @@ enum WindowChromeDetector {
         .filter { $0.1 < 160 }
         .min { $0.1 < $1.1 }
 
-        // focused/main fallback은 뒤에 가려진 창을 호버할 때 엉뚱한 창을 집는다.
-        guard let matched else { return nil }
-        return (matched.0, matched.2)
+        if let matched { return (matched.0, matched.2) }
+
+        // 일부 Chromium/Electron 앱은 AXWindows 목록을 비워 두지만 focused/main
+        // window는 제공한다. 후보 창 프레임과 충분히 같은 경우에만 쓰므로, 뒤에
+        // 가려진 다른 창의 구조를 잘못 적용하지 않는다.
+        let fallbackAttributes = [kAXFocusedWindowAttribute, kAXMainWindowAttribute]
+        for attribute in fallbackAttributes {
+            guard let element = child(app, attribute: attribute), let raw = rect(element) else { continue }
+            let align = aligner(windowRaw: raw, fullRect: fullRect, primaryHeight: primaryHeight)
+            guard ScreenGeometry.frameDelta(align(raw), fullRect) < 160 else { continue }
+            return (element, align)
+        }
+        return nil
     }
 
     private static func aligner(windowRaw: CGRect,
@@ -68,35 +79,49 @@ enum WindowChromeDetector {
     private static func primaryContentTopInset(in window: AXUIElement,
                                                fullRect: CGRect,
                                                align: (CGRect) -> CGRect) -> CGFloat? {
-        var best: CGFloat?
+        var best: (top: CGFloat, score: CGFloat)?
         func consider(_ frame: CGRect) {
             guard !frame.isNull else { return }
             let widthRatio = frame.width / max(fullRect.width, 1)
             let heightRatio = frame.height / max(fullRect.height, 1)
             let top = frame.minY - fullRect.minY
-            guard widthRatio >= 0.82, heightRatio >= 0.28, top >= 20, top <= 180 else { return }
-            if best == nil || top < best! { best = top }
+            // 사이드바(좁은 목록)는 제외하되, Finder/Xcode처럼 본문이 나뉜 앱의
+            // 넓은 주 콘텐츠는 살린다. 높이가 큰 요소일수록 신뢰도를 높인다.
+            guard widthRatio >= 0.55, heightRatio >= 0.28, top >= 20, top <= 220 else { return }
+            let score = widthRatio * 2 + min(heightRatio, 1)
+            if best == nil || top < best!.top - 2 || (abs(top - best!.top) <= 2 && score > best!.score) {
+                best = (top, score)
+            }
         }
 
+        var remainingNodes = 500
         func walk(_ root: AXUIElement, depth: Int) {
-            guard depth <= 2 else { return }
+            guard depth <= 4, remainingNodes > 0 else { return }
             for child in children(of: root) {
+                remainingNodes -= 1
+                guard remainingNodes >= 0 else { return }
                 guard let raw = rect(child) else { continue }
                 let frame = align(raw).intersection(fullRect)
-                if isPrimaryContentRole(role(child)) {
+                let childRole = role(child)
+                if isPrimaryContentRole(childRole) {
                     consider(frame)
                 }
-                if isContainer(role(child)) {
+                if isContainer(childRole) {
                     walk(child, depth: depth + 1)
                 }
             }
         }
         walk(window, depth: 0)
-        return best
+        return best?.top
     }
 
     private static func isPrimaryContentRole(_ role: String?) -> Bool {
-        role == kAXScrollAreaRole || role == "AXWebArea" || role == kAXTextAreaRole || role == kAXSplitGroupRole
+        switch role {
+        case "AXWebArea", kAXScrollAreaRole, kAXTextAreaRole, kAXTableRole, kAXOutlineRole, kAXListRole:
+            return true
+        default:
+            return false
+        }
     }
 
     // MARK: - Chrome band from the window tree
@@ -194,7 +219,10 @@ enum WindowChromeDetector {
     }
 
     private static func isContainer(_ role: String?) -> Bool {
-        role == kAXGroupRole || role == kAXSplitGroupRole
+        role == kAXGroupRole
+            || role == kAXSplitGroupRole
+            || role == kAXScrollAreaRole
+            || role == "AXLayoutArea"
     }
 
     // MARK: - Cursor hit-test

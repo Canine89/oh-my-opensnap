@@ -462,7 +462,7 @@ final class OverlayView: NSView {
         let windowID = candidate.scWindow.windowID
         guard pendingAccessibilityWindowID != windowID,
               let pid = candidate.scWindow.owningApplication?.processID,
-              AXIsProcessTrusted()
+              AccessibilityPermission.isGranted
         else { return }
 
         pendingAccessibilityWindowID = windowID
