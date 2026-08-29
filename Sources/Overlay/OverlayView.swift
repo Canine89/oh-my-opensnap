@@ -7,7 +7,7 @@ import ScreenCaptureKit
 ///
 /// 인터랙션 분기:
 /// - 호버(버튼 안 누름): 커서 아래 윈도우를 자동 감지해 두 구역 중 하나를 하이라이트.
-///   헤더(타이틀바·툴바·탭·주소표시줄) 위면 헤더만, 본문 위면 본문만 선택한다.
+///   헤더(타이틀바·툴바·탭·주소표시줄) 위면 창 전체, 본문 위면 본문만 선택한다.
 ///   구역 경계는 창 구조로만 정하며 커서가 창에 들어온 위치와 무관하다.
 /// - 클릭/드래그로 영역 선택 → 조정 단계로 진입(점선 테두리 + 핸들 8개)
 /// - 조정 단계: 핸들 드래그로 크기 조절(루페 표시), 내부 드래그로 이동,
@@ -395,10 +395,10 @@ final class OverlayView: NSView {
             let cached = cachedHoverRegion(for: candidate)
             hoveredFullWindowRect = cached.localFullRect
 
-            // 두 구역뿐이다: 헤더 위면 헤더, 그 외엔 본문.
+            // 두 구역뿐이다: 헤더 위면 창 전체, 그 외엔 본문.
             let headerRect = cached.localHeaderRect
             if headerRect.height > 0, headerRect.contains(cursor) {
-                hoveredWindowRect = headerRect
+                hoveredWindowRect = cached.localFullRect
             } else {
                 hoveredWindowRect = cached.localContentRect
             }
