@@ -6,19 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.72</title>
-      <pubDate>Sat, 29 Aug 2026 02:57:29 +0000</pubDate>
-      <sparkle:version>73</sparkle:version>
-      <sparkle:shortVersionString>1.0.72</sparkle:shortVersionString>
+      <title>1.0.73</title>
+      <pubDate>Sat, 29 Aug 2026 03:02:15 +0000</pubDate>
+      <sparkle:version>74</sparkle:version>
+      <sparkle:shortVersionString>1.0.73</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.72</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.73</h2>
 <ul>
-<li>창 자동 스냅을 **헤더 / 본문 두 구역**으로 단순화. 헤더(타이틀바·툴바·탭·주소표시줄·북마크바) 위에서는 헤더만, 본문 위에서는 본문만 잡힌다</li>
-<li>본문 안쪽을 다시 잘라내던 "주 작업 영역" 픽셀 추정을 제거. 페이지 안의 내비게이션·사이드바 때문에 선택이 제멋대로 줄어들던 문제 해소</li>
-<li>헤더 경계가 커서가 창에 들어온 위치에 따라 달라지던 문제를 수정. 경계는 창 구조로만 정하고, 한 캡처 세션 안에서는 창별로 기억한다</li>
-<li>접근성 권한이 없거나 앱이 창 구조를 공개하지 않을 때는 앱별 추정값을 정지 화면의 실제 경계선(±40pt)에 맞춰 보정</li>
+<li>헤더(타이틀바·툴바·탭·주소표시줄) 위에서는 창 전체가, 본문 위에서는 본문만 스냅되도록 조정</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.72.zip" type="application/octet-stream" sparkle:edSignature="iCr0Fv/jMBmKKFrC17tuFnHXXvMjyiR+9ndH82r5KMs7Xc/gcRZbXy63NruDCVNIfLpEDxKal6PL0ibdwN9fCA==" length="3503471" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.73.zip" type="application/octet-stream" sparkle:edSignature="xJyz5KNS94tzZ0LgXQUWzDeFcKALrQ/Gbi4DC65yg8fypCf/0Ck/0Z2PQfvSybLnyDPLqnZBw0IU3OvIgS2vDg==" length="3503470" />
     </item>
   </channel>
 </rss>
