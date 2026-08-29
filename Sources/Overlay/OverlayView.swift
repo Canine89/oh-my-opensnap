@@ -60,6 +60,9 @@ final class OverlayView: NSView {
     var onSelectionChanged: ((CGRect) -> Void)?
     /// ⏎/더블클릭 확정 허용 여부. 선택 HUD가 결정을 맡는 모드에선 꺼서 이중 확정을 막는다.
     var confirmEnabled = true
+    /// 조정 단계 안내 문구. 확정 방식(⏎ vs 선택 HUD)이 모드마다 달라 컨트롤러가 채운다.
+    var adjustingHint = "드래그 조절 · ⏎ 캡처 · Esc 취소"
+    private let idleHint = "드래그 영역 선택 · 클릭 창 캡처 · Esc 취소"
 
     // MARK: 상태 기계
     /// 크기 조절 핸들 8개. 배열 순서가 히트 테스트 우선순위라 코너가 변 중앙보다 먼저다.
@@ -124,6 +127,13 @@ final class OverlayView: NSView {
     private let accessibilityQueue = DispatchQueue(label: "com.goldenrabbit.ohmyopensnap.accessibility-hover", qos: .userInitiated)
     private var pendingAccessibilityWindowIDs: Set<CGWindowID> = []
 
+    // 화면 안내(힌트) 상태 — 단계가 바뀔 때마다 잠깐 보였다가 사라진다.
+    private var hintShownAt = Date()
+    private var hintRect: CGRect = .zero
+    private let hintHold: TimeInterval = 2.6
+    private let hintFade: TimeInterval = 0.5
+    private var appIconCache: [pid_t: NSImage] = [:]
+
     // 루페 렌더 상태
     private let loupeRadius = 22                 // 한 변 45px 소스 영역
     private let loupeSize: CGFloat = 184
@@ -162,6 +172,7 @@ final class OverlayView: NSView {
         guard bounds.contains(local) else { return }
         cursor = local
         cursorInside = true
+        hintShownAt = Date()
         onBecomeActiveDisplay?()
         updateHoveredWindow()
         needsDisplay = true
@@ -314,6 +325,7 @@ final class OverlayView: NSView {
         selection = clipped
         self.windowSelection = windowSelection
         phase = .adjusting
+        hintShownAt = Date()
         onAdjustingStarted?()
         onSelectionChanged?(clipped)
     }
@@ -321,6 +333,7 @@ final class OverlayView: NSView {
     /// 선택 확정 대기 단계로 진입. 커서 복구/워치독 해제는 컨트롤러 콜백이 맡는다.
     private func enterAdjusting() {
         phase = .adjusting
+        hintShownAt = Date()
         onAdjustingStarted?()
         window?.makeFirstResponder(self)   // ⏎ 키를 받기 위해
         updateAdjustCursor(at: cursor)
@@ -576,6 +589,10 @@ final class OverlayView: NSView {
     /// 타이머(30fps)가 호출 — 루페 픽셀 갱신 + 조정 단계 점선 행진 애니메이션.
     func tick() {
         refreshLoupe()
+        let elapsed = Date().timeIntervalSince(hintShownAt)
+        if hintRect != .zero, elapsed >= hintHold, elapsed <= hintHold + hintFade + 0.1 {
+            setNeedsDisplay(hintRect.insetBy(dx: -2, dy: -2))
+        }
         if selectionLocked, let sel = selection {
             dashPhase += 0.6
             if dashPhase >= 10 { dashPhase -= 10 }   // 점선 한 주기(6+4)
@@ -680,16 +697,23 @@ final class OverlayView: NSView {
         } else if case .idle = phase, !suppressed, let windowRect = hoveredWindowRect {
             drawDimmedOverlay(excluding: windowRect)
             drawWindowSelectionGuide(selectedRect: windowRect, fullRect: hoveredFullWindowRect, ctx)
+            drawZoneLabel(for: windowRect, isFullWindow: windowRect == hoveredFullWindowRect)
         } else {
             drawDimmedOverlay(excluding: nil)
         }
+
+        if cursorInside, !suppressed { drawHint() }
 
         // 크로스헤어/루페
         switch phase {
         case .idle, .selecting:
             guard cursorInside, !suppressed else { loupeDirtyFrame = .zero; return }
             drawCrosshair()
-            drawLoupe(ctx)
+            if case .idle = phase, hoveredWindowRect != nil {
+                loupeDirtyFrame = .zero            // 창 스냅 중엔 픽셀 정밀도가 무의미 — 화면을 조용하게
+            } else {
+                drawLoupe(ctx)
+            }
         case .resizing:
             drawLoupe(ctx)                                   // 핸들 조절 중 픽셀 단위 확인용 확대경
         case .adjusting, .moving:
@@ -745,9 +769,9 @@ final class OverlayView: NSView {
         let clipped = rect.intersection(bounds)
         guard !clipped.isEmpty else { return }
         ctx.clear(clipped)                                   // 실제 윈도우가 비치도록 디밍 제거
-        NSColor.controlAccentColor.withAlphaComponent(0.18).setFill()
-        NSBezierPath(rect: clipped).fill()                   // 클릭 가능 표시(연한 강조색)
-        NSColor.controlAccentColor.setStroke()
+        Brand.red.withAlphaComponent(0.10).setFill()
+        NSBezierPath(rect: clipped).fill()                   // 클릭 가능 표시(연한 브랜드 레드)
+        Brand.red.setStroke()
         let border = NSBezierPath(rect: clipped.insetBy(dx: 0.75, dy: 0.75))
         border.lineWidth = 1.5
         border.stroke()
@@ -755,7 +779,7 @@ final class OverlayView: NSView {
 
     private func drawWindowSelectionGuide(selectedRect: CGRect, fullRect: CGRect?, _ ctx: CGContext) {
         if let full = fullRect?.intersection(bounds), !full.isEmpty, full != selectedRect.intersection(bounds) {
-            NSColor.controlAccentColor.withAlphaComponent(0.55).setStroke()
+            Brand.red.withAlphaComponent(0.6).setStroke()
             let fullBorder = NSBezierPath(rect: full.insetBy(dx: 0.75, dy: 0.75))
             fullBorder.lineWidth = 1
             fullBorder.setLineDash([4, 4], count: 2, phase: 0)
@@ -882,24 +906,94 @@ final class OverlayView: NSView {
                           height: textSize.height + padding * 2)
         if pill.minY < 4 { pill.origin.y = sel.maxY + 4 }   // 위 공간 없으면 아래로
 
-        let pillPath = NSBezierPath(roundedRect: pill, xRadius: 4, yRadius: 4)
+        let pillPath = NSBezierPath(roundedRect: pill, xRadius: Brand.innerCornerRadius, yRadius: Brand.innerCornerRadius)
         NSColor(white: 0, alpha: 0.75).setFill()
         pillPath.fill()
         text.draw(at: CGPoint(x: pill.minX + padding, y: pill.minY + padding), withAttributes: attributes)
     }
 
-    /// `monospacedSystemFont`는 일부 macOS에서 CT 속성에 nil 폰트를 남겨
-    /// `sizeWithAttributes` / `draw` 중 프로세스가 abort 된다. 실재하는 서체만 쓴다.
-    private func overlayLabelAttributes(weight: NSFont.Weight) -> [NSAttributedString.Key: Any] {
-        [
-            .font: overlayLabelFont(ofSize: 11, weight: weight),
-            .foregroundColor: NSColor.white
-        ]
+    // MARK: 안내 요소
+
+    /// 호버 중인 창의 앱 이름과 구역(창 전체 / 본문)을 하이라이트 위에 이름표로 보여 준다.
+    /// 실선·점선 차이만으로 두 구역을 구분하게 두면 "왜 이만큼만 잡히지?"가 생긴다.
+    private func drawZoneLabel(for rect: CGRect, isFullWindow: Bool) {
+        let clipped = rect.intersection(bounds)
+        guard !clipped.isEmpty else { return }
+
+        let zone = isFullWindow ? "창 전체" : "본문"
+        let appName = hoveredWindow?.owningApplication?.applicationName ?? ""
+        let text = (appName.isEmpty ? zone : "\(appName) · \(zone)") as NSString
+        let attributes = overlayLabelAttributes(weight: .semibold, size: 11)
+        let textSize = text.size(withAttributes: attributes)
+
+        let icon = appIcon(for: hoveredWindow)
+        let iconSide: CGFloat = icon == nil ? 0 : 14
+        let iconGap: CGFloat = icon == nil ? 0 : 5
+        let padX: CGFloat = 8, padY: CGFloat = 5
+        let pillSize = CGSize(width: padX * 2 + iconSide + iconGap + textSize.width,
+                              height: padY * 2 + max(textSize.height, iconSide))
+
+        // 하이라이트 바로 위(디밍 영역)에 두고, 위 공간이 없으면 안쪽 좌상단으로.
+        var origin = CGPoint(x: clipped.minX, y: clipped.minY - pillSize.height - 6)
+        if origin.y < 4 { origin = CGPoint(x: clipped.minX + 8, y: clipped.minY + 8) }
+        origin.x = max(4, min(origin.x, bounds.width - pillSize.width - 4))
+        let pill = CGRect(origin: origin, size: pillSize)
+
+        NSColor(white: 0, alpha: 0.78).setFill()
+        NSBezierPath(roundedRect: pill, xRadius: Brand.innerCornerRadius, yRadius: Brand.innerCornerRadius).fill()
+
+        var x = pill.minX + padX
+        if let icon {
+            let iconRect = CGRect(x: x, y: pill.midY - iconSide / 2, width: iconSide, height: iconSide)
+            icon.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            x += iconSide + iconGap
+        }
+        text.draw(at: CGPoint(x: x, y: pill.midY - textSize.height / 2), withAttributes: attributes)
     }
 
-    private func overlayLabelFont(ofSize size: CGFloat, weight: NSFont.Weight) -> NSFont {
-        let bold = weight.rawValue >= NSFont.Weight.semibold.rawValue
-        let named = NSFont(name: bold ? "Menlo-Bold" : "Menlo", size: size)
-        return named ?? NSFont.systemFont(ofSize: size, weight: weight)
+    private func appIcon(for window: SCWindow?) -> NSImage? {
+        guard let pid = window?.owningApplication?.processID else { return nil }
+        if let cached = appIconCache[pid] { return cached }
+        guard let icon = NSRunningApplication(processIdentifier: pid)?.icon else { return nil }
+        appIconCache[pid] = icon
+        return icon
+    }
+
+    /// 단계별 조작 안내. 단계가 바뀐 직후 잠깐 보이고 사라져 눈에 익은 사용자를 방해하지 않는다.
+    private func drawHint() {
+        let elapsed = Date().timeIntervalSince(hintShownAt)
+        let alpha: CGFloat
+        if elapsed < hintHold {
+            alpha = 1
+        } else if elapsed < hintHold + hintFade {
+            alpha = CGFloat(1 - (elapsed - hintHold) / hintFade)
+        } else {
+            hintRect = .zero
+            return
+        }
+
+        let text = (selectionLocked ? adjustingHint : idleHint) as NSString
+        var attributes = overlayLabelAttributes(weight: .medium, size: 12)
+        attributes[.foregroundColor] = NSColor.white.withAlphaComponent(alpha)
+        let textSize = text.size(withAttributes: attributes)
+        let padX: CGFloat = 14, padY: CGFloat = 8
+        let pill = CGRect(x: (bounds.width - textSize.width) / 2 - padX,
+                          y: 52,                               // 메뉴 막대 바로 아래
+                          width: textSize.width + padX * 2,
+                          height: textSize.height + padY * 2)
+        hintRect = pill
+
+        NSColor(white: 0, alpha: 0.72 * alpha).setFill()
+        NSBezierPath(roundedRect: pill, xRadius: Brand.cornerRadius, yRadius: Brand.cornerRadius).fill()
+        text.draw(at: CGPoint(x: pill.minX + padX, y: pill.minY + padY), withAttributes: attributes)
+    }
+
+    /// 앱의 다른 HUD와 같은 시스템 서체(숫자 고정폭)를 쓴다.
+    /// `monospacedSystemFont`는 일부 macOS에서 CT 속성에 nil 폰트를 남겨 `draw` 중 abort 되므로 피한다.
+    private func overlayLabelAttributes(weight: NSFont.Weight, size: CGFloat = 11) -> [NSAttributedString.Key: Any] {
+        [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: weight),
+            .foregroundColor: NSColor.white
+        ]
     }
 }

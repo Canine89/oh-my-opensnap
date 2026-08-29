@@ -3,31 +3,47 @@ import UniformTypeIdentifiers
 import WebKit
 
 /// 캡처 라이브러리 편집/뷰어 창.
-/// 레이아웃: 상단 툴바 + 좌측 썸네일 그리드 + 우측 큰 미리보기.
+/// 레이아웃: 네이티브 통합 툴바 + 접히는 사이드바(날짜별 썸네일) + 큰 미리보기.
 @MainActor
-final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionViewDataSource, NSCollectionViewDelegate {
+final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionViewDataSource, NSCollectionViewDelegate,
+                                     NSToolbarDelegate, NSToolbarItemValidation {
     static let shared = LibraryWindowController()
 
     private var window: NSWindow?
+    private var splitViewController: NSSplitViewController?
     private let collectionView = ThumbnailCollectionView()
     private let previewScroll = ZoomableScrollView()
     private let editorView = EditorImageView()
     private let videoEditorView = VideoEditorView()
     private let animatedImageView = WKWebView()
-    private let emptyLabel = NSTextField(labelWithString: "아직 잡아 둔 화면이 없어요.\n⌘⇧2 로 캡처하면 여기에 빨갛게 짚어 둘 수 있습니다.")
-    private let countLabel = NSTextField(labelWithString: "")
-    private let widthSlider = NSSlider()
-    private let widthLabel = NSTextField(labelWithString: "")
+    private let emptyState = NSStackView()
+    private let emptyHintLabel = NSTextField(wrappingLabelWithString: "")
     private let cropDoneButton = NSButton(title: "완료", target: nil, action: nil)
-    private lazy var toolControl = NSSegmentedControl(labels: [], trackingMode: .selectOne,
-                                                      target: self, action: #selector(toolChanged(_:)))
+    private let cropCancelButton = NSButton(title: "취소", target: nil, action: nil)
+    private let zoomButton = NSButton(title: "100%", target: nil, action: nil)
+    private let annotationOptions = NSVisualEffectView()
+    private let colorWell = NSColorWell()
+    private lazy var widthControl = NSSegmentedControl(labels: ["얇게", "보통", "굵게"], trackingMode: .selectOne,
+                                                       target: self, action: #selector(widthChanged(_:)))
+    private lazy var editToolControl = NSSegmentedControl(labels: [], trackingMode: .selectOne,
+                                                          target: self, action: #selector(editToolChanged(_:)))
+    private lazy var annotateToolControl = NSSegmentedControl(labels: [], trackingMode: .selectOne,
+                                                              target: self, action: #selector(annotateToolChanged(_:)))
 
-    // 편집 도구 (세그먼트 인덱스 → 도구)
-    private let tools: [EditorImageView.Tool] = [.none, .crop, .middleCut, .number, .text, .callout, .arrow, .rectangle, .ellipse, .mosaic]
+    // 편집 도구 (세그먼트 인덱스 → 도구). 두 그룹으로 나눠 "이미지를 자르는 것"과 "위에 그리는 것"을 구분한다.
+    private let editTools: [EditorImageView.Tool] = [.none, .crop, .middleCut]
+    private let annotateTools: [EditorImageView.Tool] = [.number, .text, .callout, .arrow, .rectangle, .ellipse, .mosaic]
+    private let strokeWidthPresets: [CGFloat] = [2, 3, 6]
 
-    private var items: [LibraryItem] = []
+    /// 날짜별 섹션(오늘 / 어제 / 최근 7일 / 이전).
+    private struct Section {
+        let title: String
+        let items: [LibraryItem]
+    }
+    private var sections: [Section] = []
     private var selectedItem: LibraryItem?
     private var keyMonitor: Any?
+    private var boundsObserver: Any?
 
     /// 캡처 세션 동안 라이브러리 창을 잠시 숨겼는지. 복원 여부 판단에 쓴다.
     private var hiddenForCapture = false
@@ -37,6 +53,17 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private var selectLatestPending = false
 
     private let itemIdentifier = NSUserInterfaceItemIdentifier("ThumbnailItem")
+    private let headerIdentifier = NSUserInterfaceItemIdentifier("ThumbnailSectionHeader")
+
+    private enum ToolbarID {
+        static let editTools = NSToolbarItem.Identifier("editTools")
+        static let annotateTools = NSToolbarItem.Identifier("annotateTools")
+        static let undo = NSToolbarItem.Identifier("undo")
+        static let copy = NSToolbarItem.Identifier("copy")
+        static let save = NSToolbarItem.Identifier("save")
+        static let reveal = NSToolbarItem.Identifier("reveal")
+        static let delete = NSToolbarItem.Identifier("delete")
+    }
 
     /// 캡처 직후 호출: 창을 (숨겨져 있었다면 다시) 띄우고, 방금 저장된 최신 항목을 선택해 보여준다.
     func showWindowSelectingLatest() {
@@ -76,10 +103,16 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private func installKeyMonitorIfNeeded() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.window?.isVisible == true else { return event }
+            guard let self, let window = self.window, window.isVisible, window.isKeyWindow else { return event }
             let significantFlags = event.modifierFlags.intersection([.command, .option, .control])
             if event.keyCode == 49, significantFlags.isEmpty, self.videoEditorView.isHidden == false {
                 self.videoEditorView.togglePlayback()
+                return nil
+            }
+            // 썸네일 목록에 포커스가 있을 때 ⌫ → 휴지통으로. (에디터 포커스면 주석 삭제가 우선)
+            if (event.keyCode == 51 || event.keyCode == 117), significantFlags.isEmpty,
+               window.firstResponder === self.collectionView {
+                self.deleteSelected()
                 return nil
             }
             guard event.modifierFlags.contains(.command) else { return event }
@@ -96,29 +129,57 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
     // MARK: 구성
     private func buildWindow() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 920, height: 600),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        let contentRect = NSRect(x: 0, y: 0, width: 960, height: 620)
+        let window = NSWindow(contentRect: contentRect,
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
-        window.title = "\(Brand.name) — 라이브러리"
-        AppAppearance.configure(window)
+        window.title = "라이브러리"
+        window.titleVisibility = .visible
+        window.toolbarStyle = .unified
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 760, height: 460)
+
+        let sidebar = buildSidebar()
+        let preview = buildPreview()
+
+        let split = NSSplitViewController()
+        split.splitView.autosaveName = "LibrarySplitV1"
+        let sidebarItem = NSSplitViewItem(sidebarWithViewController: ContainerViewController(view: sidebar))
+        sidebarItem.minimumThickness = 200
+        sidebarItem.maximumThickness = 400
+        sidebarItem.canCollapse = true
+        sidebarItem.allowsFullHeightLayout = true
+        let previewItem = NSSplitViewItem(viewController: ContainerViewController(view: preview))
+        previewItem.minimumThickness = 420
+        split.addSplitViewItem(sidebarItem)
+        split.addSplitViewItem(previewItem)
+        split.view.frame = contentRect
+        splitViewController = split
+        window.contentViewController = split
+
+        let toolbar = NSToolbar(identifier: "LibraryToolbarV1")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        toolbar.allowsUserCustomization = false
+        window.toolbar = toolbar
+
+        window.setFrame(contentRect, display: false)
         window.center()
-        window.setFrameAutosaveName("LibraryWindowV2")
+        window.setFrameAutosaveName("LibraryWindowV3")
+        self.window = window
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshEmptyHint),
+                                               name: .hotkeyChanged, object: nil)
+        syncToolControl(to: editorView.tool)
+    }
 
-        let content = NSView()
-
-        // 상단 툴바
-        let toolbar = buildToolbar()
-        toolbar.translatesAutoresizingMaskIntoConstraints = false
-
-        // 썸네일 그리드
+    private func buildSidebar() -> NSView {
         let flow = NSCollectionViewFlowLayout()
         flow.itemSize = NSSize(width: 116, height: 122)
         flow.minimumInteritemSpacing = 8
         flow.minimumLineSpacing = 8
-        flow.sectionInset = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
+        flow.sectionInset = NSEdgeInsets(top: 4, left: 10, bottom: 12, right: 10)
+        flow.headerReferenceSize = NSSize(width: 0, height: 26)
         collectionView.collectionViewLayout = flow
         collectionView.dataSource = self
         collectionView.delegate = self
@@ -126,32 +187,43 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         collectionView.allowsEmptySelection = true
         collectionView.backgroundColors = [.clear]
         collectionView.register(ThumbnailItem.self, forItemWithIdentifier: itemIdentifier)
+        collectionView.register(ThumbnailSectionHeader.self,
+                                forSupplementaryViewOfKind: NSCollectionView.elementKindSectionHeader,
+                                withIdentifier: headerIdentifier)
         // 썸네일을 다른 앱(Finder/메일/슬랙 등)으로 끌어다 놓으면 실제 파일이 첨부되도록
         // 앱 바깥 드래그를 복사 동작으로 허용한다.
         collectionView.setDraggingSourceOperationMask(.copy, forLocal: false)
-        // 썸네일 우클릭 → "Finder에서 보기" 컨텍스트 메뉴
+        // 썸네일 우클릭 → 컨텍스트 메뉴
         collectionView.menuProvider = { [weak self] indexPath in
-            guard let self, self.items.indices.contains(indexPath.item) else { return nil }
-            self.select(indexPath.item)     // 우클릭한 항목을 선택 + 미리보기로
+            guard let self, self.item(at: indexPath) != nil else { return nil }
+            self.select(indexPath)     // 우클릭한 항목을 선택 + 미리보기로
             let menu = NSMenu()
-            let reveal = NSMenuItem(title: "Finder에서 보기", action: #selector(self.revealSelected), keyEquivalent: "")
-            reveal.target = self
-            menu.addItem(reveal)
+            for (title, action) in [("클립보드에 복사", #selector(self.copySelected)),
+                                    ("Finder에서 보기", #selector(self.revealSelected)),
+                                    ("다른 이름으로 저장…", #selector(self.saveSelected))] {
+                let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+                item.target = self
+                menu.addItem(item)
+            }
+            menu.addItem(.separator())
+            let trash = NSMenuItem(title: "휴지통으로 이동", action: #selector(self.deleteSelected), keyEquivalent: "")
+            trash.target = self
+            menu.addItem(trash)
             return menu
         }
 
         let scroll = NSScrollView()
         scroll.documentView = collectionView
         scroll.hasVerticalScroller = true
-        scroll.drawsBackground = true
-        scroll.backgroundColor = .underPageBackgroundColor
-        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.drawsBackground = false          // 사이드바 재질이 비치도록
+        scroll.automaticallyAdjustsContentInsets = true
+        return scroll
+    }
 
-        // 미리보기 (확대/축소 가능한 스크롤뷰)
+    private func buildPreview() -> NSView {
         let previewContainer = NSView()
         previewContainer.wantsLayer = true
-        previewContainer.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-        previewContainer.translatesAutoresizingMaskIntoConstraints = false
+        previewContainer.layer?.backgroundColor = NSColor.underPageBackgroundColor.cgColor
 
         editorView.onImageChanged = { [weak self] in
             guard let self else { return }
@@ -162,6 +234,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         }
         editorView.onCropProgress = { [weak self] progressed in
             self?.cropDoneButton.isHidden = !progressed
+            self?.cropCancelButton.isHidden = !progressed
         }
         editorView.onDidCopy = { [weak self] in
             self?.showToast("클립보드에 복사됨")
@@ -189,6 +262,14 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         previewScroll.translatesAutoresizingMaskIntoConstraints = false
         previewContainer.addSubview(previewScroll)
 
+        // 배율 표시: 스크롤뷰 bounds가 바뀔 때(줌·핀치 포함)마다 갱신.
+        previewScroll.contentView.postsBoundsChangedNotifications = true
+        boundsObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification,
+                                                                object: previewScroll.contentView,
+                                                                queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateZoomLabel() }
+        }
+
         videoEditorView.translatesAutoresizingMaskIntoConstraints = false
         videoEditorView.isHidden = true
         previewContainer.addSubview(videoEditorView)
@@ -197,44 +278,44 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         animatedImageView.isHidden = true
         previewContainer.addSubview(animatedImageView)
 
-        emptyLabel.alignment = .center
-        emptyLabel.textColor = .secondaryLabelColor
-        emptyLabel.font = .systemFont(ofSize: 13)
-        emptyLabel.maximumNumberOfLines = 0
-        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
-        previewContainer.addSubview(emptyLabel)
+        buildEmptyState()
+        previewContainer.addSubview(emptyState)
 
-        // 크롭 진행 시 떠오르는 [완료] 버튼
+        // 크롭 진행 시 떠오르는 [완료]/[취소] 버튼
         cropDoneButton.bezelStyle = .rounded
         cropDoneButton.controlSize = .large
         cropDoneButton.keyEquivalent = "\r"
         cropDoneButton.target = self
         cropDoneButton.action = #selector(commitCrop)
         cropDoneButton.isHidden = true
-        cropDoneButton.translatesAutoresizingMaskIntoConstraints = false
         if #available(macOS 11.0, *) { cropDoneButton.bezelColor = Brand.red }
-        previewContainer.addSubview(cropDoneButton)
+        cropCancelButton.bezelStyle = .rounded
+        cropCancelButton.controlSize = .large
+        cropCancelButton.target = self
+        cropCancelButton.action = #selector(cancelCrop)
+        cropCancelButton.isHidden = true
+        let cropButtons = NSStackView(views: [cropCancelButton, cropDoneButton])
+        cropButtons.orientation = .horizontal
+        cropButtons.spacing = 8
+        cropButtons.translatesAutoresizingMaskIntoConstraints = false
+        previewContainer.addSubview(cropButtons)
 
-        content.addSubview(toolbar)
-        content.addSubview(scroll)
-        content.addSubview(previewContainer)
+        // 주석 도구일 때만 나타나는 옵션 스트립(색·굵기)
+        buildAnnotationOptions()
+        previewContainer.addSubview(annotationOptions)
+
+        // 배율 알약 — 클릭하면 창에 맞춤
+        zoomButton.bezelStyle = .inline
+        zoomButton.isBordered = true
+        zoomButton.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        zoomButton.contentTintColor = .secondaryLabelColor
+        zoomButton.toolTip = "창에 맞춤 (⌘0) · ⌘+/⌘- 또는 ⌘+스크롤로 확대/축소"
+        zoomButton.target = self
+        zoomButton.action = #selector(zoomFit)
+        zoomButton.translatesAutoresizingMaskIntoConstraints = false
+        previewContainer.addSubview(zoomButton)
 
         NSLayoutConstraint.activate([
-            toolbar.topAnchor.constraint(equalTo: content.topAnchor),
-            toolbar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            toolbar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            toolbar.heightAnchor.constraint(equalToConstant: 52),
-
-            scroll.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
-            scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            scroll.widthAnchor.constraint(equalToConstant: 264),
-
-            previewContainer.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
-            previewContainer.leadingAnchor.constraint(equalTo: scroll.trailingAnchor),
-            previewContainer.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            previewContainer.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-
             previewScroll.topAnchor.constraint(equalTo: previewContainer.topAnchor),
             previewScroll.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
             previewScroll.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
@@ -250,89 +331,189 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             animatedImageView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -18),
             animatedImageView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor, constant: -18),
 
-            emptyLabel.centerXAnchor.constraint(equalTo: previewContainer.centerXAnchor),
-            emptyLabel.centerYAnchor.constraint(equalTo: previewContainer.centerYAnchor),
+            emptyState.centerXAnchor.constraint(equalTo: previewContainer.centerXAnchor),
+            emptyState.centerYAnchor.constraint(equalTo: previewContainer.centerYAnchor),
+            emptyState.widthAnchor.constraint(lessThanOrEqualToConstant: 360),
 
-            cropDoneButton.centerXAnchor.constraint(equalTo: previewContainer.centerXAnchor),
-            cropDoneButton.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor, constant: -18)
+            cropButtons.centerXAnchor.constraint(equalTo: previewContainer.centerXAnchor),
+            cropButtons.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor, constant: -18),
+
+            annotationOptions.centerXAnchor.constraint(equalTo: previewContainer.centerXAnchor),
+            annotationOptions.topAnchor.constraint(equalTo: previewContainer.topAnchor, constant: 12),
+
+            zoomButton.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -14),
+            zoomButton.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor, constant: -12)
         ])
-
-        window.contentView = content
-        self.window = window
+        return previewContainer
     }
 
-    private func buildToolbar() -> NSView {
-        let bar = NSVisualEffectView()
-        bar.material = .headerView
-        bar.blendingMode = .withinWindow
-        bar.state = .active
-        bar.wantsLayer = true
+    private func buildEmptyState() {
+        let symbolConfig = NSImage.SymbolConfiguration(pointSize: 44, weight: .light)
+        let icon = NSImageView(image: NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: nil)?
+            .withSymbolConfiguration(symbolConfig) ?? NSImage())
+        icon.contentTintColor = .tertiaryLabelColor
 
-        let stack = NSStackView()
-        stack.orientation = .horizontal
-        stack.spacing = 6
-        stack.translatesAutoresizingMaskIntoConstraints = false
+        let title = NSTextField(labelWithString: "아직 캡처가 없어요")
+        title.font = .systemFont(ofSize: 15, weight: .semibold)
+        title.textColor = .secondaryLabelColor
+        title.alignment = .center
 
-        func iconButton(_ symbol: String, _ action: Selector, _ help: String) -> NSButton {
-            let b = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: help) ?? NSImage(),
-                             target: self, action: action)
-            b.bezelStyle = .rounded
-            b.toolTip = help
-            return b
-        }
+        emptyHintLabel.font = .systemFont(ofSize: 12)
+        emptyHintLabel.textColor = .tertiaryLabelColor
+        emptyHintLabel.alignment = .center
+        refreshEmptyHint()
 
-        // 편집 도구: 포인터 / 크롭 / 중간 잘라내기 / 번호 / 텍스트 / 말풍선 / 화살표 / 사각형 / 원 / 모자이크
-        let symbols = ["cursorarrow", "crop", "rectangle.compress.vertical", "number.circle", "textformat", "bubble.left", "arrow.up.right", "rectangle", "circle", "square.grid.3x3.fill"]
-        let tips = ["선택", "크롭 (드래그 후 ⏎ 적용)", "중간 잘라내기 (없앨 가로/세로 영역을 드래그)", "번호 ➊–➒", "텍스트", "말풍선", "화살표", "사각형", "원", "모자이크 (드래그)"]
-        toolControl.segmentCount = symbols.count
-        for (i, symbol) in symbols.enumerated() {
-            toolControl.setImage(NSImage(systemSymbolName: symbol, accessibilityDescription: tips[i]), forSegment: i)
-            toolControl.setToolTip(tips[i], forSegment: i)
-            toolControl.setWidth(34, forSegment: i)
-        }
-        toolControl.selectedSegment = -1
+        let captureButton = NSButton(title: "지금 캡처", target: self, action: #selector(captureNow))
+        AppAppearance.accentButton(captureButton)
+        captureButton.controlSize = .large
 
-        // 색상 (기본 빨강)
-        let colorWell = NSColorWell()
+        emptyState.orientation = .vertical
+        emptyState.alignment = .centerX
+        emptyState.spacing = 8
+        emptyState.translatesAutoresizingMaskIntoConstraints = false
+        emptyState.addArrangedSubview(icon)
+        emptyState.addArrangedSubview(title)
+        emptyState.addArrangedSubview(emptyHintLabel)
+        emptyState.setCustomSpacing(16, after: emptyHintLabel)
+        emptyState.addArrangedSubview(captureButton)
+        emptyState.isHidden = true
+    }
+
+    @objc private func refreshEmptyHint() {
+        let shortcut = HotkeyFormatter.displayString(keyCode: Settings.shared.hotKeyCode,
+                                                     carbonModifiers: Settings.shared.hotKeyModifiers)
+        emptyHintLabel.stringValue = "\(shortcut) 를 누르면 화면 어디서든 캡처할 수 있고,\n결과는 클립보드와 여기에 함께 담깁니다."
+    }
+
+    private func buildAnnotationOptions() {
+        annotationOptions.material = .popover
+        annotationOptions.blendingMode = .withinWindow
+        annotationOptions.state = .active
+        annotationOptions.wantsLayer = true
+        annotationOptions.layer?.cornerRadius = Brand.cornerRadius
+        annotationOptions.layer?.masksToBounds = true
+        annotationOptions.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.7).cgColor
+        annotationOptions.layer?.borderWidth = 1
+        annotationOptions.translatesAutoresizingMaskIntoConstraints = false
+        annotationOptions.isHidden = true
+
         colorWell.color = Brand.red
         colorWell.target = self
         colorWell.action = #selector(colorChanged(_:))
-        colorWell.widthAnchor.constraint(equalToConstant: 38).isActive = true
-        colorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        if #available(macOS 13.0, *) { colorWell.colorWellStyle = .minimal }
+        colorWell.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        colorWell.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        colorWell.toolTip = "주석 색상"
 
-        // 굵기 (px)
-        widthSlider.minValue = 1
-        widthSlider.maxValue = 20
-        widthSlider.doubleValue = Double(editorView.strokeWidth)
-        widthSlider.target = self
-        widthSlider.action = #selector(widthChanged(_:))
-        widthSlider.widthAnchor.constraint(equalToConstant: 80).isActive = true
-        widthLabel.stringValue = "\(Int(editorView.strokeWidth))px"
-        widthLabel.textColor = .secondaryLabelColor
-        widthLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        widthControl.controlSize = .small
+        widthControl.selectedSegment = strokeWidthPresets.firstIndex(of: editorView.strokeWidth) ?? 1
+        widthControl.toolTip = "선 굵기"
 
-        stack.addArrangedSubview(toolControl)
-        stack.addArrangedSubview(colorWell)
-        stack.addArrangedSubview(widthSlider)
-        stack.addArrangedSubview(widthLabel)
-        stack.addArrangedSubview(iconButton("arrow.uturn.backward", #selector(undoEdit), "되돌리기 (⌘Z)"))
-        stack.addArrangedSubview(iconButton("square.and.arrow.down", #selector(saveSelected), "저장"))
-        stack.addArrangedSubview(iconButton("folder", #selector(revealSelected), "Finder에서 보기"))
-        stack.addArrangedSubview(iconButton("trash", #selector(deleteSelected), "삭제"))
+        let colorLabel = NSTextField(labelWithString: "색상")
+        let widthLabel = NSTextField(labelWithString: "굵기")
+        for label in [colorLabel, widthLabel] {
+            label.font = .systemFont(ofSize: 11)
+            label.textColor = .secondaryLabelColor
+        }
 
-        countLabel.textColor = .secondaryLabelColor
-        countLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        countLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        bar.addSubview(stack)
-        bar.addSubview(countLabel)
+        let row = NSStackView(views: [colorLabel, colorWell, widthLabel, widthControl])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 6
+        row.setCustomSpacing(14, after: colorWell)
+        row.edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        annotationOptions.addSubview(row)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 12),
-            stack.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            countLabel.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -14),
-            countLabel.centerYAnchor.constraint(equalTo: bar.centerYAnchor)
+            row.leadingAnchor.constraint(equalTo: annotationOptions.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: annotationOptions.trailingAnchor),
+            row.topAnchor.constraint(equalTo: annotationOptions.topAnchor),
+            row.bottomAnchor.constraint(equalTo: annotationOptions.bottomAnchor)
         ])
-        return bar
+    }
+
+    // MARK: 툴바
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.toggleSidebar, .sidebarTrackingSeparator,
+         ToolbarID.editTools, ToolbarID.annotateTools, ToolbarID.undo,
+         .flexibleSpace,
+         ToolbarID.copy, ToolbarID.save, ToolbarID.reveal, ToolbarID.delete]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+
+    func toolbar(_ toolbar: NSToolbar,
+                 itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        switch itemIdentifier {
+        case ToolbarID.editTools:
+            configure(editToolControl,
+                      symbols: ["cursorarrow", "crop", "rectangle.compress.vertical"],
+                      tips: ["선택 · 주석 이동", "크롭 (드래그 후 ⏎ 적용)", "중간 잘라내기 (없앨 가로/세로 띠를 드래그)"])
+            return viewItem(itemIdentifier, view: editToolControl, label: "편집")
+        case ToolbarID.annotateTools:
+            configure(annotateToolControl,
+                      symbols: ["number.circle", "textformat", "bubble.left", "arrow.up.right", "rectangle", "circle", "square.grid.3x3.fill"],
+                      tips: ["번호 ➊–➒", "텍스트", "말풍선", "화살표", "사각형", "원", "모자이크 (드래그)"])
+            return viewItem(itemIdentifier, view: annotateToolControl, label: "주석")
+        case ToolbarID.undo:
+            return actionItem(itemIdentifier, symbol: "arrow.uturn.backward", label: "되돌리기", tip: "되돌리기 (⌘Z)", action: #selector(undoEdit))
+        case ToolbarID.copy:
+            return actionItem(itemIdentifier, symbol: "doc.on.doc", label: "복사", tip: "클립보드에 복사 (⌘C)", action: #selector(copySelected))
+        case ToolbarID.save:
+            return actionItem(itemIdentifier, symbol: "square.and.arrow.down", label: "저장", tip: "다른 이름으로 저장…", action: #selector(saveSelected))
+        case ToolbarID.reveal:
+            return actionItem(itemIdentifier, symbol: "folder", label: "Finder", tip: "Finder에서 보기", action: #selector(revealSelected))
+        case ToolbarID.delete:
+            return actionItem(itemIdentifier, symbol: "trash", label: "삭제", tip: "휴지통으로 이동 (⌫)", action: #selector(deleteSelected))
+        default:
+            return nil
+        }
+    }
+
+    private func configure(_ control: NSSegmentedControl, symbols: [String], tips: [String]) {
+        guard control.segmentCount != symbols.count else { return }
+        control.segmentCount = symbols.count
+        control.segmentStyle = .automatic
+        for (i, symbol) in symbols.enumerated() {
+            control.setImage(NSImage(systemSymbolName: symbol, accessibilityDescription: tips[i]), forSegment: i)
+            control.setToolTip(tips[i], forSegment: i)
+            control.setWidth(32, forSegment: i)
+        }
+        control.selectedSegment = -1
+    }
+
+    private func viewItem(_ id: NSToolbarItem.Identifier, view: NSView, label: String) -> NSToolbarItem {
+        let item = NSToolbarItem(itemIdentifier: id)
+        item.view = view
+        item.label = label
+        item.paletteLabel = label
+        return item
+    }
+
+    private func actionItem(_ id: NSToolbarItem.Identifier, symbol: String, label: String, tip: String, action: Selector) -> NSToolbarItem {
+        let item = NSToolbarItem(itemIdentifier: id)
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        item.label = label
+        item.paletteLabel = label
+        item.toolTip = tip
+        item.isBordered = true
+        item.target = self
+        item.action = action
+        return item
+    }
+
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        switch item.itemIdentifier {
+        case ToolbarID.undo, ToolbarID.copy:
+            return selectedItem?.kind == .image
+        case ToolbarID.save, ToolbarID.reveal, ToolbarID.delete:
+            return selectedItem != nil
+        default:
+            return true
+        }
     }
 
     // MARK: 데이터
@@ -344,22 +525,22 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     }
 
     private func applyItems(_ items: [LibraryItem]) {
-        self.items = items
+        sections = Self.groupByDate(items)
         collectionView.reloadData()
-        countLabel.stringValue = "\(items.count)개 항목"
+        window?.subtitle = items.isEmpty ? "" : "\(items.count)개 항목"
 
-        // 캡처 직후: 이전 선택을 무시하고 방금 저장된 최신(0번) 항목을 선택.
-        if selectLatestPending, !items.isEmpty {
+        // 캡처 직후: 이전 선택을 무시하고 방금 저장된 최신(첫) 항목을 선택.
+        if selectLatestPending, let first = firstIndexPath {
             selectLatestPending = false
-            select(0)
+            select(first)
             return
         }
 
         // 선택 유지 또는 첫 항목 선택
-        if let selected = selectedItem, let index = items.firstIndex(where: { $0.url == selected.url }) {
-            select(index)
-        } else if !items.isEmpty {
-            select(0)
+        if let selected = selectedItem, let indexPath = indexPath(for: selected.url) {
+            select(indexPath)
+        } else if let first = firstIndexPath {
+            select(first)
         } else {
             selectedItem = nil
             editorView.image = nil
@@ -367,28 +548,71 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             videoEditorView.isHidden = true
             animatedImageView.loadHTMLString("", baseURL: nil)
             animatedImageView.isHidden = true
-            previewScroll.isHidden = false
-            emptyLabel.isHidden = false
+            previewScroll.isHidden = true
+            zoomButton.isHidden = true
+            annotationOptions.isHidden = true
+            emptyState.isHidden = false
+            window?.toolbar?.validateVisibleItems()
         }
     }
 
-    private func select(_ index: Int) {
-        guard items.indices.contains(index) else { return }
-        let indexPath = IndexPath(item: index, section: 0)
+    /// 목록(최신순)을 오늘 / 어제 / 최근 7일 / 이전 섹션으로 나눈다.
+    private static func groupByDate(_ items: [LibraryItem]) -> [Section] {
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+        let weekAgo = calendar.date(byAdding: .day, value: -7, to: today) ?? today
+
+        var buckets: [(String, [LibraryItem])] = [("오늘", []), ("어제", []), ("최근 7일", []), ("이전", [])]
+        for item in items {
+            if item.date >= today { buckets[0].1.append(item) }
+            else if item.date >= yesterday { buckets[1].1.append(item) }
+            else if item.date >= weekAgo { buckets[2].1.append(item) }
+            else { buckets[3].1.append(item) }
+        }
+        return buckets.filter { !$0.1.isEmpty }.map { Section(title: $0.0, items: $0.1) }
+    }
+
+    private func item(at indexPath: IndexPath) -> LibraryItem? {
+        guard sections.indices.contains(indexPath.section),
+              sections[indexPath.section].items.indices.contains(indexPath.item) else { return nil }
+        return sections[indexPath.section].items[indexPath.item]
+    }
+
+    private func indexPath(for url: URL) -> IndexPath? {
+        for (s, section) in sections.enumerated() {
+            if let i = section.items.firstIndex(where: { $0.url == url }) {
+                return IndexPath(item: i, section: s)
+            }
+        }
+        return nil
+    }
+
+    private var firstIndexPath: IndexPath? {
+        sections.isEmpty ? nil : IndexPath(item: 0, section: 0)
+    }
+
+    private func select(_ indexPath: IndexPath) {
+        guard let item = item(at: indexPath) else { return }
         collectionView.selectionIndexPaths = [indexPath]
-        showPreview(items[index])
+        collectionView.scrollToItems(at: [indexPath], scrollPosition: .nearestHorizontalEdge)
+        showPreview(item)
     }
 
     private func showPreview(_ item: LibraryItem) {
         selectedItem = item
-        emptyLabel.isHidden = true
+        emptyState.isHidden = true
         cropDoneButton.isHidden = true
+        cropCancelButton.isHidden = true
         switch item.kind {
         case .video:
             editorView.image = nil
             animatedImageView.loadHTMLString("", baseURL: nil)
             animatedImageView.isHidden = true
             previewScroll.isHidden = true
+            zoomButton.isHidden = true
+            annotationOptions.isHidden = true
             videoEditorView.isHidden = false
             videoEditorView.load(url: item.url)
         case .animatedImage:
@@ -396,6 +620,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             videoEditorView.stop()
             videoEditorView.isHidden = true
             previewScroll.isHidden = true
+            zoomButton.isHidden = true
+            annotationOptions.isHidden = true
             animatedImageView.isHidden = false
             showAnimatedImagePreview(item)
         case .image:
@@ -404,8 +630,11 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             animatedImageView.loadHTMLString("", baseURL: nil)
             animatedImageView.isHidden = true
             previewScroll.isHidden = false
+            zoomButton.isHidden = false
+            annotationOptions.isHidden = !annotateTools.contains(editorView.tool)
             showImagePreview(item)
         }
+        window?.toolbar?.validateVisibleItems()
     }
 
     private func showAnimatedImagePreview(_ item: LibraryItem) {
@@ -420,26 +649,45 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         }
     }
 
+    private func updateZoomLabel() {
+        let scale = window?.backingScaleFactor ?? 2
+        // 에디터 문서는 픽셀 크기라, 화면 픽셀 1:1이 100%가 되도록 백킹 배율을 곱한다.
+        let percent = Int((previewScroll.magnification * scale * 100).rounded())
+        zoomButton.title = "\(percent)%"
+    }
+
     // MARK: NSCollectionView
+    func numberOfSections(in collectionView: NSCollectionView) -> Int {
+        sections.count
+    }
+
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
-        items.count
+        sections[section].items.count
+    }
+
+    func collectionView(_ collectionView: NSCollectionView,
+                        viewForSupplementaryElementOfKind kind: NSCollectionView.SupplementaryElementKind,
+                        at indexPath: IndexPath) -> NSView {
+        let header = collectionView.makeSupplementaryView(ofKind: kind, withIdentifier: headerIdentifier, for: indexPath)
+        (header as? ThumbnailSectionHeader)?.title = sections[indexPath.section].title
+        return header
     }
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
-        let item = collectionView.makeItem(withIdentifier: itemIdentifier, for: indexPath) as! ThumbnailItem
-        let libraryItem = items[indexPath.item]
+        let cell = collectionView.makeItem(withIdentifier: itemIdentifier, for: indexPath) as! ThumbnailItem
+        guard let libraryItem = item(at: indexPath) else { return cell }
         // 셀 재사용 대비: 비동기 로드 후 셀이 가리키는 URL이 그대로일 때만 적용.
-        item.representedURL = libraryItem.url
-        item.thumbnail = nil
+        cell.configure(with: libraryItem)
+        cell.thumbnail = nil
         CaptureLibrary.shared.thumbnail(for: libraryItem.url) { image in
-            if item.representedURL == libraryItem.url { item.thumbnail = image }
+            if cell.representedURL == libraryItem.url { cell.thumbnail = image }
         }
-        return item
+        return cell
     }
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
-        if let indexPath = indexPaths.first, items.indices.contains(indexPath.item) {
-            showPreview(items[indexPath.item])
+        if let indexPath = indexPaths.first, let item = item(at: indexPath) {
+            showPreview(item)
         }
     }
 
@@ -453,55 +701,53 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     /// 항목의 실제 파일 URL을 pasteboard에 실어, 드롭한 곳에 파일 자체가 전달되게 한다.
     func collectionView(_ collectionView: NSCollectionView,
                         pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
-        guard items.indices.contains(indexPath.item) else { return nil }
-        return items[indexPath.item].url as NSURL
+        item(at: indexPath)?.url as NSURL?
     }
 
     // MARK: 편집 도구 액션
-    @objc private func toolChanged(_ sender: NSSegmentedControl) {
-        let index = sender.selectedSegment
-        guard tools.indices.contains(index) else {
-            editorView.tool = .none
-            return
-        }
-        editorView.tool = tools[index]
+    @objc private func editToolChanged(_ sender: NSSegmentedControl) {
+        guard editTools.indices.contains(sender.selectedSegment) else { return }
+        editorView.tool = editTools[sender.selectedSegment]
         window?.makeFirstResponder(editorView)
     }
 
+    @objc private func annotateToolChanged(_ sender: NSSegmentedControl) {
+        guard annotateTools.indices.contains(sender.selectedSegment) else { return }
+        editorView.tool = annotateTools[sender.selectedSegment]
+        window?.makeFirstResponder(editorView)
+    }
+
+    /// 에디터의 현재 도구를 두 세그먼트 그룹과 옵션 스트립에 반영한다.
     private func syncToolControl(to tool: EditorImageView.Tool) {
-        switch tool {
-        case .none: toolControl.selectedSegment = -1
-        case .crop: toolControl.selectedSegment = 1
-        case .middleCut: toolControl.selectedSegment = 2
-        case .number: toolControl.selectedSegment = 3
-        case .text: toolControl.selectedSegment = 4
-        case .callout: toolControl.selectedSegment = 5
-        case .arrow: toolControl.selectedSegment = 6
-        case .rectangle: toolControl.selectedSegment = 7
-        case .ellipse: toolControl.selectedSegment = 8
-        case .mosaic: toolControl.selectedSegment = 9
-        }
+        editToolControl.selectedSegment = editTools.firstIndex(of: tool) ?? -1
+        annotateToolControl.selectedSegment = annotateTools.firstIndex(of: tool) ?? -1
+        annotationOptions.isHidden = !(annotateTools.contains(tool) && selectedItem?.kind == .image)
     }
 
     @objc private func colorChanged(_ sender: NSColorWell) {
         editorView.strokeColor = sender.color
     }
 
-    @objc private func widthChanged(_ sender: NSSlider) {
-        editorView.strokeWidth = CGFloat(sender.doubleValue)
-        widthLabel.stringValue = "\(Int(sender.doubleValue))px"
+    @objc private func widthChanged(_ sender: NSSegmentedControl) {
+        guard strokeWidthPresets.indices.contains(sender.selectedSegment) else { return }
+        editorView.strokeWidth = strokeWidthPresets[sender.selectedSegment]
     }
 
     @objc private func undoEdit() {
         editorView.undo()
     }
 
+    @objc private func copySelected() {
+        editorView.copyToClipboard()
+    }
+
+    @objc private func captureNow() {
+        CaptureCoordinator.shared.startAreaCapture()
+    }
+
     private func showToast(_ message: String) {
         guard let content = window?.contentView else { return }
-        let pill = NSView()
-        pill.wantsLayer = true
-        pill.layer?.backgroundColor = NSColor(white: 0, alpha: 0.82).cgColor
-        pill.layer?.cornerRadius = Brand.cornerRadius
+        let pill = HUDSurfaceView(frame: .zero)
         pill.translatesAutoresizingMaskIntoConstraints = false
 
         let label = NSTextField(labelWithString: message)
@@ -538,6 +784,13 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     @objc private func commitCrop() {
         editorView.commitCrop()
         cropDoneButton.isHidden = true
+        cropCancelButton.isHidden = true
+    }
+
+    @objc private func cancelCrop() {
+        editorView.tool = .none
+        cropDoneButton.isHidden = true
+        cropCancelButton.isHidden = true
     }
 
     /// 현재 편집 결과(크롭 등)를 선택된 라이브러리 파일에 덮어쓰고, 해당 썸네일만 갱신한다.
@@ -555,8 +808,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     /// 그리드에서 해당 URL 셀의 썸네일만 다시 그린다(선택/스크롤 위치 보존).
     private func refreshThumbnail(for url: URL) {
         CaptureLibrary.shared.invalidateThumbnail(for: url)
-        guard let index = items.firstIndex(where: { $0.url == url }) else { return }
-        let indexPath = IndexPath(item: index, section: 0)
+        guard let indexPath = indexPath(for: url) else { return }
         CaptureLibrary.shared.thumbnail(for: url) { [weak self] image in
             guard let self,
                   let cell = self.collectionView.item(at: indexPath) as? ThumbnailItem,
@@ -608,6 +860,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         guard let item = selectedItem else { return }
         selectedItem = nil
         CaptureLibrary.shared.delete(item)   // libraryDidChange → reload()
+        showToast("휴지통으로 이동함")
     }
 
     func windowDidResize(_ notification: Notification) {
@@ -620,6 +873,22 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             NSEvent.removeMonitor(keyMonitor)
             self.keyMonitor = nil
         }
+    }
+}
+
+/// 미리 만든 뷰를 그대로 감싸는 얇은 뷰 컨트롤러 (NSSplitViewController 항목용).
+private final class ContainerViewController: NSViewController {
+    private let contentView: NSView
+
+    init(view: NSView) {
+        self.contentView = view
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func loadView() {
+        view = contentView
     }
 }
 
@@ -753,28 +1022,62 @@ final class CenteringClipView: NSClipView {
     }
 }
 
-/// 그리드 셀.
+/// 섹션 머리글 (오늘 / 어제 / …). 사이드바 재질 위에 얹히므로 배경 없이 글자만.
+final class ThumbnailSectionHeader: NSView, NSCollectionViewElement {
+    private let label = NSTextField(labelWithString: "")
+
+    var title: String = "" {
+        didSet { label.stringValue = title }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        label.font = .systemFont(ofSize: 11, weight: .semibold)
+        label.textColor = .secondaryLabelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 2)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}
+
+/// 그리드 셀: 썸네일 + 상대 시간 + 종류 배지(GIF/MP4).
 final class ThumbnailItem: NSCollectionViewItem {
     private let thumbView = NSImageView()
-    private let filenameLabel = NSTextField(labelWithString: "")
+    private let timeLabel = NSTextField(labelWithString: "")
+    private let badgeLabel = NSTextField(labelWithString: "")
 
     /// 비동기 썸네일 로드 시 셀 재사용을 구분하기 위한 현재 표시 대상.
-    var representedURL: URL? {
-        didSet {
-            let filename = representedURL?.lastPathComponent ?? ""
-            filenameLabel.stringValue = filename
-            filenameLabel.toolTip = filename
-        }
-    }
+    private(set) var representedURL: URL?
 
     var thumbnail: NSImage? {
         didSet { thumbView.image = thumbnail }
     }
 
+    func configure(with item: LibraryItem) {
+        representedURL = item.url
+        timeLabel.stringValue = Self.relativeTime(item.date)
+        view.toolTip = item.url.lastPathComponent
+        switch item.kind {
+        case .image:
+            badgeLabel.isHidden = true
+        case .animatedImage:
+            badgeLabel.isHidden = false
+            badgeLabel.stringValue = "GIF"
+        case .video:
+            badgeLabel.isHidden = false
+            badgeLabel.stringValue = item.url.pathExtension.uppercased()
+        }
+    }
+
     override func loadView() {
         let container = NSView()
         container.wantsLayer = true
-        container.layer?.cornerRadius = 10
+        container.layer?.cornerRadius = Brand.innerCornerRadius
         container.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.82).cgColor
         container.layer?.borderColor = Brand.red.cgColor
         view = container
@@ -783,24 +1086,38 @@ final class ThumbnailItem: NSCollectionViewItem {
         thumbView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(thumbView)
 
-        filenameLabel.alignment = .center
-        filenameLabel.font = .systemFont(ofSize: 10, weight: .medium)
-        filenameLabel.textColor = .secondaryLabelColor
-        filenameLabel.lineBreakMode = .byTruncatingMiddle
-        filenameLabel.maximumNumberOfLines = 1
-        filenameLabel.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(filenameLabel)
+        timeLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        timeLabel.textColor = .secondaryLabelColor
+        timeLabel.lineBreakMode = .byTruncatingTail
+        timeLabel.maximumNumberOfLines = 1
+        timeLabel.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(timeLabel)
+
+        badgeLabel.font = .systemFont(ofSize: 9, weight: .bold)
+        badgeLabel.textColor = .white
+        badgeLabel.alignment = .center
+        badgeLabel.wantsLayer = true
+        badgeLabel.layer?.backgroundColor = NSColor(white: 0, alpha: 0.6).cgColor
+        badgeLabel.layer?.cornerRadius = 4
+        badgeLabel.isHidden = true
+        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(badgeLabel)
 
         NSLayoutConstraint.activate([
             thumbView.topAnchor.constraint(equalTo: container.topAnchor, constant: 5),
             thumbView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 5),
             thumbView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -5),
-            thumbView.bottomAnchor.constraint(equalTo: filenameLabel.topAnchor, constant: -4),
+            thumbView.bottomAnchor.constraint(equalTo: timeLabel.topAnchor, constant: -4),
 
-            filenameLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 5),
-            filenameLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -5),
-            filenameLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -5),
-            filenameLabel.heightAnchor.constraint(equalToConstant: 14)
+            timeLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 7),
+            timeLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -5),
+            timeLabel.heightAnchor.constraint(equalToConstant: 14),
+
+            badgeLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -7),
+            badgeLabel.centerYAnchor.constraint(equalTo: timeLabel.centerYAnchor),
+            badgeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: timeLabel.trailingAnchor, constant: 4),
+            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 28),
+            badgeLabel.heightAnchor.constraint(equalToConstant: 13)
         ])
     }
 
@@ -809,4 +1126,26 @@ final class ThumbnailItem: NSCollectionViewItem {
             view.layer?.borderWidth = isSelected ? 2 : 0
         }
     }
+
+    /// "방금 전" / "14:03" / "어제 14:03" / "8월 20일" — 파일명 대신 사람이 읽는 시간.
+    private static func relativeTime(_ date: Date) -> String {
+        let now = Date()
+        if now.timeIntervalSince(date) < 60 { return "방금 전" }
+        let calendar = Calendar.current
+        let time = timeFormatter.string(from: date)
+        if calendar.isDateInToday(date) { return time }
+        if calendar.isDateInYesterday(date) { return "어제 \(time)" }
+        if calendar.isDate(date, equalTo: now, toGranularity: .year) { return dayFormatter.string(from: date) }
+        return fullFormatter.string(from: date)
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "ko_KR"); f.dateFormat = "HH:mm"; return f
+    }()
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "ko_KR"); f.dateFormat = "M월 d일"; return f
+    }()
+    private static let fullFormatter: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "ko_KR"); f.dateFormat = "yyyy. M. d."; return f
+    }()
 }

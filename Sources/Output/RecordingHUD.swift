@@ -81,13 +81,8 @@ final class RecordingHUD {
     }
 
     private func buildContent(size: NSSize) {
-        let container = DraggableHUDBackground(frame: NSRect(origin: .zero, size: size))
-        container.wantsLayer = true
-        container.layer?.backgroundColor = Brand.darkSurface.withAlphaComponent(0.94).cgColor
-        container.layer?.cornerRadius = Brand.cornerRadius
-        container.layer?.masksToBounds = true
-        container.layer?.borderColor = NSColor.white.withAlphaComponent(0.2).cgColor
-        container.layer?.borderWidth = 1
+        let container = HUDSurfaceView(frame: NSRect(origin: .zero, size: size))
+        container.movesWindowOnDrag = true
 
         let dot = NSView()
         dot.translatesAutoresizingMaskIntoConstraints = false
@@ -149,12 +144,4 @@ final class RecordingHUD {
 private final class RecordingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
-}
-
-private final class DraggableHUDBackground: NSView {
-    override var mouseDownCanMoveWindow: Bool { true }
-
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .openHand)
-    }
 }

@@ -32,17 +32,17 @@ enum PermissionAlert {
         alert.informativeText = """
         \(Brand.name)가 화면을 캡처하려면 시스템 설정에서 권한을 허용해야 합니다.
 
-        '화면 및 시스템 오디오 녹화' 목록에서 \(Brand.name)을 켠 뒤 앱을 다시 열어 주세요.
-        이미 켜져 있다면 한 번 끄고 다시 켠 다음 앱을 다시 실행해야 macOS가 새 권한을 반영할 수 있습니다.
+        '화면 및 시스템 오디오 녹화' 목록에서 \(Brand.name)을 켜 주세요. 앱은 자동으로 다시 시작됩니다.
+        이미 켜져 있다면 한 번 끄고 다시 켜야 macOS가 새 권한을 반영할 수 있습니다.
         """
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "설정 열고 앱 종료")
+        alert.addButton(withTitle: "시스템 설정 열고 재시작")
         alert.addButton(withTitle: "취소")
         // accessory 앱은 활성화하지 않으면 알림창이 다른 앱 뒤에 묻힌다.
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn {
             ScreenCapturePermission.openSystemSettings()
-            NSApp.terminate(nil)
+            AppRelauncher.relaunch()
         }
     }
 }

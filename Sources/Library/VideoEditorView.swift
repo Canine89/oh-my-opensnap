@@ -21,12 +21,10 @@ final class VideoEditorView: NSView {
     private let forwardButton = NSButton(image: NSImage(systemSymbolName: "goforward.5", accessibilityDescription: "5초 앞으로") ?? NSImage(),
                                          target: nil,
                                          action: nil)
-    private let setStartButton = NSButton(title: "현재를 시작", target: nil, action: nil)
-    private let setEndButton = NSButton(title: "현재를 끝", target: nil, action: nil)
-    private let trimButton = NSButton(title: "선택 구간 MP4 저장", target: nil, action: nil)
-    private let gif30Button = NSButton(title: "GIF 30", target: nil, action: nil)
-    private let gif45Button = NSButton(title: "GIF 45", target: nil, action: nil)
-    private let resetButton = NSButton(title: "초기화", target: nil, action: nil)
+    private let setStartButton = NSButton(title: "시작점", target: nil, action: nil)
+    private let setEndButton = NSButton(title: "끝점", target: nil, action: nil)
+    private let exportButton = NSPopUpButton(frame: .zero, pullsDown: true)
+    private let resetButton = NSButton(title: "구간 초기화", target: nil, action: nil)
 
     private var representedURL: URL?
     private var duration: Double = 0
@@ -89,10 +87,32 @@ final class VideoEditorView: NSView {
         statusLabel.font = .systemFont(ofSize: 11)
         statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        for button in [playButton, backButton, forwardButton, setStartButton, setEndButton, trimButton, gif30Button, gif45Button, resetButton] {
+        for button in [playButton, backButton, forwardButton, setStartButton, setEndButton, resetButton] {
             button.bezelStyle = .rounded
             button.controlSize = .regular
             button.target = self
+        }
+        setStartButton.toolTip = "현재 재생 위치를 구간 시작으로"
+        setEndButton.toolTip = "현재 재생 위치를 구간 끝으로"
+        resetButton.toolTip = "선택 구간을 전체로 되돌림"
+        backButton.toolTip = "5초 뒤로"
+        forwardButton.toolTip = "5초 앞으로"
+        playButton.toolTip = "재생/일시정지 (Space)"
+
+        // 내보내기 세 가지를 풀다운 메뉴 하나로 — "GIF 30"처럼 뜻 모를 버튼을 없앤다.
+        exportButton.bezelStyle = .rounded
+        exportButton.controlSize = .regular
+        exportButton.addItem(withTitle: "내보내기")
+        exportButton.item(at: 0)?.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: nil)
+        let exportItems: [(String, Selector)] = [
+            ("선택 구간을 MP4로 저장", #selector(exportTrimmedMP4)),
+            ("선택 구간을 GIF로 · 가볍게 (30프레임)", #selector(exportGIF30)),
+            ("선택 구간을 GIF로 · 부드럽게 (45프레임)", #selector(exportGIF45))
+        ]
+        for (title, action) in exportItems {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            exportButton.menu?.addItem(item)
         }
         playButton.bezelStyle = .texturedRounded
         playButton.controlSize = .large
@@ -104,9 +124,6 @@ final class VideoEditorView: NSView {
         forwardButton.action = #selector(skipForward)
         setStartButton.action = #selector(setCurrentAsStart)
         setEndButton.action = #selector(setCurrentAsEnd)
-        trimButton.action = #selector(exportTrimmedMP4)
-        gif30Button.action = #selector(exportGIF30)
-        gif45Button.action = #selector(exportGIF45)
         resetButton.action = #selector(resetRangeAction)
 
         let panel = NSVisualEffectView()
@@ -114,7 +131,7 @@ final class VideoEditorView: NSView {
         panel.state = .active
         panel.blendingMode = .behindWindow
         panel.wantsLayer = true
-        panel.layer?.cornerRadius = 14
+        panel.layer?.cornerRadius = Brand.cornerRadius
         panel.layer?.masksToBounds = true
         panel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -131,10 +148,8 @@ final class VideoEditorView: NSView {
             forwardButton,
             setEndButton,
             NSView(),
-            trimButton,
-            gif30Button,
-            gif45Button,
-            resetButton
+            resetButton,
+            exportButton
         ])
         transportRow.orientation = .horizontal
         transportRow.alignment = .centerY
@@ -219,7 +234,7 @@ final class VideoEditorView: NSView {
         guard let url = representedURL else { return }
         let range = selectedRange()
         guard range.duration.seconds > 0.05, range.duration.seconds < max(duration - 0.05, 0) else {
-            onToast?("저장할 시작/끝 초를 먼저 지정하세요")
+            onToast?("시작점과 끝점을 먼저 지정하세요")
             return
         }
         setBusy(true, message: "선택 구간 MP4 저장 중...")
@@ -286,8 +301,8 @@ final class VideoEditorView: NSView {
 
     private func setBusy(_ busy: Bool, message: String) {
         isBusy = busy
-        [setStartButton, setEndButton, trimButton, gif30Button, gif45Button, resetButton, playButton, backButton, forwardButton]
-            .forEach { $0.isEnabled = !busy }
+        [setStartButton, setEndButton, resetButton, playButton, backButton, forwardButton].forEach { $0.isEnabled = !busy }
+        exportButton.isEnabled = !busy
         timelineView.isEnabled = !busy
         if busy {
             statusLabel.stringValue = message

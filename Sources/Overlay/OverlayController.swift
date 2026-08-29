@@ -84,6 +84,9 @@ final class OverlayController {
             view.cgOrigin = CGDisplayBounds(displayID).origin   // CG 전역 좌상단 원점(point)
             view.hitTester = tester
             view.confirmEnabled = mode != .askAfterSelection
+            view.adjustingHint = mode == .askAfterSelection
+                ? "드래그 조절 · ⏎ 이미지 · R 영상 · Esc 취소"
+                : "드래그 조절 · ⏎ 캡처 · Esc 취소"
             view.onFinish = { [weak self, weak window] rect in
                 switch mode {
                 case .stillImage:
@@ -171,7 +174,12 @@ final class OverlayController {
             return
         }
 
-        for window in windows { window.orderFrontRegardless() }
+        // 디밍이 팍 켜지지 않도록 짧게 페이드인. (정지 화면은 실제 화면과 같아 디밍만 차오른다)
+        for window in windows {
+            window.alphaValue = 0
+            window.orderFrontRegardless()
+        }
+        fadeIn(windows)
 
         // 오버레이가 화면에 올라온 뒤 SCWindow로 매핑한다.
         // 루페 스트림은 커서가 있는 디스플레이에서만 켠다(아래 primeCursor → activateLoupe).
@@ -195,6 +203,14 @@ final class OverlayController {
             MainActor.assumeIsolated {
                 self?.windows.forEach { $0.captureView.tick() }
             }
+        }
+    }
+
+    /// 동기 헬퍼 — async 문맥에서 애니메이션 그룹을 직접 부르면 격리 검사에 걸린다.
+    private func fadeIn(_ windows: [OverlayWindow]) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.14
+            windows.forEach { $0.animator().alphaValue = 1 }
         }
     }
 
@@ -253,6 +269,9 @@ final class OverlayController {
         // 로컬 모니터만 사용한다. 전역(global) keyDown 모니터는 입력 모니터링 권한을
         // 요구해 새 권한 prompt를 유발할 수 있어 피한다. 오버레이 중 앱은 활성/key라 충분하다.
         let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            // 선택 HUD가 떠 있으면 ⏎/R/Esc는 HUD가 먼저 결정한다 — 오버레이를 클릭해
+            // HUD가 key를 잃은 뒤에도 키보드만으로 확정할 수 있게.
+            if let hud = self?.choiceHUD, hud.handleKey(event) { return nil }
             if event.keyCode == 53 { self?.cancel(); return nil }   // Esc
             if event.keyCode == 36 || event.keyCode == 76,          // Return / 키패드 Enter
                self?.windows.contains(where: { $0.captureView.confirmIfAdjusting() }) == true {
@@ -517,11 +536,12 @@ final class OverlayController {
     private func cancel() {
         choiceHUD?.dismiss()
         choiceHUD = nil
-        teardown()
+        teardown(fade: true)
         LibraryWindowController.shared.restoreAfterCapture()
     }
 
-    private func teardown() {
+    /// 세션 정리. 캡처 확정 시엔 즉시 내리고(캡처에 찍히면 안 됨), 취소 시엔 짧게 페이드아웃한다.
+    private func teardown(fade: Bool = false) {
         refreshTimer?.invalidate()
         refreshTimer = nil
         watchdog?.invalidate()
@@ -535,8 +555,19 @@ final class OverlayController {
         activeLoupeDisplayID = nil
         overlayWindows.removeAll()
         hitTester = nil
-        for window in windows { window.orderOut(nil) }
+        let closing = windows
         windows.removeAll()
+        if fade {
+            closing.forEach { $0.ignoresMouseEvents = true }
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.14
+                closing.forEach { $0.animator().alphaValue = 0 }
+            }, completionHandler: {
+                closing.forEach { $0.orderOut(nil) }
+            })
+        } else {
+            closing.forEach { $0.orderOut(nil) }
+        }
         if cursorHidden {            // 숨긴 적 있을 때만 복구(unhide 카운터 불균형 방지)
             NSCursor.unhide()
             cursorHidden = false

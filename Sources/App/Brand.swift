@@ -10,8 +10,9 @@ enum Brand {
     static let darkSurface = NSColor(srgbRed: 0.10, green: 0.11, blue: 0.12, alpha: 1)
     static let darkRaisedSurface = NSColor(srgbRed: 0.17, green: 0.18, blue: 0.20, alpha: 1)
 
-    /// 모든 커스텀 표면이 공유하는 모서리 규칙.
+    /// 모서리 규칙은 둘뿐이다: 표면(창·HUD·카드)은 12, 그 안의 요소(버튼·알약·셀)는 8.
     static let cornerRadius: CGFloat = 12
+    static let innerCornerRadius: CGFloat = 8
 
     /// 저장 폴더 이름 (Application Support 또는 레거시 바탕화면 하위).
     static let folderName = "oh-my-opensnap"

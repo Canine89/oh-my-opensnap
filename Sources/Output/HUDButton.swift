@@ -1,5 +1,6 @@
 import AppKit
 
+/// 어두운 HUD 표면 위에 얹는 알약형 버튼. 아이콘·키 힌트를 함께 그려 마우스 없이도 쓸 수 있음을 알린다.
 final class HUDButton: NSButton {
     enum Role {
         case primary
@@ -8,9 +9,19 @@ final class HUDButton: NSButton {
     }
 
     private let role: Role
+    /// 제목 오른쪽에 흐리게 붙는 키 힌트(예: "⏎", "R").
+    var keyHint: String? {
+        didSet { updateTitle() }
+    }
 
-    init(title: String, role: Role = .secondary, target: AnyObject? = nil, action: Selector? = nil) {
+    init(title: String,
+         role: Role = .secondary,
+         symbol: String? = nil,
+         keyHint: String? = nil,
+         target: AnyObject? = nil,
+         action: Selector? = nil) {
         self.role = role
+        self.keyHint = keyHint
         super.init(frame: .zero)
         self.title = title
         self.target = target
@@ -18,8 +29,16 @@ final class HUDButton: NSButton {
         setButtonType(.momentaryPushIn)
         isBordered = false
         wantsLayer = true
-        layer?.cornerRadius = 10
+        layer?.cornerRadius = Brand.innerCornerRadius
         layer?.masksToBounds = true
+        if let symbol {
+            let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+            image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?
+                .withSymbolConfiguration(config)
+            imagePosition = .imageLeading
+            imageHugsTitle = true
+            contentTintColor = .white
+        }
         updateAppearance()
     }
 
@@ -56,15 +75,23 @@ final class HUDButton: NSButton {
         layer?.backgroundColor = base.withAlphaComponent(alpha).cgColor
         layer?.borderColor = NSColor.white.withAlphaComponent(isHighlighted ? 0.30 : 0.18).cgColor
         layer?.borderWidth = 1
+        contentTintColor = isEnabled ? .white : NSColor.white.withAlphaComponent(0.55)
         updateTitle()
     }
 
     private func updateTitle() {
         let textColor = isEnabled ? NSColor.white : NSColor.white.withAlphaComponent(0.55)
-        attributedTitle = NSAttributedString(string: title, attributes: [
+        let text = NSMutableAttributedString(string: title, attributes: [
             .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
             .foregroundColor: textColor
         ])
+        if let keyHint, !keyHint.isEmpty {
+            text.append(NSAttributedString(string: "  \(keyHint)", attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+                .foregroundColor: textColor.withAlphaComponent(0.62)
+            ]))
+        }
+        attributedTitle = text
     }
 
     private var color: NSColor {

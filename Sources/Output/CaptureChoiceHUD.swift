@@ -1,5 +1,7 @@
 import AppKit
 
+/// 선택 영역 아래 붙는 작은 툴바: 이미지(⏎) / 영상(R). Esc·우클릭은 취소.
+/// 질문 문장과 취소 버튼 없이, 키보드만으로 결정할 수 있게 한다.
 @MainActor
 final class CaptureChoiceHUD {
     private static let captureDismissalDelay: TimeInterval = 0.18
@@ -8,6 +10,7 @@ final class CaptureChoiceHUD {
     private let onImage: () -> Void
     private let onVideo: () -> Void
     private let onCancel: () -> Void
+    private var decided = false
 
     init(anchor: CGRect,
          onImage: @escaping () -> Void,
@@ -17,7 +20,7 @@ final class CaptureChoiceHUD {
         self.onVideo = onVideo
         self.onCancel = onCancel
 
-        let size = NSSize(width: 340, height: 88)
+        let size = NSSize(width: 292, height: 54)
         let frame = Self.frame(size: size, near: anchor)
         panel = CaptureChoicePanel(contentRect: frame,
                                    styleMask: [.borderless],
@@ -33,15 +36,20 @@ final class CaptureChoiceHUD {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        panel.onCancel = { [weak self] in self?.cancel() }
+        panel.onKey = { [weak self] event in self?.handleKey(event) ?? false }
 
         buildContent(size: size)
     }
 
     func show() {
         NSApp.activate(ignoringOtherApps: true)
+        panel.alphaValue = 0
         panel.orderFrontRegardless()
         panel.makeKeyAndOrderFront(nil)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            panel.animator().alphaValue = 1
+        }
     }
 
     func dismiss() {
@@ -57,63 +65,70 @@ final class CaptureChoiceHUD {
         panel.setFrame(Self.frame(size: panel.frame.size, near: anchor), display: true)
     }
 
+    /// HUD가 key가 아니어도(오버레이를 클릭해 조정 중) 키로 결정할 수 있게, 컨트롤러의
+    /// 키 모니터가 먼저 이 메서드로 넘긴다. 처리했으면 true.
+    @discardableResult
+    func handleKey(_ event: NSEvent) -> Bool {
+        guard !decided else { return false }
+        let flags = event.modifierFlags.intersection([.command, .option, .control])
+        guard flags.isEmpty else { return false }
+        switch event.keyCode {
+        case 53: cancel(); return true                    // Esc
+        case 36, 76: captureImage(); return true          // Return / 키패드 Enter
+        default: break
+        }
+        if event.charactersIgnoringModifiers?.lowercased() == "r" {
+            recordVideo()
+            return true
+        }
+        return false
+    }
+
     private func buildContent(size: NSSize) {
-        let container = NSView(frame: NSRect(origin: .zero, size: size))
-        container.wantsLayer = true
-        container.layer?.backgroundColor = Brand.darkSurface.withAlphaComponent(0.96).cgColor
-        container.layer?.cornerRadius = Brand.cornerRadius
-        container.layer?.masksToBounds = true
-        container.layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
-        container.layer?.borderWidth = 1
+        let container = HUDSurfaceView(frame: NSRect(origin: .zero, size: size))
 
-        let label = NSTextField(labelWithString: "선택한 영역으로 무엇을 할까요?")
-        label.font = .systemFont(ofSize: 13, weight: .semibold)
-        label.textColor = .white
-        label.alignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
+        let imageButton = HUDButton(title: "이미지 캡처", role: .primary, symbol: "camera",
+                                    keyHint: "⏎", target: self, action: #selector(captureImage))
+        let videoButton = HUDButton(title: "영상 촬영", role: .secondary, symbol: "record.circle",
+                                    keyHint: "R", target: self, action: #selector(recordVideo))
+        imageButton.toolTip = "선택 영역을 이미지로 캡처 (⏎)"
+        videoButton.toolTip = "선택 영역을 영상으로 촬영 (R) · Esc 취소"
 
-        let imageButton = makeButton(title: "이미지 캡처", role: .secondary, action: #selector(captureImage))
-        let videoButton = makeButton(title: "영상 촬영", role: .primary, action: #selector(recordVideo))
-        let cancelButton = makeButton(title: "취소", role: .secondary, action: #selector(cancel))
-
-        let buttons = NSStackView(views: [imageButton, videoButton, cancelButton])
+        let buttons = NSStackView(views: [imageButton, videoButton])
         buttons.orientation = .horizontal
         buttons.alignment = .centerY
         buttons.distribution = .fillEqually
         buttons.spacing = 8
         buttons.translatesAutoresizingMaskIntoConstraints = false
 
-        container.addSubview(label)
         container.addSubview(buttons)
         NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 14),
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
-            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
-
-            buttons.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
-            buttons.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
-            buttons.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -14),
-            buttons.heightAnchor.constraint(equalToConstant: 30)
+            buttons.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            buttons.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+            buttons.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            buttons.heightAnchor.constraint(equalToConstant: 34)
         ])
 
         panel.contentView = container
     }
 
-    private func makeButton(title: String, role: HUDButton.Role, action: Selector) -> NSButton {
-        HUDButton(title: title, role: role, target: self, action: action)
-    }
-
     @objc private func captureImage() {
+        guard !decided else { return }
+        decided = true
         dismiss()
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.captureDismissalDelay) { [onImage] in onImage() }
     }
 
     @objc private func recordVideo() {
+        guard !decided else { return }
+        decided = true
         dismiss()
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.captureDismissalDelay) { [onVideo] in onVideo() }
     }
 
     @objc private func cancel() {
+        guard !decided else { return }
+        decided = true
         dismiss()
         onCancel()
     }
@@ -121,7 +136,7 @@ final class CaptureChoiceHUD {
     private static func frame(size: NSSize, near anchor: CGRect) -> NSRect {
         let screen = NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main ?? NSScreen.screens.first
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let gap: CGFloat = 14
+        let gap: CGFloat = 12
         var x = anchor.midX - size.width / 2
         var y = anchor.minY - size.height - gap
         if y < visible.minY + gap {
@@ -134,15 +149,13 @@ final class CaptureChoiceHUD {
 }
 
 private final class CaptureChoicePanel: NSPanel {
-    var onCancel: (() -> Void)?
+    var onKey: ((NSEvent) -> Bool)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 {
-            onCancel?()
-        } else {
+        if onKey?(event) != true {
             super.keyDown(with: event)
         }
     }
