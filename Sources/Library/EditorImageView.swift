@@ -442,9 +442,9 @@ final class EditorImageView: NSView {
         window?.makeFirstResponder(self)
         let rawPoint = convert(event.locationInWindow, from: nil)
         let point = clamp(rawPoint)
-        // 그리기 도구가 켜져 있으면 기존 주석 위에서도 새로 그린다. 선택·이동·편집은
-        // 선택 도구(또는 ⌘-클릭)에서만. 단, 이미 선택된 주석의 핸들(모서리·끝점·말풍선 머리)은 항상 잡힌다.
-        let canSelect = tool == .none || event.modifierFlags.contains(.command)
+        // 어떤 도구가 켜져 있든 기존 주석 위를 클릭하면 그 주석을 잡아 옮기는 게 우선이다.
+        // 주석 위에 겹쳐서 새로 그리고 싶을 때만 ⌥(option)을 누른 채 드래그한다.
+        let canSelect = tool != .crop && !event.modifierFlags.contains(.option)
         if tool != .crop, let index = selectedAnnotationIndex, let handle = hitSelectedHandle(at: point) {
             beginDrag(index: index, kind: handle, at: point)
             return

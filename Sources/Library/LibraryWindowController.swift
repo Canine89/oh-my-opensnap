@@ -468,7 +468,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         case ToolbarID.editTools:
             configure(editToolControl,
                       symbols: ["cursorarrow", "crop", "arrow.down.and.line.horizontal.and.arrow.up", "arrow.right.and.line.vertical.and.arrow.left"],
-                      tips: ["선택 (V) · 드래그로 이동, 방향키로 1px, ⇧방향키로 10px, 핸들로 크기 조절", "크롭 (C · 드래그 후 ⏎ 적용)",
+                      tips: ["선택 (V) · 드래그로 이동, 방향키로 1px, ⇧방향키로 10px, 핸들로 크기 조절. 다른 도구에서도 주석 위 클릭은 이동, ⌥드래그는 겹쳐 그리기", "크롭 (C · 드래그 후 ⏎ 적용)",
                              "가로 띠 잘라내기 — 위아래로 드래그한 구간을 없애고 높이를 줄임",
                              "세로 띠 잘라내기 — 좌우로 드래그한 구간을 없애고 너비를 줄임"])
             return viewItem(itemIdentifier, view: editToolControl, label: "편집")
