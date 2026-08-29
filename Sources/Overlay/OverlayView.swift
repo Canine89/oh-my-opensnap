@@ -709,11 +709,7 @@ final class OverlayView: NSView {
         case .idle, .selecting:
             guard cursorInside, !suppressed else { loupeDirtyFrame = .zero; return }
             drawCrosshair()
-            if case .idle = phase, hoveredWindowRect != nil {
-                loupeDirtyFrame = .zero            // 창 스냅 중엔 픽셀 정밀도가 무의미 — 화면을 조용하게
-            } else {
-                drawLoupe(ctx)
-            }
+            drawLoupe(ctx)                                   // 창 스냅 중에도 항상 — 커서 위치와 픽셀 확인의 기준점
         case .resizing:
             drawLoupe(ctx)                                   // 핸들 조절 중 픽셀 단위 확인용 확대경
         case .adjusting, .moving:
