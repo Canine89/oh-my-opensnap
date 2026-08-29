@@ -40,7 +40,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         let items: [LibraryItem]
     }
     private var sections: [Section] = []
-    private var styleControls: (color: NSView, width: NSView)?
+    private var styleControls: NSView?
     private static let toolShortcuts: [String: EditorImageView.Tool] = [
         "v": .none, "c": .crop, "n": .number, "t": .text, "b": .callout,
         "a": .arrow, "r": .rectangle, "o": .ellipse, "m": .mosaic
@@ -62,8 +62,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private enum ToolbarID {
         static let editTools = NSToolbarItem.Identifier("editTools")
         static let annotateTools = NSToolbarItem.Identifier("annotateTools")
-        static let color = NSToolbarItem.Identifier("color")
-        static let width = NSToolbarItem.Identifier("width")
+        static let style = NSToolbarItem.Identifier("style")
         static let undo = NSToolbarItem.Identifier("undo")
         static let redo = NSToolbarItem.Identifier("redo")
         static let copy = NSToolbarItem.Identifier("copy")
@@ -413,13 +412,13 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         emptyHintLabel.stringValue = "\(shortcut) 를 누르면 화면 어디서든 캡처할 수 있고,\n결과는 클립보드와 여기에 함께 담깁니다."
     }
 
-    /// 주석 스타일(색·굵기)은 항상 툴바에 보인다 — 도구를 고르기 전에 정하고, 고른 뒤에도 바로 바꿀 수 있게.
-    private func buildStyleControls() -> (color: NSView, width: NSView) {
+    /// 주석 스타일(색·굵기)은 툴바의 한 항목(스타일)으로 항상 보인다 — 편집/주석 그룹과 같은 밀도로.
+    private func buildStyleControls() -> NSView {
         colorWell.color = Brand.red
         colorWell.target = self
         colorWell.action = #selector(colorChanged(_:))
         if #available(macOS 13.0, *) { colorWell.colorWellStyle = .minimal }
-        colorWell.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        colorWell.widthAnchor.constraint(equalToConstant: 28).isActive = true
         colorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
         colorWell.toolTip = "주석 색상 (번호·텍스트·말풍선·화살표·도형)"
 
@@ -430,20 +429,21 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         widthSlider.controlSize = .small
         widthSlider.target = self
         widthSlider.action = #selector(widthChanged(_:))
-        widthSlider.widthAnchor.constraint(equalToConstant: 88).isActive = true
+        widthSlider.widthAnchor.constraint(equalToConstant: 96).isActive = true
         widthSlider.toolTip = "선 굵기 · 텍스트 크기 (1–20px)"
 
-        widthLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        widthLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         widthLabel.textColor = .secondaryLabelColor
-        widthLabel.alignment = .right
-        widthLabel.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        widthLabel.alignment = .left
+        widthLabel.widthAnchor.constraint(equalToConstant: 32).isActive = true
         updateWidthLabel()
 
-        let widthRow = NSStackView(views: [widthSlider, widthLabel])
-        widthRow.orientation = .horizontal
-        widthRow.alignment = .centerY
-        widthRow.spacing = 4
-        return (colorWell, widthRow)
+        let row = NSStackView(views: [colorWell, widthSlider, widthLabel])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        row.setCustomSpacing(4, after: widthSlider)
+        return row
     }
 
     private func updateWidthLabel() {
@@ -453,7 +453,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     // MARK: 툴바
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.toggleSidebar, .sidebarTrackingSeparator,
-         ToolbarID.editTools, ToolbarID.annotateTools, ToolbarID.color, ToolbarID.width, ToolbarID.undo, ToolbarID.redo,
+         ToolbarID.editTools, ToolbarID.annotateTools, ToolbarID.style, ToolbarID.undo, ToolbarID.redo,
          .flexibleSpace,
          ToolbarID.copy, ToolbarID.save, ToolbarID.reveal, ToolbarID.delete]
     }
@@ -478,12 +478,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
                       symbols: ["1.circle", "textformat", "text.bubble", "arrow.up.right", "rectangle", "circle", "checkerboard.rectangle"],
                       tips: ["번호 ➊–➒ (N · 클릭)", "텍스트 (T · 클릭 후 입력)", "말풍선 (B · 가리킬 곳에서 드래그)", "화살표 (A · ⇧ 45° 스냅)", "사각형 (R · ⇧ 정사각형)", "원 (O · ⇧ 정원)", "모자이크 (M · 드래그)"])
             return viewItem(itemIdentifier, view: annotateToolControl, label: "주석")
-        case ToolbarID.color:
+        case ToolbarID.style:
             if styleControls == nil { styleControls = buildStyleControls() }
-            return viewItem(itemIdentifier, view: styleControls!.color, label: "색상")
-        case ToolbarID.width:
-            if styleControls == nil { styleControls = buildStyleControls() }
-            return viewItem(itemIdentifier, view: styleControls!.width, label: "굵기")
+            return viewItem(itemIdentifier, view: styleControls!, label: "스타일")
         case ToolbarID.undo:
             return actionItem(itemIdentifier, symbol: "arrow.uturn.backward", label: "되돌리기", tip: "되돌리기 (⌘Z)", action: #selector(undoEdit))
         case ToolbarID.redo:
@@ -541,7 +538,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             return selectedItem?.kind == .image && editorView.canUndo
         case ToolbarID.redo:
             return selectedItem?.kind == .image && editorView.canRedo
-        case ToolbarID.copy, ToolbarID.color, ToolbarID.width:
+        case ToolbarID.copy:
             return selectedItem?.kind == .image
         case ToolbarID.save, ToolbarID.reveal, ToolbarID.delete:
             return selectedItem != nil
