@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(editItem)
         let editMenu = NSMenu(title: "편집")
         editMenu.addItem(withTitle: "되돌리기", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "다시 실행", action: Selector(("redo:")), keyEquivalent: "Z")   // 대문자 = ⇧⌘Z
         editMenu.addItem(withTitle: "복사", action: Selector(("copy:")), keyEquivalent: "c")
         editItem.submenu = editMenu
 

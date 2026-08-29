@@ -40,6 +40,10 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     }
     private var sections: [Section] = []
     private var styleControls: (color: NSView, width: NSView)?
+    private static let toolShortcuts: [String: EditorImageView.Tool] = [
+        "v": .none, "c": .crop, "n": .number, "t": .text, "b": .callout,
+        "a": .arrow, "r": .rectangle, "o": .ellipse, "m": .mosaic
+    ]
     private var selectedItem: LibraryItem?
     private var keyMonitor: Any?
     private var boundsObserver: Any?
@@ -60,6 +64,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         static let color = NSToolbarItem.Identifier("color")
         static let width = NSToolbarItem.Identifier("width")
         static let undo = NSToolbarItem.Identifier("undo")
+        static let redo = NSToolbarItem.Identifier("redo")
         static let copy = NSToolbarItem.Identifier("copy")
         static let save = NSToolbarItem.Identifier("save")
         static let reveal = NSToolbarItem.Identifier("reveal")
@@ -116,9 +121,20 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
                 self.deleteSelected()
                 return nil
             }
+            // 도구 단축키 (텍스트 입력 중이 아닐 때): V 선택 · C 크롭 · N 번호 · T 텍스트 · B 말풍선 · A 화살표 · R 사각형 · O 원 · M 모자이크
+            if significantFlags.isEmpty, !event.modifierFlags.contains(.shift),
+               !(window.firstResponder is NSTextView), self.selectedItem?.kind == .image,
+               let key = event.charactersIgnoringModifiers?.lowercased(),
+               let tool = Self.toolShortcuts[key] {
+                self.editorView.tool = tool
+                window.makeFirstResponder(self.editorView)
+                return nil
+            }
             guard event.modifierFlags.contains(.command) else { return event }
             switch event.charactersIgnoringModifiers?.lowercased() {
-            case "z": self.editorView.undo(); return nil
+            case "z":
+                if event.modifierFlags.contains(.shift) { self.editorView.redo() } else { self.editorView.undo() }
+                return nil
             case "c": self.editorView.copyToClipboard(); return nil
             case "=", "+": self.previewScroll.zoomBy(1.25); return nil
             case "-", "_": self.previewScroll.zoomBy(0.8); return nil
@@ -251,6 +267,11 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         }
         // 주석을 선택하면 툴바의 색·굵기가 그 주석을 가리키고, 이후 변경은 그 주석에 적용된다.
         // (툴바 = "현재 스타일": 선택된 것과 앞으로 그릴 것 모두에 해당)
+        // 주석은 사이드카 JSON으로 항목별 보관 — 다른 캡처를 보고 돌아와도 편집이 이어진다.
+        editorView.onAnnotationsChanged = { [weak self] in
+            guard let self, let item = self.selectedItem, item.kind == .image else { return }
+            CaptureLibrary.shared.saveAnnotations(self.editorView.annotationsData(), for: item.url)
+        }
         editorView.onSelectionChanged = { [weak self] annotation in
             guard let self, let annotation else { return }
             if case .mosaic = annotation.kind { return }
@@ -431,7 +452,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     // MARK: 툴바
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.toggleSidebar, .sidebarTrackingSeparator,
-         ToolbarID.editTools, ToolbarID.annotateTools, ToolbarID.color, ToolbarID.width, ToolbarID.undo,
+         ToolbarID.editTools, ToolbarID.annotateTools, ToolbarID.color, ToolbarID.width, ToolbarID.undo, ToolbarID.redo,
          .flexibleSpace,
          ToolbarID.copy, ToolbarID.save, ToolbarID.reveal, ToolbarID.delete]
     }
@@ -447,14 +468,14 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         case ToolbarID.editTools:
             configure(editToolControl,
                       symbols: ["cursorarrow", "crop", "arrow.down.and.line.horizontal.and.arrow.up", "arrow.right.and.line.vertical.and.arrow.left"],
-                      tips: ["선택 · 주석 이동 (방향키로 1px, ⇧방향키로 10px)", "크롭 (드래그 후 ⏎ 적용)",
+                      tips: ["선택 (V) · 드래그로 이동, 방향키로 1px, ⇧방향키로 10px, 핸들로 크기 조절", "크롭 (C · 드래그 후 ⏎ 적용)",
                              "가로 띠 잘라내기 — 위아래로 드래그한 구간을 없애고 높이를 줄임",
                              "세로 띠 잘라내기 — 좌우로 드래그한 구간을 없애고 너비를 줄임"])
             return viewItem(itemIdentifier, view: editToolControl, label: "편집")
         case ToolbarID.annotateTools:
             configure(annotateToolControl,
                       symbols: ["1.circle", "textformat", "text.bubble", "arrow.up.right", "rectangle", "circle", "checkerboard.rectangle"],
-                      tips: ["번호 ➊–➒ (클릭)", "텍스트 (클릭 후 입력)", "말풍선 (가리킬 곳에서 드래그)", "화살표 (⇧ 45° 스냅)", "사각형 (⇧ 정사각형)", "원 (⇧ 정원)", "모자이크 (드래그)"])
+                      tips: ["번호 ➊–➒ (N · 클릭)", "텍스트 (T · 클릭 후 입력)", "말풍선 (B · 가리킬 곳에서 드래그)", "화살표 (A · ⇧ 45° 스냅)", "사각형 (R · ⇧ 정사각형)", "원 (O · ⇧ 정원)", "모자이크 (M · 드래그)"])
             return viewItem(itemIdentifier, view: annotateToolControl, label: "주석")
         case ToolbarID.color:
             if styleControls == nil { styleControls = buildStyleControls() }
@@ -464,6 +485,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             return viewItem(itemIdentifier, view: styleControls!.width, label: "굵기")
         case ToolbarID.undo:
             return actionItem(itemIdentifier, symbol: "arrow.uturn.backward", label: "되돌리기", tip: "되돌리기 (⌘Z)", action: #selector(undoEdit))
+        case ToolbarID.redo:
+            return actionItem(itemIdentifier, symbol: "arrow.uturn.forward", label: "다시 실행", tip: "다시 실행 (⇧⌘Z)", action: #selector(redoEdit))
         case ToolbarID.copy:
             return actionItem(itemIdentifier, symbol: "doc.on.clipboard", label: "복사", tip: "클립보드에 복사 (⌘C)", action: #selector(copySelected))
         case ToolbarID.save:
@@ -513,7 +536,11 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         switch item.itemIdentifier {
-        case ToolbarID.undo, ToolbarID.copy, ToolbarID.color, ToolbarID.width:
+        case ToolbarID.undo:
+            return selectedItem?.kind == .image && editorView.canUndo
+        case ToolbarID.redo:
+            return selectedItem?.kind == .image && editorView.canRedo
+        case ToolbarID.copy, ToolbarID.color, ToolbarID.width:
             return selectedItem?.kind == .image
         case ToolbarID.save, ToolbarID.reveal, ToolbarID.delete:
             return selectedItem != nil
@@ -606,6 +633,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     }
 
     private func showPreview(_ item: LibraryItem) {
+        editorView.flushPendingAnnotationChanges()     // 이전 항목의 마지막 편집을 먼저 저장
         selectedItem = item
         emptyState.isHidden = true
         cropDoneButton.isHidden = true
@@ -648,6 +676,10 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         CaptureLibrary.shared.loadImage(at: item.url) { [weak self] image in
             guard let self, self.selectedItem?.url == item.url else { return }
             self.editorView.image = image   // setter가 맞춤/first responder 처리
+            CaptureLibrary.shared.loadAnnotations(for: item.url) { [weak self] data in
+                guard let self, self.selectedItem?.url == item.url, let data else { return }
+                self.editorView.restoreAnnotations(from: data)
+            }
         }
     }
 
@@ -739,6 +771,10 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
     @objc private func undoEdit() {
         editorView.undo()
+    }
+
+    @objc private func redoEdit() {
+        editorView.redo()
     }
 
     @objc private func copySelected() {

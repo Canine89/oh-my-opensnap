@@ -58,7 +58,7 @@ final class EditorImageView: NSView {
     }
 
     private struct AnnotationDrag {
-        enum Kind: Equatable { case object, calloutBubble, calloutHead }
+        enum Kind: Equatable { case object, calloutBubble, calloutHead, corner(Handle), arrowStart, arrowEnd }
         let kind: Kind
         let index: Int
         let origin: CGPoint
@@ -120,6 +120,99 @@ final class EditorImageView: NSView {
     var onToolChanged: ((Tool) -> Void)?
     /// 선택된 주석이 바뀌면(없어지면 nil) 알린다 → 툴바의 색·굵기를 그 주석에 맞춘다.
     var onSelectionChanged: ((Annotation?) -> Void)?
+    /// 주석 목록이 바뀔 때마다(추가·삭제·이동·스타일·되돌리기) 한 런루프에 한 번 알린다 → 사이드카 저장.
+    var onAnnotationsChanged: (() -> Void)?
+
+    var canUndo: Bool { !undoStack.isEmpty }
+    var canRedo: Bool { !redoStack.isEmpty }
+
+    /// 예약된 주석 변경 알림이 있으면 지금 보낸다(항목을 바꾸기 직전에 호출해 마지막 편집을 잃지 않게).
+    func flushPendingAnnotationChanges() {
+        guard annotationsChangeScheduled else { return }
+        annotationsChangeScheduled = false
+        onAnnotationsChanged?()
+    }
+
+    // MARK: 사이드카 직렬화
+    /// 저장용 표현. 모자이크의 다운샘플 이미지는 저장하지 않고 복원 시 원본에서 다시 만든다.
+    private struct AnnotationRecord: Codable {
+        var kind: String
+        var number: Int?
+        var text: String?
+        var start: [CGFloat]
+        var end: [CGFloat]
+        var bubble: [CGFloat]?
+        var color: [CGFloat]
+        var width: CGFloat
+    }
+
+    private struct AnnotationDocument: Codable {
+        var version: Int
+        var nextNumber: Int
+        var annotations: [AnnotationRecord]
+    }
+
+    /// 현재 주석을 JSON으로. 주석이 없으면 nil(사이드카 삭제 신호).
+    func annotationsData() -> Data? {
+        guard !annotations.isEmpty else { return nil }
+        let records = annotations.map { a -> AnnotationRecord in
+            var record = AnnotationRecord(kind: "", number: nil, text: nil,
+                                          start: [a.start.x, a.start.y], end: [a.end.x, a.end.y],
+                                          bubble: a.calloutBubble.map { [$0.minX, $0.minY, $0.width, $0.height] },
+                                          color: Self.components(of: a.color), width: a.width)
+            switch a.kind {
+            case .number(let n): record.kind = "number"; record.number = n
+            case .text(let t): record.kind = "text"; record.text = t
+            case .callout(let t): record.kind = "callout"; record.text = t
+            case .arrow: record.kind = "arrow"
+            case .rectangle: record.kind = "rectangle"
+            case .ellipse: record.kind = "ellipse"
+            case .mosaic: record.kind = "mosaic"
+            }
+            return record
+        }
+        return try? JSONEncoder().encode(AnnotationDocument(version: 1, nextNumber: nextNumber, annotations: records))
+    }
+
+    /// 사이드카에서 주석을 복원한다. 되돌리기 스택에는 넣지 않고, 저장 알림도 내지 않는다.
+    func restoreAnnotations(from data: Data) {
+        guard let document = try? JSONDecoder().decode(AnnotationDocument.self, from: data) else { return }
+        var restored: [Annotation] = []
+        for r in document.annotations {
+            guard r.start.count == 2, r.end.count == 2, r.color.count == 4 else { continue }
+            let start = CGPoint(x: r.start[0], y: r.start[1])
+            let end = CGPoint(x: r.end[0], y: r.end[1])
+            let color = NSColor(srgbRed: r.color[0], green: r.color[1], blue: r.color[2], alpha: r.color[3])
+            let bubble: CGRect? = (r.bubble?.count == 4)
+                ? CGRect(x: r.bubble![0], y: r.bubble![1], width: r.bubble![2], height: r.bubble![3]) : nil
+            let kind: Annotation.Kind
+            var mosaic: CGImage? = nil
+            switch r.kind {
+            case "number": kind = .number(r.number ?? 1)
+            case "text": kind = .text(r.text ?? "")
+            case "callout": kind = .callout(r.text ?? "")
+            case "arrow": kind = .arrow
+            case "rectangle": kind = .rectangle
+            case "ellipse": kind = .ellipse
+            case "mosaic":
+                kind = .mosaic
+                mosaic = makeMosaicSmall(rect: Self.rect(start, end))
+            default: continue
+            }
+            restored.append(Annotation(kind: kind, start: start, end: end, color: color, width: r.width,
+                                       calloutBubble: bubble, mosaicImage: mosaic))
+        }
+        suppressAnnotationsChanged = true
+        annotations = restored
+        nextNumber = max(1, min(9, document.nextNumber))
+        suppressAnnotationsChanged = false
+        needsDisplay = true
+    }
+
+    private static func components(of color: NSColor) -> [CGFloat] {
+        let c = color.usingColorSpace(.sRGB) ?? color
+        return [c.redComponent, c.greenComponent, c.blueComponent, c.alphaComponent]
+    }
 
     /// 현재 선택된 주석 (없으면 nil).
     var selectedAnnotation: Annotation? {
@@ -164,9 +257,24 @@ final class EditorImageView: NSView {
     private var backingImage: NSImage? { didSet { backingCG = nil } }
     /// 모자이크 샘플링용 backingImage의 CGImage 캐시.
     private var backingCG: CGImage?
-    private var annotations: [Annotation] = []
+    private var annotations: [Annotation] = [] {
+        didSet { scheduleAnnotationsChanged() }
+    }
+    private var annotationsChangeScheduled = false
+    private var suppressAnnotationsChanged = false
     private var nextNumber = 1
     private var undoStack: [Snapshot] = []
+    private var redoStack: [Snapshot] = []
+
+    private func scheduleAnnotationsChanged() {
+        guard !suppressAnnotationsChanged, !annotationsChangeScheduled else { return }
+        annotationsChangeScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.annotationsChangeScheduled else { return }
+            self.annotationsChangeScheduled = false
+            self.onAnnotationsChanged?()
+        }
+    }
 
     private var dragStart: CGPoint?
     private var dragCurrent: CGPoint?
@@ -219,10 +327,14 @@ final class EditorImageView: NSView {
     private func load(_ image: NSImage?) {
         cancelActiveTextField()
         backingImage = pixelSizedImage(image)
+        suppressAnnotationsChanged = true
         annotations.removeAll()
+        suppressAnnotationsChanged = false
+        annotationsChangeScheduled = false     // 이전 이미지의 예약 알림은 flush로 이미 처리됐거나 무효
         selectedAnnotationIndex = nil
         nextNumber = 1
         undoStack.removeAll()
+        redoStack.removeAll()
         cropRect = (tool == .crop) ? CGRect(origin: .zero, size: backingImage?.size ?? .zero) : nil
         if let size = backingImage?.size { setFrameSize(size) }
         onImageChanged?()
@@ -269,22 +381,38 @@ final class EditorImageView: NSView {
         applyCrop()
     }
 
-    // MARK: Undo
+    // MARK: Undo / Redo
+    private func currentSnapshot(cropRect override: CGRect? = nil) -> Snapshot {
+        Snapshot(image: backingImage, annotations: annotations,
+                 nextNumber: nextNumber, cropRect: override ?? cropRect)
+    }
+
     private func pushUndo() {
-        undoStack.append(Snapshot(image: backingImage, annotations: annotations,
-                                  nextNumber: nextNumber, cropRect: cropRect))
+        undoStack.append(currentSnapshot())
         if undoStack.count > 50 { undoStack.removeFirst() }
+        redoStack.removeAll()                  // 새 편집이 생기면 다시 실행 경로는 사라진다
     }
 
     /// 명시한 크롭 범위로 되돌아가는 스냅샷을 쌓는다(크롭 핸들 드래그 직전 상태 보존용).
     private func pushCropSnapshot(_ rect: CGRect) {
-        undoStack.append(Snapshot(image: backingImage, annotations: annotations,
-                                  nextNumber: nextNumber, cropRect: rect))
+        undoStack.append(currentSnapshot(cropRect: rect))
         if undoStack.count > 50 { undoStack.removeFirst() }
+        redoStack.removeAll()
     }
 
     func undo() {
         guard let snapshot = undoStack.popLast() else { return }
+        redoStack.append(currentSnapshot())
+        restore(snapshot)
+    }
+
+    func redo() {
+        guard let snapshot = redoStack.popLast() else { return }
+        undoStack.append(currentSnapshot())
+        restore(snapshot)
+    }
+
+    private func restore(_ snapshot: Snapshot) {
         // 이미지 인스턴스가 달라지면(=크롭 적용/해제) 디스크 파일도 되돌려야 한다.
         let imageChanged = snapshot.image !== backingImage
         backingImage = snapshot.image
@@ -314,12 +442,19 @@ final class EditorImageView: NSView {
         window?.makeFirstResponder(self)
         let rawPoint = convert(event.locationInWindow, from: nil)
         let point = clamp(rawPoint)
-        if tool != .crop, event.clickCount >= 2, let hit = hitAnnotation(at: point) {
+        // 그리기 도구가 켜져 있으면 기존 주석 위에서도 새로 그린다. 선택·이동·편집은
+        // 선택 도구(또는 ⌘-클릭)에서만. 단, 이미 선택된 주석의 핸들(모서리·끝점·말풍선 머리)은 항상 잡힌다.
+        let canSelect = tool == .none || event.modifierFlags.contains(.command)
+        if tool != .crop, let index = selectedAnnotationIndex, let handle = hitSelectedHandle(at: point) {
+            beginDrag(index: index, kind: handle, at: point)
+            return
+        }
+        if canSelect, event.clickCount >= 2, let hit = hitAnnotation(at: point) {
             selectedAnnotationIndex = hit.index
             beginEditingAnnotation(at: hit.index, dragKind: hit.kind)
             return
         }
-        if tool != .crop, beginAnnotationDrag(at: point, allowedKinds: [.object, .calloutHead, .calloutBubble]) {
+        if canSelect, beginAnnotationDrag(at: point, allowedKinds: [.object, .calloutHead, .calloutBubble]) {
             return
         }
         if wasEditingText {
@@ -476,8 +611,8 @@ final class EditorImageView: NSView {
             return super.performKeyEquivalent(with: event)
         }
         let scroll = enclosingScrollView as? ZoomableScrollView
-        switch event.charactersIgnoringModifiers {
-        case "z": undo(); return true
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case "z": if event.modifierFlags.contains(.shift) { redo() } else { undo() }; return true
         case "c": copyToClipboard(); return true
         case "=", "+": scroll?.zoomBy(1.25); return true
         case "-", "_": scroll?.zoomBy(0.8); return true
@@ -533,6 +668,7 @@ final class EditorImageView: NSView {
 
     // 표준 Edit 메뉴(⌘Z/⌘C) 라우팅용 responder 액션
     @objc func undo(_ sender: Any?) { undo() }
+    @objc func redo(_ sender: Any?) { redo() }
     @objc func copy(_ sender: Any?) { copyToClipboard() }
     @objc func delete(_ sender: Any?) { deleteSelectedAnnotation() }
 
@@ -624,6 +760,39 @@ final class EditorImageView: NSView {
     // MARK: 주석 이동
     private func beginAnnotationDrag(at point: CGPoint, allowedKinds: [AnnotationDrag.Kind]) -> Bool {
         guard let hit = hitAnnotation(at: point), allowedKinds.contains(hit.kind) else { return false }
+        beginDrag(index: hit.index, kind: hit.kind, at: point)
+        return true
+    }
+
+    /// 선택된 주석의 조절 핸들: 도형·모자이크는 네 모서리, 화살표는 양 끝, 말풍선은 머리.
+    private func hitSelectedHandle(at point: CGPoint) -> AnnotationDrag.Kind? {
+        guard let index = selectedAnnotationIndex, annotations.indices.contains(index) else { return nil }
+        let a = annotations[index]
+        let radius = max(8, 10 / zoomScale)
+        func near(_ p: CGPoint) -> Bool { hypot(point.x - p.x, point.y - p.y) <= radius }
+        switch a.kind {
+        case .rectangle, .ellipse, .mosaic:
+            let r = Self.rect(a.start, a.end)
+            let corners: [(Handle, CGPoint)] = [
+                (.topLeft, CGPoint(x: r.minX, y: r.minY)), (.topRight, CGPoint(x: r.maxX, y: r.minY)),
+                (.bottomRight, CGPoint(x: r.maxX, y: r.maxY)), (.bottomLeft, CGPoint(x: r.minX, y: r.maxY))
+            ]
+            return corners.first { near($0.1) }.map { .corner($0.0) }
+        case .arrow:
+            if near(a.end) { return .arrowEnd }
+            if near(a.start) { return .arrowStart }
+            return nil
+        case .callout:
+            let headRadius = max(10 / zoomScale, a.width * 4)
+            return hypot(point.x - a.start.x, point.y - a.start.y) <= headRadius ? .calloutHead : nil
+        default:
+            return nil
+        }
+    }
+
+    private func beginDrag(index: Int, kind: AnnotationDrag.Kind, at point: CGPoint) {
+        guard annotations.indices.contains(index) else { return }
+        let hit = (index: index, kind: kind)
         let annotation = annotations[hit.index]
         let initialBubble: CGRect?
         if case .callout(let value) = annotation.kind {
@@ -635,7 +804,6 @@ final class EditorImageView: NSView {
         annotationDrag = AnnotationDrag(kind: hit.kind, index: hit.index, origin: point,
                                         initialStart: annotation.start, initialEnd: annotation.end,
                                         initialBubble: initialBubble)
-        return true
     }
 
     private func updateAnnotationDrag(to point: CGPoint) -> Bool {
@@ -667,6 +835,22 @@ final class EditorImageView: NSView {
             }
         case .calloutHead:
             annotations[drag.index].start = point
+        case .corner(let handle):
+            // 잡은 모서리의 반대편을 고정하고 잡은 쪽을 커서로. min/max 정규화로 뒤집혀도 자연스럽다.
+            let r = Self.rect(drag.initialStart, drag.initialEnd)
+            let fixed: CGPoint
+            switch handle {
+            case .topLeft: fixed = CGPoint(x: r.maxX, y: r.maxY)
+            case .topRight: fixed = CGPoint(x: r.minX, y: r.maxY)
+            case .bottomLeft: fixed = CGPoint(x: r.maxX, y: r.minY)
+            default: fixed = CGPoint(x: r.minX, y: r.minY)
+            }
+            annotations[drag.index].start = CGPoint(x: min(fixed.x, point.x), y: min(fixed.y, point.y))
+            annotations[drag.index].end = CGPoint(x: max(fixed.x, point.x), y: max(fixed.y, point.y))
+        case .arrowStart:
+            annotations[drag.index].start = point
+        case .arrowEnd:
+            annotations[drag.index].end = point
         }
         annotationDrag = drag
         needsDisplay = true
@@ -693,8 +877,14 @@ final class EditorImageView: NSView {
     }
 
     private func finishAnnotationDrag() -> Bool {
-        guard annotationDrag != nil else { return false }
+        guard let drag = annotationDrag else { return false }
         annotationDrag = nil
+        // 모자이크 크기를 바꿨으면 새 영역의 픽셀로 다시 샘플링
+        if case .corner = drag.kind, drag.didMove, annotations.indices.contains(drag.index),
+           case .mosaic = annotations[drag.index].kind {
+            let a = annotations[drag.index]
+            annotations[drag.index].mosaicImage = makeMosaicSmall(rect: Self.rect(a.start, a.end))
+        }
         needsDisplay = true
         return true
     }
@@ -1013,10 +1203,21 @@ final class EditorImageView: NSView {
         path.setLineDash([5 / zoomScale, 4 / zoomScale], count: 2, phase: 0)
         NSColor.white.withAlphaComponent(0.95).setStroke()
         path.stroke()
-        drawSelectionHandle(at: CGPoint(x: rect.minX, y: rect.minY))
-        drawSelectionHandle(at: CGPoint(x: rect.maxX, y: rect.minY))
-        drawSelectionHandle(at: CGPoint(x: rect.maxX, y: rect.maxY))
-        drawSelectionHandle(at: CGPoint(x: rect.minX, y: rect.maxY))
+
+        // 핸들은 실제로 잡히는 것만: 도형·모자이크는 모서리, 화살표는 양 끝. 텍스트·번호는 굵기로 크기를 바꾼다.
+        switch annotation.kind {
+        case .rectangle, .ellipse, .mosaic:
+            let r = Self.rect(annotation.start, annotation.end)
+            drawSelectionHandle(at: CGPoint(x: r.minX, y: r.minY))
+            drawSelectionHandle(at: CGPoint(x: r.maxX, y: r.minY))
+            drawSelectionHandle(at: CGPoint(x: r.maxX, y: r.maxY))
+            drawSelectionHandle(at: CGPoint(x: r.minX, y: r.maxY))
+        case .arrow:
+            drawSelectionHandle(at: annotation.start, fill: annotation.color, stroke: .white)
+            drawSelectionHandle(at: annotation.end, fill: annotation.color, stroke: .white)
+        default:
+            break
+        }
     }
 
     private func selectionRect(for annotation: Annotation) -> CGRect {
@@ -1257,15 +1458,27 @@ final class EditorImageView: NSView {
         min(72, max(16, width * 5.2))
     }
 
-    private func textAttributes(color: NSColor, width: CGFloat, alpha: CGFloat = 1) -> [NSAttributedString.Key: Any] {
-        [
+    private func textAttributes(color: NSColor, width: CGFloat, alpha: CGFloat = 1, halo: Bool = false) -> [NSAttributedString.Key: Any] {
+        var attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: textFontSize(width: width), weight: .semibold),
             .foregroundColor: color.withAlphaComponent(alpha)
         ]
+        if halo {
+            // 배경과 무관하게 읽히도록 글자색 밝기의 반대 톤으로 부드러운 테두리를 두른다.
+            let c = color.usingColorSpace(.sRGB) ?? color
+            let luminance = 0.299 * c.redComponent + 0.587 * c.greenComponent + 0.114 * c.blueComponent
+            let shadow = NSShadow()
+            shadow.shadowColor = (luminance > 0.6 ? NSColor.black.withAlphaComponent(0.75)
+                                                  : NSColor.white.withAlphaComponent(0.9)).withAlphaComponent(alpha)
+            shadow.shadowBlurRadius = max(2, textFontSize(width: width) * 0.12)
+            shadow.shadowOffset = .zero
+            attributes[.shadow] = shadow
+        }
+        return attributes
     }
 
-    private func drawText(_ value: String, at point: CGPoint, color: NSColor, width: CGFloat, alpha: CGFloat = 1) {
-        (value as NSString).draw(at: point, withAttributes: textAttributes(color: color, width: width, alpha: alpha))
+    private func drawText(_ value: String, at point: CGPoint, color: NSColor, width: CGFloat, alpha: CGFloat = 1, halo: Bool = true) {
+        (value as NSString).draw(at: point, withAttributes: textAttributes(color: color, width: width, alpha: alpha, halo: halo))
     }
 
     private func textRect(_ value: String, at point: CGPoint, width: CGFloat) -> CGRect {
@@ -1325,7 +1538,7 @@ final class EditorImageView: NSView {
         let textPoint = CGPoint(x: bubble.minX + padding,
                                 y: bubble.minY + (bubble.height - textFontSize(width: width) * 1.2) / 2)
         if drawsText {
-            drawText(displayText, at: textPoint, color: color, width: width, alpha: alpha)
+            drawText(displayText, at: textPoint, color: color, width: width, alpha: alpha, halo: false)
         }
     }
 

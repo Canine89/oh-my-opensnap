@@ -162,8 +162,10 @@ final class CaptureLibrary {
     func delete(_ item: LibraryItem) {
         thumbnailCache[item.url] = nil
         let url = item.url
+        let sidecar = annotationsURL(for: url)
         ioQueue.async {
             try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            try? FileManager.default.removeItem(at: sidecar)
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .libraryDidChange, object: nil)
             }
@@ -186,6 +188,36 @@ final class CaptureLibrary {
         ioQueue.async {
             try? pngData.write(to: url)
             DispatchQueue.main.async { completion?() }
+        }
+    }
+
+    // MARK: 주석 사이드카
+    /// 주석은 이미지를 건드리지 않고 숨은 폴더 `.annotations/<파일명>.json`에 따로 보관한다.
+    /// → 항목을 오가도 편집이 이어지고, 원본 PNG는 크롭 전까지 그대로다.
+    private func annotationsURL(for imageURL: URL) -> URL {
+        directory.appendingPathComponent(".annotations", isDirectory: true)
+            .appendingPathComponent(imageURL.lastPathComponent + ".json")
+    }
+
+    func loadAnnotations(for imageURL: URL, completion: @escaping (Data?) -> Void) {
+        let url = annotationsURL(for: imageURL)
+        ioQueue.async {
+            let data = try? Data(contentsOf: url)
+            DispatchQueue.main.async { completion(data) }
+        }
+    }
+
+    /// nil이면 사이드카를 지운다(주석이 하나도 없어진 경우).
+    func saveAnnotations(_ data: Data?, for imageURL: URL) {
+        let url = annotationsURL(for: imageURL)
+        ioQueue.async {
+            let fm = FileManager.default
+            if let data {
+                try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? data.write(to: url, options: .atomic)
+            } else {
+                try? fm.removeItem(at: url)
+            }
         }
     }
 
