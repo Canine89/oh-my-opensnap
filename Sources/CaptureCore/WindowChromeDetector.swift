@@ -5,14 +5,17 @@ import ApplicationServices
 ///
 /// 다른 앱이 공개한 접근성 역할과 실제 프레임을 함께 읽는다. 따라서 브라우저,
 /// 터미널, 네이티브 앱, Electron 앱에서 앱 이름별 고정 높이에 의존하지 않는다.
-/// 본문은 창을 가로지르는 실제 콘텐츠 컨테이너의 시작점으로 정한다.
+/// 본문은 창을 가로지르는 실제 콘텐츠 컨테이너(웹 영역·스크롤 영역 등)의 시작점으로
+/// 정하고, 그 위는 전부 헤더다. 결과는 창 구조에만 의존하며 커서 위치와 무관하다.
 enum WindowChromeDetector {
     /// CG 전역 좌표 창 프레임에서 잘라낼 상단 헤더 높이(point).
+    /// 창 구조를 읽지 못했으면 `nil` — 호출자가 앱별 추정값으로 폴백한다.
     static func topInset(pid: pid_t,
                          windowFrame: CGRect,
-                         cursor: CGPoint,
                          primaryHeight: CGFloat) -> CGFloat? {
         let app = AXUIElementCreateApplication(pid)
+        // 응답이 느린 앱이 호버 처리 큐 전체를 붙들지 않도록 한다.
+        AXUIElementSetMessagingTimeout(app, 0.5)
         guard let match = matchingWindow(in: app, fullRect: windowFrame, primaryHeight: primaryHeight) else {
             return nil
         }
@@ -20,17 +23,8 @@ enum WindowChromeDetector {
         // 본문(큰 스크롤/웹 영역)이 시작되는 위치가 가장 믿을 만하다.
         // 신호등만 보면 카톡처럼 타이틀바 아래 앱 헤더를 관통한다.
         let contentStart = primaryContentTopInset(in: match.element, fullRect: windowFrame, align: match.align)
-        let chrome = chromeBandHeight(in: match.element, fullRect: windowFrame, align: match.align)
-        var inset = contentStart ?? chrome
-
-        if let hit = hitChromeHeight(app: app,
-                                     window: match.element,
-                                     cursor: cursor,
-                                     fullRect: windowFrame,
-                                     primaryHeight: primaryHeight,
-                                     align: match.align) {
-            inset = max(inset ?? 0, hit)
-        }
+        let inset = contentStart
+            ?? chromeBandHeight(in: match.element, fullRect: windowFrame, align: match.align)
 
         guard let inset, inset >= 20, inset <= min(220, windowFrame.height * 0.45) else { return nil }
         return inset
@@ -75,6 +69,8 @@ enum WindowChromeDetector {
         return { $0 }
     }
 
+    // MARK: - Content start
+
     /// 창을 거의 가로지르는 큰 스크롤/웹 영역의 상단 = 앱 헤더가 끝나는 지점.
     private static func primaryContentTopInset(in window: AXUIElement,
                                                fullRect: CGRect,
@@ -94,9 +90,9 @@ enum WindowChromeDetector {
             }
         }
 
-        var remainingNodes = 500
+        var remainingNodes = 600
         func walk(_ root: AXUIElement, depth: Int) {
-            guard depth <= 4, remainingNodes > 0 else { return }
+            guard depth <= 6, remainingNodes > 0 else { return }
             for child in children(of: root) {
                 remainingNodes -= 1
                 guard remainingNodes >= 0 else { return }
@@ -104,9 +100,17 @@ enum WindowChromeDetector {
                 let frame = align(raw).intersection(fullRect)
                 let childRole = role(child)
                 if isPrimaryContentRole(childRole) {
+                    // 본문 후보 자체는 더 파고들지 않는다. 웹 페이지 DOM처럼 방대한 하위
+                    // 트리를 훑을 필요가 없고, 안쪽 요소는 어차피 더 아래에서 시작한다.
                     consider(frame)
+                    continue
                 }
-                if isContainer(childRole) {
+                // 알려진 컨테이너 역할이 아니어도(Safari의 AXTabGroup, 커스텀 래퍼 등)
+                // 창을 거의 덮는 큰 요소라면 본문이 그 안에 있으므로 내려간다.
+                let coversWindow = !frame.isNull
+                    && frame.height >= fullRect.height * 0.5
+                    && frame.width >= fullRect.width * 0.5
+                if isContainer(childRole) || coversWindow {
                     walk(child, depth: depth + 1)
                 }
             }
@@ -221,56 +225,8 @@ enum WindowChromeDetector {
     private static func isContainer(_ role: String?) -> Bool {
         role == kAXGroupRole
             || role == kAXSplitGroupRole
-            || role == kAXScrollAreaRole
+            || role == kAXTabGroupRole
             || role == "AXLayoutArea"
-    }
-
-    // MARK: - Cursor hit-test
-
-    /// 커서 아래 요소가 툴바/탭/신호등이면 그 요소 하단까지를 헤더로 본다.
-    private static func hitChromeHeight(app: AXUIElement,
-                                        window: AXUIElement,
-                                        cursor: CGPoint,
-                                        fullRect: CGRect,
-                                        primaryHeight: CGFloat,
-                                        align: (CGRect) -> CGRect) -> CGFloat? {
-        guard fullRect.insetBy(dx: -2, dy: -2).contains(cursor),
-              let hit = element(at: cursor, in: app, primaryHeight: primaryHeight)
-        else { return nil }
-
-        var current: AXUIElement? = hit
-        for _ in 0..<8 {
-            guard let node = current else { break }
-            if nodesEqual(node, window) { break }
-
-            if isChromeRole(role(node), subrole: subrole(node)) || isTrafficLight(node),
-               let raw = rect(node) {
-                let frame = align(raw).intersection(fullRect)
-                if !frame.isNull, frame.minY <= fullRect.minY + 16, frame.height <= 200 {
-                    return frame.maxY - fullRect.minY
-                }
-            }
-            current = child(node, attribute: kAXParentAttribute)
-        }
-        return nil
-    }
-
-    private static func element(at cgPoint: CGPoint,
-                                in app: AXUIElement,
-                                primaryHeight: CGFloat) -> AXUIElement? {
-        if let hit = copyElement(in: app, x: cgPoint.x, y: cgPoint.y) { return hit }
-        let cocoaY = primaryHeight - cgPoint.y
-        return copyElement(in: app, x: cgPoint.x, y: cocoaY)
-    }
-
-    private static func copyElement(in app: AXUIElement, x: CGFloat, y: CGFloat) -> AXUIElement? {
-        var ref: AXUIElement?
-        guard AXUIElementCopyElementAtPosition(app, Float(x), Float(y), &ref) == .success else { return nil }
-        return ref
-    }
-
-    private static func nodesEqual(_ a: AXUIElement, _ b: AXUIElement) -> Bool {
-        CFEqual(a, b)
     }
 
     // MARK: - AX helpers

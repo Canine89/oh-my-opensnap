@@ -138,7 +138,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         accessibilityHint.font = .systemFont(ofSize: 11)
         accessibilityHint.textColor = .secondaryLabelColor
 
-        let hint = NSTextField(wrappingLabelWithString: "윈도우 위에서 클릭하면 해당 윈도우를, 드래그하면 지정 영역을 캡처합니다(취소는 Esc 또는 우클릭). 캡처 이미지는 클립보드에 복사되고 위 저장 폴더에 보관됩니다.")
+        let hint = NSTextField(wrappingLabelWithString: "창의 헤더(타이틀바·툴바·탭) 위에서 클릭하면 헤더만, 본문 위에서 클릭하면 본문만, 드래그하면 지정 영역을 캡처합니다(취소는 Esc 또는 우클릭). 캡처 이미지는 클립보드에 복사되고 위 저장 폴더에 보관됩니다.")
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
 

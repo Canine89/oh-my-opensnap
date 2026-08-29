@@ -6,20 +6,29 @@ import ScreenCaptureKit
 /// `isFlipped == true`라 좌상단 기준 point 좌표를 쓴다(픽셀 좌표와 동일 방향).
 ///
 /// 인터랙션 분기:
-/// - 호버(버튼 안 누름): 커서 아래 윈도우를 자동 감지해 하이라이트.
-///   상단 크롬 영역에 있으면 전체 창, 콘텐츠 영역에 있으면 콘텐츠만 선택한다.
+/// - 호버(버튼 안 누름): 커서 아래 윈도우를 자동 감지해 두 구역 중 하나를 하이라이트.
+///   헤더(타이틀바·툴바·탭·주소표시줄) 위면 헤더만, 본문 위면 본문만 선택한다.
+///   구역 경계는 창 구조로만 정하며 커서가 창에 들어온 위치와 무관하다.
 /// - 클릭/드래그로 영역 선택 → 조정 단계로 진입(점선 테두리 + 핸들 8개)
 /// - 조정 단계: 핸들 드래그로 크기 조절(루페 표시), 내부 드래그로 이동,
 ///   바깥 드래그로 새 선택, ⏎(Return)/더블클릭으로 캡처 확정
 final class OverlayView: NSView {
 
+    /// 창 하나의 헤더/본문 경계. 창 구조 측정이 끝나면 `isPrecise`가 true가 된다.
     private struct HoverCache {
         let windowID: CGWindowID
         let globalFrame: CGRect
         let localFullRect: CGRect
         let localContentRect: CGRect
-        let localPrimaryRect: CGRect?
         let isPrecise: Bool
+
+        /// 본문 위의 헤더 띠. 경계를 못 나눴으면 높이 0.
+        var localHeaderRect: CGRect {
+            CGRect(x: localFullRect.minX,
+                   y: localFullRect.minY,
+                   width: localFullRect.width,
+                   height: max(0, localContentRect.minY - localFullRect.minY))
+        }
     }
 
     struct WindowSelection {
@@ -109,10 +118,11 @@ final class OverlayView: NSView {
     // 호버 중 감지된 윈도우
     private var hoveredWindow: SCWindow?
     private var hoveredWindowRect: CGRect?     // 클릭 시 선택될 영역. 이 뷰의 로컬 좌표(좌상단 기준)
-    private var hoveredFullWindowRect: CGRect? // 실제 윈도우 전체 영역. 콘텐츠/크롬 구분 가이드용.
-    private var hoverCache: HoverCache?
+    private var hoveredFullWindowRect: CGRect? // 실제 윈도우 전체 영역. 헤더/본문 구분 가이드용.
+    /// 캡처 세션 동안 창별 경계를 기억한다. 창 사이를 오가도 같은 창은 같은 경계를 보여 준다.
+    private var hoverCaches: [CGWindowID: HoverCache] = [:]
     private let accessibilityQueue = DispatchQueue(label: "com.goldenrabbit.ohmyopensnap.accessibility-hover", qos: .userInitiated)
-    private var pendingAccessibilityWindowID: CGWindowID?
+    private var pendingAccessibilityWindowIDs: Set<CGWindowID> = []
 
     // 루페 렌더 상태
     private let loupeRadius = 22                 // 한 변 45px 소스 영역
@@ -383,21 +393,14 @@ final class OverlayView: NSView {
         if let candidate = hitTester.window(at: globalPoint) {
             hoveredWindow = candidate.scWindow
             let cached = cachedHoverRegion(for: candidate)
-            let fullRect = cached.localFullRect
             hoveredFullWindowRect = cached.localFullRect
 
-            let contentRect = cached.localContentRect
-            let chromeRect = CGRect(x: fullRect.minX,
-                                    y: fullRect.minY,
-                                    width: fullRect.width,
-                                    height: max(0, contentRect.minY - fullRect.minY))
-            if chromeRect.contains(cursor) {
-                hoveredWindowRect = fullRect
-            } else if let primary = cached.localPrimaryRect, primary.contains(cursor) {
-                // 앱 내부 헤더/탐색 패널과 실제 작업 표면을 한 단계 더 나눈다.
-                hoveredWindowRect = primary
+            // 두 구역뿐이다: 헤더 위면 헤더, 그 외엔 본문.
+            let headerRect = cached.localHeaderRect
+            if headerRect.height > 0, headerRect.contains(cursor) {
+                hoveredWindowRect = headerRect
             } else {
-                hoveredWindowRect = contentRect
+                hoveredWindowRect = cached.localContentRect
             }
         } else {
             clearHoveredWindow()
@@ -424,26 +427,22 @@ final class OverlayView: NSView {
         hoveredWindow = nil
         hoveredWindowRect = nil
         hoveredFullWindowRect = nil
-        hoverCache = nil
-        pendingAccessibilityWindowID = nil
     }
 
     private func cachedHoverRegion(for candidate: WindowCandidate) -> HoverCache {
-        if let cache = hoverCache,
-           cache.windowID == candidate.scWindow.windowID,
-           cache.globalFrame == candidate.cgFrame {
+        let windowID = candidate.scWindow.windowID
+        if let cache = hoverCaches[windowID], cache.globalFrame == candidate.cgFrame {
             return cache
         }
 
         let fullRect = localRect(fromGlobal: candidate.cgFrame)
         let content = contentRect(for: candidate.scWindow, localFullRect: fullRect)
-        let next = HoverCache(windowID: candidate.scWindow.windowID,
+        let next = HoverCache(windowID: windowID,
                               globalFrame: candidate.cgFrame,
                               localFullRect: fullRect,
                               localContentRect: content,
-                              localPrimaryRect: nil,
                               isPrecise: false)
-        hoverCache = next
+        hoverCaches[windowID] = next
         scheduleContentRefinement(for: candidate, localFullRect: fullRect)
         return next
     }
@@ -467,50 +466,48 @@ final class OverlayView: NSView {
                       height: fullRect.height - topInset)
     }
 
+    /// 창 구조(접근성)로 헤더 높이를 재고, 못 재면 앱별 추정값을 정지 화면의 실제
+    /// 경계선에 맞춘다. 결과는 창 구조에만 의존하므로 커서 위치는 넘기지 않는다.
     private func scheduleContentRefinement(for candidate: WindowCandidate, localFullRect: CGRect) {
         let windowID = candidate.scWindow.windowID
-        guard pendingAccessibilityWindowID != windowID,
+        guard !pendingAccessibilityWindowIDs.contains(windowID),
               let pid = candidate.scWindow.owningApplication?.processID
         else { return }
 
-        pendingAccessibilityWindowID = windowID
+        pendingAccessibilityWindowIDs.insert(windowID)
         let globalFrame = candidate.cgFrame
-        let globalCursor = CGPoint(x: cgOrigin.x + cursor.x, y: cgOrigin.y + cursor.y)
         let primaryHeight = ScreenGeometry.primaryHeight
         let fallbackInset = fallbackChromeTopInset(for: candidate.scWindow, windowHeight: localFullRect.height)
         let snapshot = frozenImage
         let snapshotScale = self.scale
 
         accessibilityQueue.async { [weak self] in
-            let inset = AccessibilityPermission.isGranted
+            let measured = AccessibilityPermission.isGranted
                 ? WindowChromeDetector.topInset(pid: pid,
                                                 windowFrame: globalFrame,
-                                                cursor: globalCursor,
                                                 primaryHeight: primaryHeight)
                 : nil
-            let appContent = Self.contentRect(from: localFullRect, topInset: inset ?? fallbackInset)
-            let primarySurface = snapshot.flatMap {
-                WindowSurfaceDetector.primarySurface(in: $0,
-                                                     windowRect: localFullRect,
-                                                     appContentRect: appContent,
-                                                     scale: snapshotScale)
-            }
+            let refined = measured == nil && fallbackInset > 0
+                ? snapshot.flatMap {
+                    HeaderEdgeRefiner.refine(in: $0,
+                                             windowRect: localFullRect,
+                                             candidateInset: fallbackInset,
+                                             tolerance: 40,
+                                             scale: snapshotScale)
+                }
+                : nil
+            let inset = measured ?? refined ?? fallbackInset
+            let content = Self.contentRect(from: localFullRect, topInset: inset)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                if self.pendingAccessibilityWindowID == windowID {
-                    self.pendingAccessibilityWindowID = nil
-                }
-                guard let cache = self.hoverCache,
-                      cache.windowID == windowID,
-                      cache.globalFrame == globalFrame
-                else { return }
+                self.pendingAccessibilityWindowIDs.remove(windowID)
+                guard let cache = self.hoverCaches[windowID], cache.globalFrame == globalFrame else { return }
 
-                self.hoverCache = HoverCache(windowID: windowID,
-                                             globalFrame: globalFrame,
-                                             localFullRect: localFullRect,
-                                             localContentRect: appContent,
-                                             localPrimaryRect: primarySurface,
-                                             isPrecise: inset != nil || primarySurface != nil)
+                self.hoverCaches[windowID] = HoverCache(windowID: windowID,
+                                                        globalFrame: globalFrame,
+                                                        localFullRect: localFullRect,
+                                                        localContentRect: content,
+                                                        isPrecise: measured != nil || refined != nil)
                 if !self.selectionLocked, !self.suppressed {
                     self.updateHoveredWindow()
                     self.needsDisplay = true
