@@ -6,32 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.75</title>
-      <pubDate>Sat, 29 Aug 2026 10:19:33 +0000</pubDate>
-      <sparkle:version>76</sparkle:version>
-      <sparkle:shortVersionString>1.0.75</sparkle:shortVersionString>
+      <title>1.0.76</title>
+      <pubDate>Sat, 29 Aug 2026 10:42:54 +0000</pubDate>
+      <sparkle:version>77</sparkle:version>
+      <sparkle:shortVersionString>1.0.76</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.75</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.76</h2>
 <ul>
-<li>캡처 오버레이에 단계별 조작 안내 추가: 진입·선택 직후 상단에 잠깐 떠서 사라지는 힌트(드래그 영역 · 클릭 창 · ⏎ 이미지 · R 영상 · Esc 취소)</li>
-<li>창 스냅 하이라이트에 앱 아이콘·이름과 구역(창 전체 / 본문) 이름표를 표시해 어디가 잡힐지 바로 알 수 있게 개선</li>
-<li>창 하이라이트 색을 시스템 파랑에서 브랜드 레드로 통일하고, 창 스냅 중에는 확대경을 숨겨 화면을 조용하게 정리</li>
-<li>선택 후 HUD를 두 버튼 툴바로 압축: 이미지 캡처가 기본 동작(⏎), 영상 촬영은 R, Esc·우클릭 취소. 오버레이를 클릭해 조정한 뒤에도 키보드만으로 확정 가능</li>
-<li>오버레이 진입·취소 시 짧은 페이드 추가, 치수 라벨·좌표 서체를 앱의 나머지 HUD와 통일</li>
-<li>라이브러리 창을 네이티브 통합 툴바 + 접히는 사이드바 구조로 재구성. 편집(선택·크롭·중간 잘라내기)과 주석 도구를 그룹으로 나누고, 색상·굵기(얇게/보통/굵게)는 주석 도구를 고를 때만 미리보기 위에 표시</li>
-<li>썸네일을 오늘 / 어제 / 최근 7일 / 이전 섹션으로 나누고, 파일명 대신 "방금 전 · 14:03 · 어제" 같은 시간과 GIF/MP4 배지를 표시. 항목 수는 창 부제목으로</li>
-<li>캡처가 없을 때 실제 설정된 단축키를 안내하는 빈 화면과 "지금 캡처" 버튼 추가(단축키를 바꿔도 안내가 따라옴)</li>
-<li>미리보기 우하단에 배율 표시(클릭하면 창에 맞춤), 크롭 중 [취소] 버튼, 목록에서 ⌫로 휴지통 이동, 우클릭 메뉴에 복사·저장 추가</li>
-<li>영상 편집기의 "GIF 30 / GIF 45 / 선택 구간 MP4 저장" 버튼을 "내보내기" 메뉴 하나로 정리하고 구간 버튼 이름을 시작점/끝점으로 명확히</li>
-<li>첫 실행 안내 추가: 메뉴 막대 아이콘에서 뻗어 나오는 팝오버로 위치·단축키·화면 녹화 권한을 한 번에 안내(메뉴의 "시작 안내…"로 다시 볼 수 있음)</li>
-<li>영상 촬영 중에는 메뉴 막대 아이콘이 빨간 점과 경과 시간으로 바뀌고, 메뉴에서 일시정지·중지 가능</li>
-<li>메뉴의 캡처 단축키를 공백으로 흉내내던 표기 대신 네이티브 위치에 표시</li>
-<li>설정 창을 일반 / 저장 / 권한 / 정보 탭으로 재구성. 권한 경고는 실제로 권한이 없을 때만 일반 탭 상단에 표시, 저장 폴더는 클릭하면 Finder가 열리는 경로 컨트롤로, 정보 탭에 버전·업데이트 확인·링크 추가</li>
-<li>"설정 열고 앱 종료" 대신 "설정 열고 재시작" — 권한을 켠 뒤 앱이 스스로 다시 시작</li>
-<li>떠 있는 HUD(선택 툴바·녹화 표시·캡처 썸네일·토스트)의 재질·모서리·테두리를 한 표면으로 통일</li>
-<li>캡처 직후 썸네일: 연속 캡처가 겹치지 않고 위로 쌓이며, 커서를 올리면 사라지지 않고, 클릭하면 라이브러리에서 열림</li>
+<li>중간 잘라내기를 **가로 자르기 / 세로 자르기** 두 도구로 분리. 드래그 방향으로 띠 방향을 추측하지 않고, 고른 도구가 방향을 정한다</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.75.zip" type="application/octet-stream" sparkle:edSignature="/xjVhKNTt6FrpdJRZ2ISX1qIfQuDl4UHUxaKQJ5F6wVD2k1i3DyT62DfxUYUf4a7aCLEGEGEOKnz2fuQ5vlgAg==" length="1499158" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.76.zip" type="application/octet-stream" sparkle:edSignature="myIQV/xIisNNjIqcJbYZtlF4X3StdWB9g4KGx9347F+PF+oZ3UmVBhMvRITTwNEOK+BMF9QtnXSFwxEreA1IBA==" length="1499264" />
     </item>
   </channel>
 </rss>
