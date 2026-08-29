@@ -6,16 +6,20 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.73</title>
-      <pubDate>Sat, 29 Aug 2026 03:02:15 +0000</pubDate>
-      <sparkle:version>74</sparkle:version>
-      <sparkle:shortVersionString>1.0.73</sparkle:shortVersionString>
+      <title>1.0.74</title>
+      <pubDate>Sat, 29 Aug 2026 09:31:22 +0000</pubDate>
+      <sparkle:version>75</sparkle:version>
+      <sparkle:shortVersionString>1.0.74</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.73</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.74</h2>
 <ul>
-<li>헤더(타이틀바·툴바·탭·주소표시줄) 위에서는 창 전체가, 본문 위에서는 본문만 스냅되도록 조정</li>
+<li>앱 전반의 시각 언어를 통일: 단일 브랜드 레드 강조색, 12pt 모서리 규칙, 시스템 재질 기반 표면(`AppAppearance`)</li>
+<li>설정 창을 캡처·저장 위치·권한 섹션 카드로 재구성하고, 내용이 길어져도 창 크기를 유지하도록 스크롤 지원</li>
+<li>라이브러리 툴바를 시스템 헤더 재질로 교체하고 썸네일 선택 표시·개수 표기를 다듬음</li>
+<li>캡처 직후 썸네일에 "클립보드에 복사됨" 안내 추가, HUD 버튼·녹화 표시 색상을 브랜드 레드로 통일</li>
+<li>앱 아이콘을 새 디자인으로 재생성</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.73.zip" type="application/octet-stream" sparkle:edSignature="xJyz5KNS94tzZ0LgXQUWzDeFcKALrQ/Gbi4DC65yg8fypCf/0Ck/0Z2PQfvSybLnyDPLqnZBw0IU3OvIgS2vDg==" length="3503470" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.74.zip" type="application/octet-stream" sparkle:edSignature="thOBZxz/SmxUaDW3IRLlkZcDj00/Dl+b8xQEMsHdV9grbaczELkqFTYrIjas/aQwFfCL4ezlO6M/Ux0o5JaQBQ==" length="1451822" />
     </item>
   </channel>
 </rss>
