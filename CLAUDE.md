@@ -76,6 +76,8 @@ open oh-my-opensnap.xcodeproj         # Xcode에서 Run, 또는
 아이콘 재생성: `scripts/icongen.swift`.
 
 ### 릴리스 (`scripts/release.sh`)
+> 실제 배포는 로컬 스킬 **`release`**(`.claude/skills/release/SKILL.md`, `/release <버전>`)의 절차를 따른다: CHANGELOG 섹션 → 소스 `feat:` 커밋 → 백그라운드로 `--publish` → 공증/커밋/Release 자산 검증 → 보고.
+
 ```bash
 ./scripts/release.sh 1.0.65            # 버전 올려 DMG+ZIP+appcast 생성 (게시는 안 함)
 ./scripts/release.sh 1.0.65 --publish  # 위 + 커밋/푸시 + GitHub Release 업로드
