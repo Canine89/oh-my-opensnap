@@ -6,7 +6,7 @@ import AppKit
 /// ⌘Z 되돌리기는 스냅샷 스택으로 크롭 포함 모든 편집에 적용된다.
 final class EditorImageView: NSView {
 
-    enum Tool { case none, crop, middleCut, number, text, callout, arrow, rectangle, ellipse, mosaic }
+    enum Tool { case none, crop, cutHorizontal, cutVertical, number, text, callout, arrow, rectangle, ellipse, mosaic }
 
     struct Annotation {
         enum Kind { case number(Int), text(String), callout(String), arrow, rectangle, ellipse, mosaic }
@@ -311,7 +311,7 @@ final class EditorImageView: NSView {
             dragStart = point
             dragCurrent = point
             needsDisplay = true
-        case .middleCut, .arrow, .rectangle, .ellipse, .mosaic:
+        case .cutHorizontal, .cutVertical, .arrow, .rectangle, .ellipse, .mosaic:
             dragStart = point
             dragCurrent = point
         case .none:
@@ -334,7 +334,7 @@ final class EditorImageView: NSView {
             // Shift: 사각형/원은 1:1, 화살표는 45° 단위로 반듯하게. 말풍선은 자유 배치.
             dragCurrent = (tool != .callout && event.modifierFlags.contains(.shift)) ? constrained(from: start, to: point) : point
             needsDisplay = true
-        case .middleCut, .mosaic:
+        case .cutHorizontal, .cutVertical, .mosaic:
             guard dragStart != nil else { return }
             dragCurrent = point
             needsDisplay = true
@@ -373,7 +373,7 @@ final class EditorImageView: NSView {
             showTextEditor(for: PendingTextAnnotation(kind: .callout, start: start, end: end,
                                                       color: strokeColor, width: strokeWidth,
                                                       calloutBubble: bubble))
-        case .middleCut:
+        case .cutHorizontal, .cutVertical:
             defer { dragStart = nil; dragCurrent = nil; needsDisplay = true }
             guard let start = dragStart else { return }
             let end = clamp(convert(event.locationInWindow, from: nil))
@@ -478,13 +478,20 @@ final class EditorImageView: NSView {
     }
 
     // MARK: 중간 잘라내기
-    /// 직선 좌우 드래그는 세로 띠, 직선 상하 드래그는 가로 띠를 제거한다.
-    /// 영역으로 드래그하면 가로로 긴 선택은 가로 띠, 세로로 긴 선택은 세로 띠로 판정한다.
+    /// 띠의 방향은 도구가 정한다 — 가로 자르기는 가로 띠(높이 감소), 세로 자르기는 세로 띠(너비 감소).
+    /// 드래그 방향을 추측하지 않으므로 어느 방향으로 끌든 결과가 같다.
     /// 제거된 두 조각은 서로 당기되 최대 24px의 투명 간격을 남긴다.
+    private var middleCutAxis: MiddleCutAxis? {
+        switch tool {
+        case .cutHorizontal: return .horizontalStrip
+        case .cutVertical: return .verticalStrip
+        default: return nil
+        }
+    }
+
     private func applyMiddleCut(from start: CGPoint, to end: CGPoint) {
-        guard tool == .middleCut, let source = renderedCGImage() else { return }
+        guard let axis = middleCutAxis, let source = renderedCGImage() else { return }
         let selection = middleCutSelection(from: start, to: end)
-        let axis = selection.axis
         let sourceWidth = source.width
         let sourceHeight = source.height
 
@@ -512,16 +519,7 @@ final class EditorImageView: NSView {
     }
 
     private func middleCutSelection(from start: CGPoint, to end: CGPoint) -> MiddleCutSelection {
-        let dx = abs(end.x - start.x)
-        let dy = abs(end.y - start.y)
-        let axis: MiddleCutAxis
-        if dx >= 12, dy >= 12 {
-            // 사각 영역 선택: 긴 변의 방향이 곧 사용자가 없애려는 띠의 방향이다.
-            axis = dx >= dy ? .horizontalStrip : .verticalStrip
-        } else {
-            // 거의 직선인 기존 제스처: 두 끝점 사이 구간을 제거한다.
-            axis = dx >= dy ? .verticalStrip : .horizontalStrip
-        }
+        let axis = middleCutAxis ?? .horizontalStrip
         switch axis {
         case .verticalStrip:
             return MiddleCutSelection(axis: axis, lower: min(start.x, end.x), upper: max(start.x, end.x))
@@ -831,7 +829,7 @@ final class EditorImageView: NSView {
                 let border = NSBezierPath(rect: rect)
                 border.lineWidth = 1 / zoomScale
                 border.stroke()
-            case .middleCut:
+            case .cutHorizontal, .cutVertical:
                 drawMiddleCutOverlay(middleCutRect(from: start, to: current))
             default:
                 break

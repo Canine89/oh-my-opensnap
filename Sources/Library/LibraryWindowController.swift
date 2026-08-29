@@ -31,7 +31,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
                                                               target: self, action: #selector(annotateToolChanged(_:)))
 
     // 편집 도구 (세그먼트 인덱스 → 도구). 두 그룹으로 나눠 "이미지를 자르는 것"과 "위에 그리는 것"을 구분한다.
-    private let editTools: [EditorImageView.Tool] = [.none, .crop, .middleCut]
+    private let editTools: [EditorImageView.Tool] = [.none, .crop, .cutHorizontal, .cutVertical]
     private let annotateTools: [EditorImageView.Tool] = [.number, .text, .callout, .arrow, .rectangle, .ellipse, .mosaic]
     private let strokeWidthPresets: [CGFloat] = [2, 3, 6]
 
@@ -450,8 +450,10 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         switch itemIdentifier {
         case ToolbarID.editTools:
             configure(editToolControl,
-                      symbols: ["cursorarrow", "crop", "rectangle.compress.vertical"],
-                      tips: ["선택 · 주석 이동", "크롭 (드래그 후 ⏎ 적용)", "중간 잘라내기 (없앨 가로/세로 띠를 드래그)"])
+                      symbols: ["cursorarrow", "crop", "arrow.up.and.line.horizontal.and.arrow.down", "arrow.right.and.line.vertical.and.arrow.left"],
+                      tips: ["선택 · 주석 이동", "크롭 (드래그 후 ⏎ 적용)",
+                             "가로 띠 잘라내기 — 위아래로 드래그한 구간을 없애고 높이를 줄임",
+                             "세로 띠 잘라내기 — 좌우로 드래그한 구간을 없애고 너비를 줄임"])
             return viewItem(itemIdentifier, view: editToolControl, label: "편집")
         case ToolbarID.annotateTools:
             configure(annotateToolControl,
@@ -478,7 +480,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         control.segmentCount = symbols.count
         control.segmentStyle = .automatic
         for (i, symbol) in symbols.enumerated() {
-            control.setImage(NSImage(systemSymbolName: symbol, accessibilityDescription: tips[i]), forSegment: i)
+            let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tips[i])
+                ?? NSImage(systemSymbolName: "rectangle.compress.vertical", accessibilityDescription: tips[i])
+            control.setImage(image, forSegment: i)
             control.setToolTip(tips[i], forSegment: i)
             control.setWidth(32, forSegment: i)
         }
