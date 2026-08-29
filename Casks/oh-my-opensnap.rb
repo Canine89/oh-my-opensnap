@@ -1,6 +1,6 @@
 cask "oh-my-opensnap" do
-  version "1.0.78"
-  sha256 "c8bec82920ff34b06e2ce23c9e29d42cb0cc8c03a0fae20b20a1dead45cfc04c"
+  version "1.0.79"
+  sha256 "5c6669ad539af201a466110c6a83f2eb94dae976bc9436201a8c3e14e5c58360"
 
   url "https://github.com/Canine89/oh-my-opensnap/releases/download/v#{version}/oh-my-opensnap-#{version}.dmg"
   name "oh-my-opensnap"
