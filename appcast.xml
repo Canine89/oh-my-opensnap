@@ -6,18 +6,19 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.71</title>
-      <pubDate>Mon, 24 Aug 2026 13:10:16 +0000</pubDate>
-      <sparkle:version>72</sparkle:version>
-      <sparkle:shortVersionString>1.0.71</sparkle:shortVersionString>
+      <title>1.0.72</title>
+      <pubDate>Sat, 29 Aug 2026 02:57:29 +0000</pubDate>
+      <sparkle:version>73</sparkle:version>
+      <sparkle:shortVersionString>1.0.72</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.71</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.72</h2>
 <ul>
-<li>창 전체·앱 콘텐츠·주 작업 영역의 3단계 자동 스냅을 추가. 앱 내부의 헤더·탐색 사이드바와 실제 작업 패널을 한 번 더 구분</li>
-<li>웹 브라우저에 한정하지 않고, 접근성 트리와 화면의 가로·세로 경계를 함께 분석해 Finder·터미널·Electron 등 모든 앱에 같은 기준 적용</li>
-<li>구조가 불분명한 화면은 주 작업 영역을 억지로 자르지 않고 기존 앱 콘텐츠 선택으로 안전하게 폴백</li>
+<li>창 자동 스냅을 **헤더 / 본문 두 구역**으로 단순화. 헤더(타이틀바·툴바·탭·주소표시줄·북마크바) 위에서는 헤더만, 본문 위에서는 본문만 잡힌다</li>
+<li>본문 안쪽을 다시 잘라내던 "주 작업 영역" 픽셀 추정을 제거. 페이지 안의 내비게이션·사이드바 때문에 선택이 제멋대로 줄어들던 문제 해소</li>
+<li>헤더 경계가 커서가 창에 들어온 위치에 따라 달라지던 문제를 수정. 경계는 창 구조로만 정하고, 한 캡처 세션 안에서는 창별로 기억한다</li>
+<li>접근성 권한이 없거나 앱이 창 구조를 공개하지 않을 때는 앱별 추정값을 정지 화면의 실제 경계선(±40pt)에 맞춰 보정</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.71.zip" type="application/octet-stream" sparkle:edSignature="nib892m4xv8RdfzcNxHfp5o/Wvys0k9q+tV2IDA3q28nKq9kQaYDyVOVDCNFL2krn+rAkI9Yw6+RmVqsQRCADQ==" length="3507198" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.72.zip" type="application/octet-stream" sparkle:edSignature="iCr0Fv/jMBmKKFrC17tuFnHXXvMjyiR+9ndH82r5KMs7Xc/gcRZbXy63NruDCVNIfLpEDxKal6PL0ibdwN9fCA==" length="3503471" />
     </item>
   </channel>
 </rss>
