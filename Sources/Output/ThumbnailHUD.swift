@@ -14,7 +14,7 @@ final class ThumbnailHUD {
     }
 
     private init(image: NSImage) {
-        let size = NSSize(width: 220, height: 160)
+        let size = NSSize(width: 232, height: 176)
         let screen = NSScreen.main ?? NSScreen.screens.first
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let frame = NSRect(x: visible.maxX - size.width - 20,
@@ -36,17 +36,24 @@ final class ThumbnailHUD {
         container.state = .active
         container.blendingMode = .behindWindow
         container.wantsLayer = true
-        container.layer?.cornerRadius = 14
+        container.layer?.cornerRadius = Brand.cornerRadius
         container.layer?.masksToBounds = true
 
-        let imageView = NSImageView(frame: container.bounds.insetBy(dx: 10, dy: 10))
+        let imageView = NSImageView(frame: NSRect(x: 10, y: 32, width: size.width - 20, height: size.height - 42))
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.image = image
         imageView.autoresizingMask = [.width, .height]
         imageView.wantsLayer = true
-        imageView.layer?.cornerRadius = 6
+        imageView.layer?.cornerRadius = 8
         imageView.layer?.masksToBounds = true
         container.addSubview(imageView)
+
+        let label = NSTextField(labelWithString: "클립보드에 복사됨")
+        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.textColor = .secondaryLabelColor
+        label.frame = NSRect(x: 12, y: 10, width: size.width - 24, height: 14)
+        label.alignment = .left
+        container.addSubview(label)
 
         panel.contentView = container
     }

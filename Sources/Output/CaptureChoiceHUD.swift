@@ -17,7 +17,7 @@ final class CaptureChoiceHUD {
         self.onVideo = onVideo
         self.onCancel = onCancel
 
-        let size = NSSize(width: 318, height: 82)
+        let size = NSSize(width: 340, height: 88)
         let frame = Self.frame(size: size, near: anchor)
         panel = CaptureChoicePanel(contentRect: frame,
                                    styleMask: [.borderless],
@@ -60,8 +60,8 @@ final class CaptureChoiceHUD {
     private func buildContent(size: NSSize) {
         let container = NSView(frame: NSRect(origin: .zero, size: size))
         container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor(calibratedWhite: 0.06, alpha: 0.94).cgColor
-        container.layer?.cornerRadius = 14
+        container.layer?.backgroundColor = Brand.darkSurface.withAlphaComponent(0.96).cgColor
+        container.layer?.cornerRadius = Brand.cornerRadius
         container.layer?.masksToBounds = true
         container.layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
         container.layer?.borderWidth = 1
@@ -86,13 +86,13 @@ final class CaptureChoiceHUD {
         container.addSubview(label)
         container.addSubview(buttons)
         NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 14),
             label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
             label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
 
             buttons.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
             buttons.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
-            buttons.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
+            buttons.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -14),
             buttons.heightAnchor.constraint(equalToConstant: 30)
         ])
 

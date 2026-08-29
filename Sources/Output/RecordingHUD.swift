@@ -83,8 +83,8 @@ final class RecordingHUD {
     private func buildContent(size: NSSize) {
         let container = DraggableHUDBackground(frame: NSRect(origin: .zero, size: size))
         container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor(calibratedWhite: 0.06, alpha: 0.9).cgColor
-        container.layer?.cornerRadius = 12
+        container.layer?.backgroundColor = Brand.darkSurface.withAlphaComponent(0.94).cgColor
+        container.layer?.cornerRadius = Brand.cornerRadius
         container.layer?.masksToBounds = true
         container.layer?.borderColor = NSColor.white.withAlphaComponent(0.2).cgColor
         container.layer?.borderWidth = 1
@@ -92,7 +92,7 @@ final class RecordingHUD {
         let dot = NSView()
         dot.translatesAutoresizingMaskIntoConstraints = false
         dot.wantsLayer = true
-        dot.layer?.backgroundColor = NSColor.systemRed.cgColor
+        dot.layer?.backgroundColor = Brand.red.cgColor
         dot.layer?.cornerRadius = 5
 
         statusLabel.font = .systemFont(ofSize: 13, weight: .semibold)

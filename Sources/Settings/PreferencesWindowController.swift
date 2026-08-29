@@ -24,29 +24,40 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     }
 
     private func buildWindow() {
-        let contentRect = NSRect(x: 0, y: 0, width: 480, height: 560)
+        let contentRect = NSRect(x: 0, y: 0, width: 520, height: 650)
         let window = NSWindow(contentRect: contentRect,
                               styleMask: [.titled, .closable],
                               backing: .buffered, defer: false)
         window.title = "\(Brand.name) 설정"
+        AppAppearance.configure(window)
         window.delegate = self
         window.isReleasedWhenClosed = false
+        window.contentMinSize = NSSize(width: 480, height: 590)
 
         let stack = NSStackView()
         stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 14
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
+        stack.alignment = .width
+        stack.spacing = 12
+        stack.edgeInsets = NSEdgeInsets(top: 22, left: 22, bottom: 22, right: 22)
         stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let header = NSStackView(views: [
+            AppAppearance.title("캡처 환경 설정"),
+            AppAppearance.secondaryText("자주 쓰는 동작과 접근 권한을 한곳에서 관리합니다.", size: 12)
+        ])
+        header.orientation = .vertical
+        header.alignment = .leading
+        header.spacing = 3
 
         // 단축키 레코더
         let shortcutRow = NSStackView()
         shortcutRow.orientation = .horizontal
         shortcutRow.spacing = 8
         let shortcutLabel = NSTextField(labelWithString: "캡처 단축키")
+        shortcutLabel.font = .systemFont(ofSize: 12, weight: .medium)
         let recordButton = NSButton(title: currentShortcutString(),
                                     target: self, action: #selector(toggleRecording))
-        recordButton.bezelStyle = .rounded
+        AppAppearance.accentButton(recordButton)
         recordButton.setButtonType(.momentaryPushIn)
         recordButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 90).isActive = true
         self.recordButton = recordButton
@@ -76,6 +87,8 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         folderRow.spacing = 8
         let chooseButton = NSButton(title: "저장 폴더 선택…", target: self, action: #selector(chooseFolder))
         let resetButton = NSButton(title: "기본값", target: self, action: #selector(resetFolder))
+        chooseButton.bezelStyle = .rounded
+        resetButton.bezelStyle = .rounded
         let label = NSTextField(labelWithString: Settings.shared.libraryDirectory.path)
         label.lineBreakMode = .byTruncatingMiddle
         label.textColor = .secondaryLabelColor
@@ -91,9 +104,6 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         folderHint.textColor = .tertiaryLabelColor
 
         // 화면 녹화 권한
-        let permissionTitle = NSTextField(labelWithString: "화면 녹화 권한")
-        permissionTitle.font = .boldSystemFont(ofSize: 12)
-
         let permissionStatus = NSTextField(labelWithString: "")
         permissionStatus.font = .systemFont(ofSize: 12)
         permissionStatusLabel = permissionStatus
@@ -115,9 +125,6 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         permissionHint.textColor = .secondaryLabelColor
 
         // 접근성 권한: 다른 앱이 공개한 창 구조로 헤더/본문 경계를 계산한다.
-        let accessibilityTitle = NSTextField(labelWithString: "창 구조 인식 (선택 사항)")
-        accessibilityTitle.font = .boldSystemFont(ofSize: 12)
-
         let accessibilityStatus = NSTextField(labelWithString: "")
         accessibilityStatus.font = .systemFont(ofSize: 12)
         accessibilityStatusLabel = accessibilityStatus
@@ -138,35 +145,54 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         accessibilityHint.font = .systemFont(ofSize: 11)
         accessibilityHint.textColor = .secondaryLabelColor
 
-        let hint = NSTextField(wrappingLabelWithString: "창의 헤더(타이틀바·툴바·탭) 위에서 클릭하면 창 전체를, 본문 위에서 클릭하면 본문만, 드래그하면 지정 영역을 캡처합니다(취소는 Esc 또는 우클릭). 캡처 이미지는 클립보드에 복사되고 위 저장 폴더에 보관됩니다.")
-        hint.font = .systemFont(ofSize: 11)
-        hint.textColor = .secondaryLabelColor
+        let hint = AppAppearance.secondaryText("창의 헤더 위에서 클릭하면 창 전체를, 본문 위에서 클릭하면 본문만 캡처합니다. 드래그하면 지정 영역을 고를 수 있고, Esc 또는 우클릭으로 취소합니다.")
 
-        stack.addArrangedSubview(shortcutRow)
-        stack.addArrangedSubview(soundCheck)
-        stack.addArrangedSubview(openLibraryCheck)
-        stack.addArrangedSubview(freezeCheck)
-        stack.addArrangedSubview(launchAtLoginCheck)
-        stack.addArrangedSubview(folderRow)
-        stack.addArrangedSubview(folderHint)
-        stack.addArrangedSubview(permissionTitle)
-        stack.addArrangedSubview(permissionStatus)
-        stack.addArrangedSubview(permissionRow)
-        stack.addArrangedSubview(permissionHint)
-        stack.addArrangedSubview(accessibilityTitle)
-        stack.addArrangedSubview(accessibilityStatus)
-        stack.addArrangedSubview(accessibilityRow)
-        stack.addArrangedSubview(accessibilityHint)
+        let captureSection = AppAppearance.makeSection(
+            title: "캡처",
+            subtitle: "원하는 방식으로 화면을 빠르게 기록하세요.",
+            views: [shortcutRow, soundCheck, openLibraryCheck, freezeCheck, launchAtLoginCheck]
+        )
+        let storageSection = AppAppearance.makeSection(
+            title: "저장 위치",
+            subtitle: nil,
+            views: [folderRow, folderHint]
+        )
+        let screenPermissionSection = AppAppearance.makeSection(
+            title: "화면 녹화 권한",
+            subtitle: nil,
+            views: [permissionStatus, permissionRow, permissionHint]
+        )
+        let accessibilitySection = AppAppearance.makeSection(
+            title: "창 구조 인식 (선택 사항)",
+            subtitle: nil,
+            views: [accessibilityStatus, accessibilityRow, accessibilityHint]
+        )
+
+        stack.addArrangedSubview(header)
+        stack.addArrangedSubview(captureSection)
+        stack.addArrangedSubview(storageSection)
+        stack.addArrangedSubview(screenPermissionSection)
+        stack.addArrangedSubview(accessibilitySection)
         stack.addArrangedSubview(hint)
 
-        let content = NSView(frame: contentRect)
-        content.addSubview(stack)
+        // 권한 설명은 시스템 언어·글자 크기에 따라 길어질 수 있으므로,
+        // 창 크기는 안정적으로 유지하고 내용만 스크롤한다.
+        let document = NSView(frame: NSRect(x: 0, y: 0, width: contentRect.width, height: 840))
+        document.autoresizingMask = [.width]
+        document.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: content.topAnchor)
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: document.topAnchor)
         ])
-        window.contentView = content
+
+        let scroll = NSScrollView(frame: contentRect)
+        scroll.documentView = document
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        window.contentView = scroll
         self.window = window
         refreshPermissionStatus()
     }

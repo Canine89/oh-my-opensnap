@@ -100,6 +100,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
         window.title = "\(Brand.name) — 라이브러리"
+        AppAppearance.configure(window)
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 760, height: 460)
@@ -222,7 +223,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             toolbar.topAnchor.constraint(equalTo: content.topAnchor),
             toolbar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             toolbar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            toolbar.heightAnchor.constraint(equalToConstant: 48),
+            toolbar.heightAnchor.constraint(equalToConstant: 52),
 
             scroll.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
             scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor),
@@ -261,12 +262,15 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     }
 
     private func buildToolbar() -> NSView {
-        let bar = NSView()
+        let bar = NSVisualEffectView()
+        bar.material = .headerView
+        bar.blendingMode = .withinWindow
+        bar.state = .active
         bar.wantsLayer = true
 
         let stack = NSStackView()
         stack.orientation = .horizontal
-        stack.spacing = 8
+        stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         func iconButton(_ symbol: String, _ action: Selector, _ help: String) -> NSButton {
@@ -317,7 +321,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         stack.addArrangedSubview(iconButton("trash", #selector(deleteSelected), "삭제"))
 
         countLabel.textColor = .secondaryLabelColor
-        countLabel.font = .systemFont(ofSize: 11)
+        countLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         countLabel.translatesAutoresizingMaskIntoConstraints = false
 
         bar.addSubview(stack)
@@ -497,7 +501,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         let pill = NSView()
         pill.wantsLayer = true
         pill.layer?.backgroundColor = NSColor(white: 0, alpha: 0.82).cgColor
-        pill.layer?.cornerRadius = 9
+        pill.layer?.cornerRadius = Brand.cornerRadius
         pill.translatesAutoresizingMaskIntoConstraints = false
 
         let label = NSTextField(labelWithString: message)
@@ -770,8 +774,8 @@ final class ThumbnailItem: NSCollectionViewItem {
     override func loadView() {
         let container = NSView()
         container.wantsLayer = true
-        container.layer?.cornerRadius = 6
-        container.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.6).cgColor
+        container.layer?.cornerRadius = 10
+        container.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.82).cgColor
         container.layer?.borderColor = Brand.red.cgColor
         view = container
 
@@ -802,7 +806,7 @@ final class ThumbnailItem: NSCollectionViewItem {
 
     override var isSelected: Bool {
         didSet {
-            view.layer?.borderWidth = isSelected ? 3 : 0
+            view.layer?.borderWidth = isSelected ? 2 : 0
         }
     }
 }

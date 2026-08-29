@@ -1,6 +1,6 @@
 import AppKit
 
-// 1024x1024 앱 아이콘 렌더링 — 레드 스퀘어클 + 흰 캡처 프레임 + 크로스헤어
+// 1024x1024 앱 아이콘 렌더링 - 단일 적색 바탕 위 정밀 캡처 프레임.
 let size: CGFloat = 1024
 let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size), pixelsHigh: Int(size),
                           bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
@@ -9,29 +9,36 @@ let ctx = NSGraphicsContext(bitmapImageRep: rep)!
 NSGraphicsContext.current = ctx
 let cg = ctx.cgContext
 
-// 스퀘어클 배경
-let margin: CGFloat = 92
+// 스퀘어클 배경. 시스템 아이콘과 나란히 놓여도 과하게 빛나지 않는 매트한 적색을 쓴다.
+let margin: CGFloat = 64
 let rect = CGRect(x: margin, y: margin, width: size - 2 * margin, height: size - 2 * margin)
 let corner = rect.width * 0.2237
 let squircle = CGPath(roundedRect: rect, cornerWidth: corner, cornerHeight: corner, transform: nil)
 
 cg.saveGState()
 cg.addPath(squircle); cg.clip()
-let colors = [NSColor(srgbRed: 0.96, green: 0.27, blue: 0.21, alpha: 1).cgColor,
-              NSColor(srgbRed: 0.82, green: 0.12, blue: 0.12, alpha: 1).cgColor] as CFArray
-let grad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1])!
-cg.drawLinearGradient(grad, start: CGPoint(x: 0, y: size), end: CGPoint(x: 0, y: 0), options: [])
+cg.setFillColor(NSColor(srgbRed: 0.88, green: 0.20, blue: 0.18, alpha: 1).cgColor)
+cg.fill(rect)
+cg.setStrokeColor(NSColor.white.withAlphaComponent(0.18).cgColor)
+cg.setLineWidth(8)
+cg.stroke(rect.insetBy(dx: 4, dy: 4))
 cg.restoreGState()
 
-// 캡처 프레임 (네 모서리 브래킷)
-let inset: CGFloat = margin + 168
-let frame = CGRect(x: inset, y: inset, width: size - 2 * inset, height: size - 2 * inset)
-let arm: CGFloat = 132
-let white = NSColor.white
+// 캡처 대상. 어두운 내부면과 흰 프레임을 분리해 작은 크기에서도 선명하게 읽힌다.
+let frame = CGRect(x: 216, y: 252, width: 592, height: 520)
+let inner = frame.insetBy(dx: 34, dy: 34)
+let innerPath = CGPath(roundedRect: inner, cornerWidth: 54, cornerHeight: 54, transform: nil)
+cg.addPath(innerPath)
+cg.setFillColor(NSColor(srgbRed: 0.12, green: 0.13, blue: 0.15, alpha: 1).cgColor)
+cg.fillPath()
+
+// 네 모서리 브래킷. 중앙을 비워 둬 실제 캡처 범위를 고르는 감각을 만든다.
+let arm: CGFloat = 156
+let white = NSColor(srgbRed: 0.98, green: 0.98, blue: 0.97, alpha: 1)
 
 func bracket(_ p: CGPoint, _ dx: CGFloat, _ dy: CGFloat) {
     let path = NSBezierPath()
-    path.lineWidth = 52
+    path.lineWidth = 46
     path.lineCapStyle = .round
     path.lineJoinStyle = .round
     path.move(to: CGPoint(x: p.x + dx * arm, y: p.y))
@@ -45,23 +52,9 @@ bracket(CGPoint(x: frame.maxX, y: frame.maxY), -1, -1)
 bracket(CGPoint(x: frame.minX, y: frame.minY), 1, 1)
 bracket(CGPoint(x: frame.maxX, y: frame.minY), -1, 1)
 
-// 중앙 크로스헤어 (가운데 살짝 비움)
-let cx = size / 2, cy = size / 2
-let reach: CGFloat = 150
-let gap: CGFloat = 46
-let cross = NSBezierPath()
-cross.lineWidth = 30
-cross.lineCapStyle = .round
-cross.move(to: CGPoint(x: cx - reach, y: cy)); cross.line(to: CGPoint(x: cx - gap, y: cy))
-cross.move(to: CGPoint(x: cx + gap, y: cy)); cross.line(to: CGPoint(x: cx + reach, y: cy))
-cross.move(to: CGPoint(x: cx, y: cy - reach)); cross.line(to: CGPoint(x: cx, y: cy - gap))
-cross.move(to: CGPoint(x: cx, y: cy + gap)); cross.line(to: CGPoint(x: cx, y: cy + reach))
-white.withAlphaComponent(0.95).setStroke()
-cross.stroke()
-
-// 중앙 점
-let dot = NSBezierPath(ovalIn: CGRect(x: cx - 17, y: cy - 17, width: 34, height: 34))
-white.setFill(); dot.fill()
+// 중심의 캡처 기준점. 실제 상태를 뜻하는 적색 하나만 남겨 장식을 줄인다.
+let dot = NSBezierPath(ovalIn: CGRect(x: 482, y: 482, width: 60, height: 60))
+NSColor(srgbRed: 0.88, green: 0.20, blue: 0.18, alpha: 1).setFill(); dot.fill()
 
 let data = rep.representation(using: .png, properties: [:])!
 try! data.write(to: URL(fileURLWithPath: CommandLine.arguments[1]))

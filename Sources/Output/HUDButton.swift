@@ -18,7 +18,7 @@ final class HUDButton: NSButton {
         setButtonType(.momentaryPushIn)
         isBordered = false
         wantsLayer = true
-        layer?.cornerRadius = 7
+        layer?.cornerRadius = 10
         layer?.masksToBounds = true
         updateAppearance()
     }
@@ -54,7 +54,7 @@ final class HUDButton: NSButton {
             alpha = 1
         }
         layer?.backgroundColor = base.withAlphaComponent(alpha).cgColor
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.22).cgColor
+        layer?.borderColor = NSColor.white.withAlphaComponent(isHighlighted ? 0.30 : 0.18).cgColor
         layer?.borderWidth = 1
         updateTitle()
     }
@@ -70,11 +70,11 @@ final class HUDButton: NSButton {
     private var color: NSColor {
         switch role {
         case .primary:
-            return .systemBlue
+            return Brand.red
         case .secondary:
-            return NSColor(calibratedWhite: 0.22, alpha: 1)
+            return Brand.darkRaisedSurface
         case .destructive:
-            return .systemRed
+            return NSColor(srgbRed: 0.72, green: 0.15, blue: 0.14, alpha: 1)
         }
     }
 }

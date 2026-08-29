@@ -98,7 +98,7 @@ private final class RecordingRegionBorderView: NSView {
         border.stroke()
 
         let accent = NSBezierPath(rect: captureRect.insetBy(dx: 3, dy: 3))
-        NSColor.systemRed.withAlphaComponent(0.86).setStroke()
+        Brand.red.withAlphaComponent(0.86).setStroke()
         accent.lineWidth = 2
         accent.stroke()
     }
