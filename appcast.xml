@@ -6,16 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.76</title>
-      <pubDate>Sat, 29 Aug 2026 10:42:54 +0000</pubDate>
-      <sparkle:version>77</sparkle:version>
-      <sparkle:shortVersionString>1.0.76</sparkle:shortVersionString>
+      <title>1.0.77</title>
+      <pubDate>Sat, 29 Aug 2026 10:48:16 +0000</pubDate>
+      <sparkle:version>78</sparkle:version>
+      <sparkle:shortVersionString>1.0.77</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.76</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.77</h2>
 <ul>
-<li>중간 잘라내기를 **가로 자르기 / 세로 자르기** 두 도구로 분리. 드래그 방향으로 띠 방향을 추측하지 않고, 고른 도구가 방향을 정한다</li>
+<li>창 위에 커서를 올렸을 때도 확대경(루페)이 크로스헤어를 따라다니도록 복구 (1.0.75에서 숨겼던 것을 되돌림)</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.76.zip" type="application/octet-stream" sparkle:edSignature="myIQV/xIisNNjIqcJbYZtlF4X3StdWB9g4KGx9347F+PF+oZ3UmVBhMvRITTwNEOK+BMF9QtnXSFwxEreA1IBA==" length="1499264" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.77.zip" type="application/octet-stream" sparkle:edSignature="I4cvCLcT6CUgr9PEh+bntF1iYjhhp/fI8dS91lLloJLYIz3hNPCT/9TDjikatriKhdKE23rVl96v+c+zyz1HAQ==" length="1499266" />
     </item>
   </channel>
 </rss>
