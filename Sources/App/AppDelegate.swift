@@ -12,6 +12,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             CaptureCoordinator.shared.startAreaCapture()
         }
         HotkeyManager.shared.start()
+
+        #if DEBUG
+        // 개발용: `-SnapshotLibraryTo /path.png` 로 실행하면 라이브러리 창을 그려 PNG로 저장하고 종료한다.
+        // (화면 녹화 권한 없이 뷰 계층만 렌더 — 레이아웃·간격·아이콘 검토용)
+        if let path = UserDefaults.standard.string(forKey: "SnapshotLibraryTo") {
+            LibraryWindowController.shared.showWindow()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                LibraryWindowController.shared.debugSnapshot(to: path) {
+                    NSApp.terminate(nil)
+                }
+            }
+        }
+        #endif
     }
 
     func applicationWillTerminate(_ notification: Notification) {

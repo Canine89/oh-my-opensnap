@@ -1,4 +1,5 @@
 import AppKit
+import ScreenCaptureKit
 import UniformTypeIdentifiers
 import WebKit
 
@@ -418,8 +419,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         colorWell.target = self
         colorWell.action = #selector(colorChanged(_:))
         if #available(macOS 13.0, *) { colorWell.colorWellStyle = .minimal }
-        colorWell.widthAnchor.constraint(equalToConstant: 34).isActive = true
-        colorWell.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        colorWell.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        colorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
         colorWell.toolTip = "주석 색상 (번호·텍스트·말풍선·화살표·도형)"
 
         widthSlider.minValue = 1
@@ -902,6 +903,28 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         CaptureLibrary.shared.delete(item)   // libraryDidChange → reload()
         showToast("휴지통으로 이동함")
     }
+
+    #if DEBUG
+    /// 개발용: 창 전체(툴바 포함)를 비트맵으로 그려 저장.
+    func debugSnapshot(to path: String, completion: @escaping () -> Void) {
+        guard let window else { completion(); return }
+        let windowID = CGWindowID(window.windowNumber)
+        Task { @MainActor in
+            // 1순위: 윈도우 서버 합성 결과(재질·툴바 포함). 권한이 없으면 뷰 계층 렌더로 대체.
+            if let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+               let scWindow = content.windows.first(where: { $0.windowID == windowID }),
+               let result = try? await StillImageCapturer.captureWindow(scWindow) {
+                let rep = NSBitmapImageRep(cgImage: result.image)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+            } else if let frameView = window.contentView?.superview,
+                      let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) {
+                frameView.cacheDisplay(in: frameView.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+            }
+            completion()
+        }
+    }
+    #endif
 
     func windowDidResize(_ notification: Notification) {
         previewScroll.refitIfNeeded()
