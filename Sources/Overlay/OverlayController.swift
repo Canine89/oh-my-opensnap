@@ -149,10 +149,11 @@ final class OverlayController {
                     other.captureView.deactivateSelection()
                 }
             }
-            view.onSelectionChanged = { [weak self, weak window] rect in
-                // 선택 HUD가 떠 있는 경우(윈도우 선택 등) 위치를 새 선택 근처로 따라 옮긴다.
-                guard let self, let window, let hud = self.choiceHUD else { return }
-                hud.move(near: self.screenRect(for: rect, in: window))
+            view.onSelectionChanged = { [weak self, weak window, weak view] rect in
+                // 선택 HUD가 떠 있는 경우(윈도우 선택 등) 위치와 크기 표시를 새 선택에 맞춘다.
+                guard let self, let window, let view, let hud = self.choiceHUD else { return }
+                hud.update(anchor: self.screenRect(for: rect, in: window),
+                           context: Self.choiceContext(for: view, rect: rect, scale: scale))
             }
             view.onBecomeActiveDisplay = { [weak self] in
                 self?.activateLoupe(for: displayID)
@@ -333,6 +334,7 @@ final class OverlayController {
         let anchor = screenRect(for: viewRect, in: overlayWindow)
         teardown()
         presentChoice(anchor: anchor,
+                      context: .area(viewRect, scale: scale),
                       imageAction: { [weak self] in
                           self?.captureStillImage(viewRect: viewRect,
                                                   scale: scale,
@@ -356,11 +358,13 @@ final class OverlayController {
                                         displayID: CGDirectDisplayID) {
         guard let rect = view.currentSelection else { return }
         let anchor = screenRect(for: rect, in: window)
+        let context = Self.choiceContext(for: view, rect: rect, scale: scale)
         if let hud = choiceHUD {
-            hud.move(near: anchor)
+            hud.update(anchor: anchor, context: context)
             return
         }
         let hud = CaptureChoiceHUD(anchor: anchor,
+                                   context: context,
                                    onImage: { [weak self, weak view] in
                                        guard let self else { return }
                                        self.choiceHUD = nil
@@ -409,6 +413,7 @@ final class OverlayController {
         let anchor = screenRect(for: windowSelection.rect, in: overlayWindow)
         teardown()
         presentChoice(anchor: anchor,
+                      context: .window(windowSelection, scale: scale),
                       imageAction: { [weak self] in
                           self?.captureWindowSelection(windowSelection, snapshot: snapshot)
                       },
@@ -421,8 +426,12 @@ final class OverlayController {
                       })
     }
 
-    private func presentChoice(anchor: CGRect, imageAction: @escaping () -> Void, videoAction: @escaping () -> Void) {
+    private func presentChoice(anchor: CGRect,
+                               context: CaptureChoiceHUD.Context,
+                               imageAction: @escaping () -> Void,
+                               videoAction: @escaping () -> Void) {
         let hud = CaptureChoiceHUD(anchor: anchor,
+                                   context: context,
                                    onImage: { [weak self] in
                                        self?.choiceHUD = nil
                                        imageAction()
@@ -518,6 +527,14 @@ final class OverlayController {
                 await MainActor.run { LibraryWindowController.shared.restoreAfterCapture() }
             }
         }
+    }
+
+    /// 선택 HUD 위 행에 보여 줄 대상 정보: 창 스냅이면 앱·구역, 아니면 선택 영역 크기만.
+    private static func choiceContext(for view: OverlayView, rect: CGRect, scale: CGFloat) -> CaptureChoiceHUD.Context {
+        if let windowSelection = view.currentWindowSelection {
+            return .window(windowSelection, scale: scale)
+        }
+        return .area(rect, scale: scale)
     }
 
     private func screenRect(for viewRect: CGRect, in window: OverlayWindow) -> CGRect {

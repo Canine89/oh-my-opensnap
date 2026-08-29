@@ -1,10 +1,47 @@
 import AppKit
 
-/// 선택 영역 아래 붙는 작은 툴바: 이미지(⏎) / 영상(R). Esc·우클릭은 취소.
-/// 질문 문장과 취소 버튼 없이, 키보드만으로 결정할 수 있게 한다.
+/// 선택 영역 아래 붙는 결정 툴바. 두 행으로 구성한다.
+/// - 위 행: 무엇을 잡았는지(앱 아이콘·이름·구역, 또는 "선택 영역")와 픽셀 크기·배율.
+/// - 아래 행: 이미지 캡처(⏎) · 영상 촬영(R) · 취소(Esc). 우클릭도 취소.
+/// 선택을 조정하면 위치와 크기 표시가 따라 바뀐다.
 @MainActor
 final class CaptureChoiceHUD {
+    /// HUD가 설명하는 대상. 선택이 조정되면 갱신된다.
+    struct Context {
+        var pixelWidth: Int
+        var pixelHeight: Int
+        var scale: CGFloat
+        var appName: String?
+        var appIcon: NSImage?
+        /// 창 스냅일 때 "창 전체" / "본문".
+        var zone: String?
+
+        static func area(_ rect: CGRect, scale: CGFloat) -> Context {
+            Context(pixelWidth: Int((rect.width * scale).rounded()),
+                    pixelHeight: Int((rect.height * scale).rounded()),
+                    scale: scale,
+                    appName: nil,
+                    appIcon: nil,
+                    zone: nil)
+        }
+
+        static func window(_ selection: OverlayView.WindowSelection, scale: CGFloat) -> Context {
+            var context = area(selection.rect, scale: scale)
+            let app = selection.window.owningApplication
+            context.appName = app?.applicationName
+            if let pid = app?.processID {
+                context.appIcon = NSRunningApplication(processIdentifier: pid)?.icon
+            }
+            let full = selection.fullRect
+            let isFullWindow = abs(selection.rect.width - full.width) < 1
+                && abs(selection.rect.height - full.height) < 1
+            context.zone = isFullWindow ? "창 전체" : "본문"
+            return context
+        }
+    }
+
     private static let captureDismissalDelay: TimeInterval = 0.18
+    private static let minimumWidth: CGFloat = 352
 
     private let panel: CaptureChoicePanel
     private let onImage: () -> Void
@@ -12,7 +49,14 @@ final class CaptureChoiceHUD {
     private let onCancel: () -> Void
     private var decided = false
 
+    private let container: HUDSurfaceView
+    private let targetIcon = NSImageView()
+    private let targetLabel = NSTextField(labelWithString: "")
+    private let sizeLabel = NSTextField(labelWithString: "")
+    private let scaleChip = ChipLabel()
+
     init(anchor: CGRect,
+         context: Context,
          onImage: @escaping () -> Void,
          onVideo: @escaping () -> Void,
          onCancel: @escaping () -> Void) {
@@ -20,9 +64,8 @@ final class CaptureChoiceHUD {
         self.onVideo = onVideo
         self.onCancel = onCancel
 
-        let size = NSSize(width: 292, height: 54)
-        let frame = Self.frame(size: size, near: anchor)
-        panel = CaptureChoicePanel(contentRect: frame,
+        container = HUDSurfaceView(frame: NSRect(x: 0, y: 0, width: Self.minimumWidth, height: 96))
+        panel = CaptureChoicePanel(contentRect: container.frame,
                                    styleMask: [.borderless],
                                    backing: .buffered,
                                    defer: false)
@@ -37,18 +80,25 @@ final class CaptureChoiceHUD {
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.onKey = { [weak self] event in self?.handleKey(event) ?? false }
+        panel.onRightClick = { [weak self] in self?.cancel() }
 
-        buildContent(size: size)
+        buildContent()
+        apply(context)
+        panel.setFrame(Self.frame(size: fittingSize, near: anchor), display: false)
     }
 
     func show() {
         NSApp.activate(ignoringOtherApps: true)
+        let target = panel.frame
+        panel.setFrame(target.offsetBy(dx: 0, dy: -6), display: false)
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         panel.makeKeyAndOrderFront(nil)
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.12
+            context.duration = 0.16
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 1
+            panel.animator().setFrame(target, display: true)
         }
     }
 
@@ -60,9 +110,10 @@ final class CaptureChoiceHUD {
         panel.orderOut(nil)
     }
 
-    /// 선택 영역이 조정되면 HUD를 새 영역 근처로 옮긴다.
-    func move(near anchor: CGRect) {
-        panel.setFrame(Self.frame(size: panel.frame.size, near: anchor), display: true)
+    /// 선택 영역이 조정되면 HUD를 새 영역 근처로 옮기고 크기 표시를 갱신한다.
+    func update(anchor: CGRect, context: Context) {
+        apply(context)
+        panel.setFrame(Self.frame(size: fittingSize, near: anchor), display: true)
     }
 
     /// HUD가 key가 아니어도(오버레이를 클릭해 조정 중) 키로 결정할 수 있게, 컨트롤러의
@@ -84,33 +135,129 @@ final class CaptureChoiceHUD {
         return false
     }
 
-    private func buildContent(size: NSSize) {
-        let container = HUDSurfaceView(frame: NSRect(origin: .zero, size: size))
+    // MARK: 구성
 
-        let imageButton = HUDButton(title: "이미지 캡처", role: .primary, symbol: "camera",
+    private func buildContent() {
+        // 위 행 — 대상 · 크기
+        targetIcon.imageScaling = .scaleProportionallyUpOrDown
+        targetIcon.translatesAutoresizingMaskIntoConstraints = false
+        targetIcon.setContentHuggingPriority(.required, for: .horizontal)
+
+        targetLabel.font = .systemFont(ofSize: 11.5, weight: .semibold)
+        targetLabel.textColor = NSColor.white.withAlphaComponent(0.92)
+        targetLabel.lineBreakMode = .byTruncatingTail
+        targetLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        sizeLabel.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .semibold)
+        sizeLabel.textColor = .white
+        sizeLabel.alignment = .right
+        sizeLabel.setContentHuggingPriority(.required, for: .horizontal)
+        sizeLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let unitLabel = NSTextField(labelWithString: "px")
+        unitLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        unitLabel.textColor = NSColor.white.withAlphaComponent(0.55)
+        unitLabel.setContentHuggingPriority(.required, for: .horizontal)
+
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+
+        let info = NSStackView(views: [targetIcon, targetLabel, spacer, sizeLabel, unitLabel, scaleChip])
+        info.orientation = .horizontal
+        info.alignment = .centerY
+        info.spacing = 5
+        info.setCustomSpacing(6, after: targetIcon)
+        info.setCustomSpacing(3, after: sizeLabel)
+        info.setCustomSpacing(7, after: unitLabel)
+        info.translatesAutoresizingMaskIntoConstraints = false
+
+        // 구분선
+        let divider = NSView()
+        divider.translatesAutoresizingMaskIntoConstraints = false
+        divider.wantsLayer = true
+        divider.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.10).cgColor
+
+        // 아래 행 — 동작
+        let imageButton = HUDButton(title: "이미지 캡처", role: .primary, symbol: "camera.fill",
                                     keyHint: "⏎", target: self, action: #selector(captureImage))
         let videoButton = HUDButton(title: "영상 촬영", role: .secondary, symbol: "record.circle",
                                     keyHint: "R", target: self, action: #selector(recordVideo))
-        imageButton.toolTip = "선택 영역을 이미지로 캡처 (⏎)"
-        videoButton.toolTip = "선택 영역을 영상으로 촬영 (R) · Esc 취소"
+        let cancelButton = HUDButton(title: "취소", role: .tertiary, symbol: nil,
+                                     keyHint: "Esc", target: self, action: #selector(cancel))
+        imageButton.toolTip = "선택 영역을 이미지로 캡처하고 클립보드에 복사 (⏎)"
+        videoButton.toolTip = "선택 영역을 영상으로 촬영 (R)"
+        cancelButton.toolTip = "캡처 취소 (Esc · 우클릭)"
+        cancelButton.setContentHuggingPriority(.required, for: .horizontal)
 
-        let buttons = NSStackView(views: [imageButton, videoButton])
-        buttons.orientation = .horizontal
-        buttons.alignment = .centerY
-        buttons.distribution = .fillEqually
-        buttons.spacing = 8
-        buttons.translatesAutoresizingMaskIntoConstraints = false
+        let actions = NSStackView(views: [imageButton, videoButton, cancelButton])
+        actions.orientation = .horizontal
+        actions.alignment = .centerY
+        actions.spacing = 8
+        actions.setCustomSpacing(6, after: videoButton)
+        actions.translatesAutoresizingMaskIntoConstraints = false
 
-        container.addSubview(buttons)
+        container.addSubview(info)
+        container.addSubview(divider)
+        container.addSubview(actions)
+
+        let padX: CGFloat = 12
         NSLayoutConstraint.activate([
-            buttons.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
-            buttons.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
-            buttons.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            buttons.heightAnchor.constraint(equalToConstant: 34)
+            targetIcon.widthAnchor.constraint(equalToConstant: 16),
+            targetIcon.heightAnchor.constraint(equalToConstant: 16),
+
+            info.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
+            info.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: padX + 2),
+            info.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -(padX + 2)),
+            info.heightAnchor.constraint(equalToConstant: 18),
+
+            divider.topAnchor.constraint(equalTo: info.bottomAnchor, constant: 9),
+            divider.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: padX),
+            divider.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -padX),
+            divider.heightAnchor.constraint(equalToConstant: 1),
+
+            actions.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: 10),
+            actions.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: padX),
+            actions.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -padX),
+            actions.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
+            imageButton.widthAnchor.constraint(equalTo: videoButton.widthAnchor),
+            container.widthAnchor.constraint(greaterThanOrEqualToConstant: Self.minimumWidth)
         ])
 
         panel.contentView = container
     }
+
+    private func apply(_ context: Context) {
+        if let appName = context.appName, !appName.isEmpty {
+            targetLabel.stringValue = context.zone.map { "\(appName) · \($0)" } ?? appName
+        } else {
+            targetLabel.stringValue = "선택 영역"
+        }
+        if let icon = context.appIcon {
+            targetIcon.image = icon
+            targetIcon.contentTintColor = nil
+        } else {
+            let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+            targetIcon.image = NSImage(systemSymbolName: "rectangle.dashed", accessibilityDescription: "선택 영역")?
+                .withSymbolConfiguration(config)
+            targetIcon.contentTintColor = NSColor.white.withAlphaComponent(0.85)
+        }
+        sizeLabel.stringValue = "\(context.pixelWidth) × \(context.pixelHeight)"
+        let scaleText = context.scale == context.scale.rounded()
+            ? "\(Int(context.scale))×"
+            : String(format: "%.1f×", context.scale)
+        scaleChip.text = scaleText
+        scaleChip.isHidden = context.scale <= 1
+        scaleChip.toolTip = "화면 배율 \(scaleText) — 표시 크기의 \(scaleText) 픽셀로 저장"
+    }
+
+    private var fittingSize: NSSize {
+        container.layoutSubtreeIfNeeded()
+        let size = container.fittingSize
+        return NSSize(width: max(Self.minimumWidth, ceil(size.width)), height: ceil(size.height))
+    }
+
+    // MARK: 동작
 
     @objc private func captureImage() {
         guard !decided else { return }
@@ -146,10 +293,60 @@ final class CaptureChoiceHUD {
         y = min(max(y, visible.minY + gap), visible.maxY - size.height - gap)
         return NSRect(x: x, y: y, width: size.width, height: size.height)
     }
+
+    #if DEBUG
+    /// 개발용: HUD 창을 PNG로 저장한다 (`-SnapshotChoiceHUDTo`).
+    func debugSnapshot(to path: String) async {
+        panel.sharingType = .readOnly            // 평소엔 캡처에서 제외되므로 스냅샷 동안만 허용
+        await DebugSnapshot.write(window: panel, to: path)
+        panel.sharingType = .none
+    }
+    #endif
+}
+
+/// "2×" 같은 짧은 값을 담는 작은 알약. 버튼 키캡과 같은 결.
+private final class ChipLabel: NSView {
+    var text: String = "" {
+        didSet {
+            invalidateIntrinsicContentSize()
+            needsDisplay = true
+        }
+    }
+
+    private let font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold)
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var allowsVibrancy: Bool { false }
+
+    override var intrinsicContentSize: NSSize {
+        let width = (text as NSString).size(withAttributes: [.font: font]).width
+        return NSSize(width: max(17, ceil(width) + 10), height: 17)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.withAlphaComponent(0.14).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 4.5, yRadius: 4.5).fill()
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.white.withAlphaComponent(0.9)
+        ]
+        let size = (text as NSString).size(withAttributes: attributes)
+        (text as NSString).draw(at: CGPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2),
+                                withAttributes: attributes)
+    }
 }
 
 private final class CaptureChoicePanel: NSPanel {
     var onKey: ((NSEvent) -> Bool)?
+    var onRightClick: (() -> Void)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -158,5 +355,9 @@ private final class CaptureChoicePanel: NSPanel {
         if onKey?(event) != true {
             super.keyDown(with: event)
         }
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        onRightClick?()
     }
 }

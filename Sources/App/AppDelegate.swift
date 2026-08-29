@@ -24,8 +24,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        // 개발용: `-SnapshotChoiceHUDTo /path.png` 로 실행하면 선택 HUD(창 스냅 예시)를 PNG로 저장하고 종료한다.
+        if let path = UserDefaults.standard.string(forKey: "SnapshotChoiceHUDTo") {
+            let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+            let anchor = CGRect(x: visible.midX - 360, y: visible.midY - 60, width: 720, height: 420)
+            var context = CaptureChoiceHUD.Context.area(anchor, scale: 2)   // Retina 표기(2× 칩)까지 검토
+
+            if UserDefaults.standard.bool(forKey: "SnapshotChoiceHUDWindow") {
+                context.appName = "Safari"
+                context.appIcon = NSWorkspace.shared.icon(forFile: "/Applications/Safari.app")
+                context.zone = "창 전체"
+            }
+            let hud = CaptureChoiceHUD(anchor: anchor, context: context, onImage: {}, onVideo: {}, onCancel: {})
+            debugChoiceHUD = hud
+            hud.show()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                Task { @MainActor in
+                    await hud.debugSnapshot(to: path)
+                    NSApp.terminate(nil)
+                }
+            }
+        }
         #endif
     }
+
+    #if DEBUG
+    private var debugChoiceHUD: CaptureChoiceHUD?
+    #endif
 
     func applicationWillTerminate(_ notification: Notification) {
         HotkeyManager.shared.stop()

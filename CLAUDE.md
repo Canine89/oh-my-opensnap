@@ -75,6 +75,7 @@ open oh-my-opensnap.xcodeproj         # Xcode에서 Run, 또는
 ```
 아이콘 재생성: `scripts/icongen.swift`.
 UI 검토용 스냅샷(Debug 전용): `build/dd/Build/Products/Debug/oh-my-opensnap.app/Contents/MacOS/oh-my-opensnap -SnapshotLibraryTo /tmp/lib.png` → 라이브러리 창을 PNG로 저장하고 종료. 화면 녹화 권한이 없는 Debug 빌드는 뷰 계층 렌더로 대체되어 사이드바 재질/썸네일은 비어 보일 수 있다(툴바·미리보기 레이아웃 검토엔 충분).
+선택 HUD도 같은 방식: `-SnapshotChoiceHUDTo /tmp/hud.png` (영역 선택 예시), `-SnapshotChoiceHUDWindow YES`를 더하면 창 스냅(앱 아이콘·구역) 예시.
 
 ### 릴리스 (`scripts/release.sh`)
 > 실제 배포는 로컬 스킬 **`release`**(`.claude/skills/release/SKILL.md`, `/release <버전>`)의 절차를 따른다: CHANGELOG 섹션 → 소스 `feat:` 커밋 → 백그라운드로 `--publish` → 공증/커밋/Release 자산 검증 → 보고.

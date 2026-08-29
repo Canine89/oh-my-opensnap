@@ -17,6 +17,8 @@ final class HUDSurfaceView: NSVisualEffectView {
         material = .hudWindow
         blendingMode = .behindWindow
         state = .active
+        // HUD는 시스템 라이트/다크와 무관하게 항상 어두운 표면이다 — 그 위의 vibrant 라벨도 다크 기준으로 블렌딩되게.
+        appearance = NSAppearance(named: .darkAqua)
         wantsLayer = true
         layer?.cornerRadius = Brand.cornerRadius
         layer?.masksToBounds = true
