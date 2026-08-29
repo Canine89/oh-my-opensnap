@@ -161,8 +161,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
         let toolbar = NSToolbar(identifier: "LibraryToolbarV1")
         toolbar.delegate = self
-        toolbar.displayMode = .iconOnly
+        toolbar.displayMode = .iconAndLabel          // 아이콘+텍스트 고정
         toolbar.allowsUserCustomization = false
+        if #available(macOS 15.0, *) { toolbar.allowsDisplayModeCustomization = false }
         window.toolbar = toolbar
 
         window.setFrame(contentRect, display: false)
@@ -247,6 +248,17 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         }
         editorView.onToolChanged = { [weak self] tool in
             self?.syncToolControl(to: tool)
+        }
+        // 주석을 선택하면 툴바의 색·굵기가 그 주석을 가리키고, 이후 변경은 그 주석에 적용된다.
+        // (툴바 = "현재 스타일": 선택된 것과 앞으로 그릴 것 모두에 해당)
+        editorView.onSelectionChanged = { [weak self] annotation in
+            guard let self, let annotation else { return }
+            if case .mosaic = annotation.kind { return }
+            self.editorView.strokeColor = annotation.color
+            self.editorView.strokeWidth = annotation.width
+            self.colorWell.color = annotation.color
+            self.widthSlider.doubleValue = Double(annotation.width)
+            self.updateWidthLabel()
         }
         videoEditorView.onToast = { [weak self] message in
             self?.showToast(message)
@@ -434,15 +446,15 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         switch itemIdentifier {
         case ToolbarID.editTools:
             configure(editToolControl,
-                      symbols: ["cursorarrow", "crop", "arrow.up.and.line.horizontal.and.arrow.down", "arrow.right.and.line.vertical.and.arrow.left"],
-                      tips: ["선택 · 주석 이동", "크롭 (드래그 후 ⏎ 적용)",
+                      symbols: ["cursorarrow", "crop", "arrow.down.and.line.horizontal.and.arrow.up", "arrow.right.and.line.vertical.and.arrow.left"],
+                      tips: ["선택 · 주석 이동 (방향키로 1px, ⇧방향키로 10px)", "크롭 (드래그 후 ⏎ 적용)",
                              "가로 띠 잘라내기 — 위아래로 드래그한 구간을 없애고 높이를 줄임",
                              "세로 띠 잘라내기 — 좌우로 드래그한 구간을 없애고 너비를 줄임"])
             return viewItem(itemIdentifier, view: editToolControl, label: "편집")
         case ToolbarID.annotateTools:
             configure(annotateToolControl,
-                      symbols: ["number.circle", "textformat", "bubble.left", "arrow.up.right", "rectangle", "circle", "square.grid.3x3.fill"],
-                      tips: ["번호 ➊–➒", "텍스트", "말풍선", "화살표", "사각형", "원", "모자이크 (드래그)"])
+                      symbols: ["1.circle", "textformat", "text.bubble", "arrow.up.right", "rectangle", "circle", "checkerboard.rectangle"],
+                      tips: ["번호 ➊–➒ (클릭)", "텍스트 (클릭 후 입력)", "말풍선 (가리킬 곳에서 드래그)", "화살표 (⇧ 45° 스냅)", "사각형 (⇧ 정사각형)", "원 (⇧ 정원)", "모자이크 (드래그)"])
             return viewItem(itemIdentifier, view: annotateToolControl, label: "주석")
         case ToolbarID.color:
             if styleControls == nil { styleControls = buildStyleControls() }
@@ -453,7 +465,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         case ToolbarID.undo:
             return actionItem(itemIdentifier, symbol: "arrow.uturn.backward", label: "되돌리기", tip: "되돌리기 (⌘Z)", action: #selector(undoEdit))
         case ToolbarID.copy:
-            return actionItem(itemIdentifier, symbol: "doc.on.doc", label: "복사", tip: "클립보드에 복사 (⌘C)", action: #selector(copySelected))
+            return actionItem(itemIdentifier, symbol: "doc.on.clipboard", label: "복사", tip: "클립보드에 복사 (⌘C)", action: #selector(copySelected))
         case ToolbarID.save:
             return actionItem(itemIdentifier, symbol: "square.and.arrow.down", label: "저장", tip: "다른 이름으로 저장…", action: #selector(saveSelected))
         case ToolbarID.reveal:
@@ -715,10 +727,13 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
     @objc private func colorChanged(_ sender: NSColorWell) {
         editorView.strokeColor = sender.color
+        editorView.applyStyleToSelection(color: sender.color, undoKey: "color")
     }
 
     @objc private func widthChanged(_ sender: NSSlider) {
-        editorView.strokeWidth = CGFloat(sender.doubleValue.rounded())
+        let width = CGFloat(sender.doubleValue.rounded())
+        editorView.strokeWidth = width
+        editorView.applyStyleToSelection(width: width, undoKey: "width")
         updateWidthLabel()
     }
 

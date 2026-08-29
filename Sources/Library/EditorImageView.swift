@@ -14,8 +14,8 @@ final class EditorImageView: NSView {
         var start: CGPoint
         var end: CGPoint
         var calloutBubble: CGRect?
-        let color: NSColor
-        let width: CGFloat
+        var color: NSColor
+        var width: CGFloat
         /// 모자이크 전용: 영역을 다운샘플한 작은 이미지(그릴 때 보간 없이 확대 → 블록).
         var mosaicImage: CGImage? = nil
 
@@ -118,6 +118,41 @@ final class EditorImageView: NSView {
     var onEditCommitted: (() -> Void)?
     /// 내부 이벤트로 도구가 바뀌면 툴바 선택 상태도 맞추도록 알린다.
     var onToolChanged: ((Tool) -> Void)?
+    /// 선택된 주석이 바뀌면(없어지면 nil) 알린다 → 툴바의 색·굵기를 그 주석에 맞춘다.
+    var onSelectionChanged: ((Annotation?) -> Void)?
+
+    /// 현재 선택된 주석 (없으면 nil).
+    var selectedAnnotation: Annotation? {
+        guard let index = selectedAnnotationIndex, annotations.indices.contains(index) else { return nil }
+        return annotations[index]
+    }
+
+    /// 선택된 주석의 색/굵기를 바꾼다. 같은 종류(undoKey)의 연속 변경(슬라이더 드래그 등)은 undo 한 번으로 묶는다.
+    /// 텍스트·말풍선은 굵기가 글자 크기를 정하므로 말풍선 크기도 다시 계산한다. 모자이크는 대상이 아니다.
+    func applyStyleToSelection(color: NSColor? = nil, width: CGFloat? = nil, undoKey: String) {
+        if activeTextField != nil { commitActiveTextField() }
+        guard let index = selectedAnnotationIndex, annotations.indices.contains(index) else { return }
+        if case .mosaic = annotations[index].kind { return }
+        let current = annotations[index]
+        let colorChanged = color.map { $0 != current.color } ?? false
+        let widthChanged = width.map { abs($0 - current.width) > 0.01 } ?? false
+        guard colorChanged || widthChanged else { return }
+
+        if styleUndoKey != undoKey {
+            pushUndo()
+            styleUndoKey = undoKey
+        }
+        if let color { annotations[index].color = color }
+        if let width, widthChanged {
+            annotations[index].width = width
+            if case .callout(let text) = current.kind, let bubble = current.calloutBubble {
+                let resized = calloutTextRect(text: text, anchor: bubble.origin, width: width)
+                annotations[index].calloutBubble = resized
+                annotations[index].end = resized.origin
+            }
+        }
+        needsDisplay = true
+    }
 
     /// 새 이미지 로드 (편집/undo 전부 초기화).
     var image: NSImage? {
@@ -138,7 +173,15 @@ final class EditorImageView: NSView {
     private var activeTextField: InlineTextField?
     private var pendingTextAnnotation: PendingTextAnnotation?
     private var annotationDrag: AnnotationDrag?
-    private var selectedAnnotationIndex: Int?
+    private var selectedAnnotationIndex: Int? {
+        didSet {
+            guard oldValue != selectedAnnotationIndex else { return }
+            styleUndoKey = nil
+            onSelectionChanged?(selectedAnnotation)
+        }
+    }
+    /// 선택 스타일 변경의 undo 묶음 키("color"/"width"/"nudge"). 선택이 바뀌면 초기화.
+    private var styleUndoKey: String?
 
     /// 번호 도구에서 커서를 따라다니는 스탬프 미리보기 위치(뷰 좌표). nil이면 표시 안 함.
     private var hoverPoint: CGPoint?
@@ -160,13 +203,15 @@ final class EditorImageView: NSView {
 
     private var zoomScale: CGFloat { enclosingScrollView?.magnification ?? 1 }
 
+    /// 이미지 바깥 여백 클릭: 선택만 해제한다. 크롭 중이면 크롭을 취소하고,
+    /// 다른 도구는 유지해 "화살표를 골랐는데 여백을 잘못 눌러 도구가 풀리는" 일을 막는다.
     func cancelSelectionAndToolFromMarginClick() {
         if activeTextField != nil { commitActiveTextField() }
         selectedAnnotationIndex = nil
         annotationDrag = nil
         dragStart = nil
         dragCurrent = nil
-        tool = .none
+        if tool == .crop { tool = .none }
         needsDisplay = true
     }
 
@@ -458,8 +503,32 @@ final class EditorImageView: NSView {
         case 53:
             selectedAnnotationIndex = nil
             tool = .none                 // Esc → 선택/크롭 취소
+        case 123, 124, 125, 126 where selectedAnnotationIndex != nil && activeTextField == nil:
+            // ← → ↓ ↑ : 선택 주석을 1px(⇧ 10px) 이동
+            let step: CGFloat = event.modifierFlags.contains(.shift) ? 10 : 1
+            let dx: CGFloat = event.keyCode == 123 ? -step : (event.keyCode == 124 ? step : 0)
+            let dy: CGFloat = event.keyCode == 126 ? -step : (event.keyCode == 125 ? step : 0)
+            nudgeSelection(dx: dx, dy: dy)
         default: super.keyDown(with: event)
         }
+    }
+
+    private func nudgeSelection(dx: CGFloat, dy: CGFloat) {
+        guard let index = selectedAnnotationIndex, annotations.indices.contains(index) else { return }
+        if styleUndoKey != "nudge" {
+            pushUndo()
+            styleUndoKey = "nudge"
+        }
+        let annotation = annotations[index]
+        let rect = selectionRect(for: annotation)
+        let offset = CGPoint(x: min(max(dx, bounds.minX - rect.minX), bounds.maxX - rect.maxX),
+                             y: min(max(dy, bounds.minY - rect.minY), bounds.maxY - rect.maxY))
+        annotations[index].start = CGPoint(x: annotation.start.x + offset.x, y: annotation.start.y + offset.y)
+        annotations[index].end = CGPoint(x: annotation.end.x + offset.x, y: annotation.end.y + offset.y)
+        if let bubble = annotation.calloutBubble {
+            annotations[index].calloutBubble = bubble.offsetBy(dx: offset.x, dy: offset.y)
+        }
+        needsDisplay = true
     }
 
     // 표준 Edit 메뉴(⌘Z/⌘C) 라우팅용 responder 액션
@@ -577,6 +646,7 @@ final class EditorImageView: NSView {
         if !drag.didPushUndo {
             pushUndo()
             drag.didPushUndo = true
+            styleUndoKey = nil
         }
         drag.didMove = true
         switch drag.kind {
