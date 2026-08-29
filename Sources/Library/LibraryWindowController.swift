@@ -21,10 +21,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private let cropDoneButton = NSButton(title: "완료", target: nil, action: nil)
     private let cropCancelButton = NSButton(title: "취소", target: nil, action: nil)
     private let zoomButton = NSButton(title: "100%", target: nil, action: nil)
-    private let annotationOptions = NSVisualEffectView()
     private let colorWell = NSColorWell()
-    private lazy var widthControl = NSSegmentedControl(labels: ["얇게", "보통", "굵게"], trackingMode: .selectOne,
-                                                       target: self, action: #selector(widthChanged(_:)))
+    private let widthSlider = NSSlider()
+    private let widthLabel = NSTextField(labelWithString: "")
     private lazy var editToolControl = NSSegmentedControl(labels: [], trackingMode: .selectOne,
                                                           target: self, action: #selector(editToolChanged(_:)))
     private lazy var annotateToolControl = NSSegmentedControl(labels: [], trackingMode: .selectOne,
@@ -33,7 +32,6 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     // 편집 도구 (세그먼트 인덱스 → 도구). 두 그룹으로 나눠 "이미지를 자르는 것"과 "위에 그리는 것"을 구분한다.
     private let editTools: [EditorImageView.Tool] = [.none, .crop, .cutHorizontal, .cutVertical]
     private let annotateTools: [EditorImageView.Tool] = [.number, .text, .callout, .arrow, .rectangle, .ellipse, .mosaic]
-    private let strokeWidthPresets: [CGFloat] = [2, 3, 6]
 
     /// 날짜별 섹션(오늘 / 어제 / 최근 7일 / 이전).
     private struct Section {
@@ -41,6 +39,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         let items: [LibraryItem]
     }
     private var sections: [Section] = []
+    private var styleControls: (color: NSView, width: NSView)?
     private var selectedItem: LibraryItem?
     private var keyMonitor: Any?
     private var boundsObserver: Any?
@@ -58,6 +57,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private enum ToolbarID {
         static let editTools = NSToolbarItem.Identifier("editTools")
         static let annotateTools = NSToolbarItem.Identifier("annotateTools")
+        static let color = NSToolbarItem.Identifier("color")
+        static let width = NSToolbarItem.Identifier("width")
         static let undo = NSToolbarItem.Identifier("undo")
         static let copy = NSToolbarItem.Identifier("copy")
         static let save = NSToolbarItem.Identifier("save")
@@ -300,10 +301,6 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         cropButtons.translatesAutoresizingMaskIntoConstraints = false
         previewContainer.addSubview(cropButtons)
 
-        // 주석 도구일 때만 나타나는 옵션 스트립(색·굵기)
-        buildAnnotationOptions()
-        previewContainer.addSubview(annotationOptions)
-
         // 배율 알약 — 클릭하면 창에 맞춤
         zoomButton.bezelStyle = .inline
         zoomButton.isBordered = true
@@ -337,9 +334,6 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
             cropButtons.centerXAnchor.constraint(equalTo: previewContainer.centerXAnchor),
             cropButtons.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor, constant: -18),
-
-            annotationOptions.centerXAnchor.constraint(equalTo: previewContainer.centerXAnchor),
-            annotationOptions.topAnchor.constraint(equalTo: previewContainer.topAnchor, constant: 12),
 
             zoomButton.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -14),
             zoomButton.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor, constant: -12)
@@ -385,57 +379,47 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         emptyHintLabel.stringValue = "\(shortcut) 를 누르면 화면 어디서든 캡처할 수 있고,\n결과는 클립보드와 여기에 함께 담깁니다."
     }
 
-    private func buildAnnotationOptions() {
-        annotationOptions.material = .popover
-        annotationOptions.blendingMode = .withinWindow
-        annotationOptions.state = .active
-        annotationOptions.wantsLayer = true
-        annotationOptions.layer?.cornerRadius = Brand.cornerRadius
-        annotationOptions.layer?.masksToBounds = true
-        annotationOptions.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.7).cgColor
-        annotationOptions.layer?.borderWidth = 1
-        annotationOptions.translatesAutoresizingMaskIntoConstraints = false
-        annotationOptions.isHidden = true
-
+    /// 주석 스타일(색·굵기)은 항상 툴바에 보인다 — 도구를 고르기 전에 정하고, 고른 뒤에도 바로 바꿀 수 있게.
+    private func buildStyleControls() -> (color: NSView, width: NSView) {
         colorWell.color = Brand.red
         colorWell.target = self
         colorWell.action = #selector(colorChanged(_:))
         if #available(macOS 13.0, *) { colorWell.colorWellStyle = .minimal }
-        colorWell.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        colorWell.widthAnchor.constraint(equalToConstant: 34).isActive = true
         colorWell.heightAnchor.constraint(equalToConstant: 24).isActive = true
-        colorWell.toolTip = "주석 색상"
+        colorWell.toolTip = "주석 색상 (번호·텍스트·말풍선·화살표·도형)"
 
-        widthControl.controlSize = .small
-        widthControl.selectedSegment = strokeWidthPresets.firstIndex(of: editorView.strokeWidth) ?? 1
-        widthControl.toolTip = "선 굵기"
+        widthSlider.minValue = 1
+        widthSlider.maxValue = 20
+        widthSlider.doubleValue = Double(editorView.strokeWidth)
+        widthSlider.isContinuous = true
+        widthSlider.controlSize = .small
+        widthSlider.target = self
+        widthSlider.action = #selector(widthChanged(_:))
+        widthSlider.widthAnchor.constraint(equalToConstant: 88).isActive = true
+        widthSlider.toolTip = "선 굵기 · 텍스트 크기 (1–20px)"
 
-        let colorLabel = NSTextField(labelWithString: "색상")
-        let widthLabel = NSTextField(labelWithString: "굵기")
-        for label in [colorLabel, widthLabel] {
-            label.font = .systemFont(ofSize: 11)
-            label.textColor = .secondaryLabelColor
-        }
+        widthLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        widthLabel.textColor = .secondaryLabelColor
+        widthLabel.alignment = .right
+        widthLabel.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        updateWidthLabel()
 
-        let row = NSStackView(views: [colorLabel, colorWell, widthLabel, widthControl])
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 6
-        row.setCustomSpacing(14, after: colorWell)
-        row.edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
-        row.translatesAutoresizingMaskIntoConstraints = false
-        annotationOptions.addSubview(row)
-        NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: annotationOptions.leadingAnchor),
-            row.trailingAnchor.constraint(equalTo: annotationOptions.trailingAnchor),
-            row.topAnchor.constraint(equalTo: annotationOptions.topAnchor),
-            row.bottomAnchor.constraint(equalTo: annotationOptions.bottomAnchor)
-        ])
+        let widthRow = NSStackView(views: [widthSlider, widthLabel])
+        widthRow.orientation = .horizontal
+        widthRow.alignment = .centerY
+        widthRow.spacing = 4
+        return (colorWell, widthRow)
+    }
+
+    private func updateWidthLabel() {
+        widthLabel.stringValue = "\(Int(editorView.strokeWidth))px"
     }
 
     // MARK: 툴바
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.toggleSidebar, .sidebarTrackingSeparator,
-         ToolbarID.editTools, ToolbarID.annotateTools, ToolbarID.undo,
+         ToolbarID.editTools, ToolbarID.annotateTools, ToolbarID.color, ToolbarID.width, ToolbarID.undo,
          .flexibleSpace,
          ToolbarID.copy, ToolbarID.save, ToolbarID.reveal, ToolbarID.delete]
     }
@@ -460,6 +444,12 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
                       symbols: ["number.circle", "textformat", "bubble.left", "arrow.up.right", "rectangle", "circle", "square.grid.3x3.fill"],
                       tips: ["번호 ➊–➒", "텍스트", "말풍선", "화살표", "사각형", "원", "모자이크 (드래그)"])
             return viewItem(itemIdentifier, view: annotateToolControl, label: "주석")
+        case ToolbarID.color:
+            if styleControls == nil { styleControls = buildStyleControls() }
+            return viewItem(itemIdentifier, view: styleControls!.color, label: "색상")
+        case ToolbarID.width:
+            if styleControls == nil { styleControls = buildStyleControls() }
+            return viewItem(itemIdentifier, view: styleControls!.width, label: "굵기")
         case ToolbarID.undo:
             return actionItem(itemIdentifier, symbol: "arrow.uturn.backward", label: "되돌리기", tip: "되돌리기 (⌘Z)", action: #selector(undoEdit))
         case ToolbarID.copy:
@@ -511,7 +501,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         switch item.itemIdentifier {
-        case ToolbarID.undo, ToolbarID.copy:
+        case ToolbarID.undo, ToolbarID.copy, ToolbarID.color, ToolbarID.width:
             return selectedItem?.kind == .image
         case ToolbarID.save, ToolbarID.reveal, ToolbarID.delete:
             return selectedItem != nil
@@ -554,7 +544,6 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             animatedImageView.isHidden = true
             previewScroll.isHidden = true
             zoomButton.isHidden = true
-            annotationOptions.isHidden = true
             emptyState.isHidden = false
             window?.toolbar?.validateVisibleItems()
         }
@@ -616,7 +605,6 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             animatedImageView.isHidden = true
             previewScroll.isHidden = true
             zoomButton.isHidden = true
-            annotationOptions.isHidden = true
             videoEditorView.isHidden = false
             videoEditorView.load(url: item.url)
         case .animatedImage:
@@ -625,7 +613,6 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             videoEditorView.isHidden = true
             previewScroll.isHidden = true
             zoomButton.isHidden = true
-            annotationOptions.isHidden = true
             animatedImageView.isHidden = false
             showAnimatedImagePreview(item)
         case .image:
@@ -635,7 +622,6 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             animatedImageView.isHidden = true
             previewScroll.isHidden = false
             zoomButton.isHidden = false
-            annotationOptions.isHidden = !annotateTools.contains(editorView.tool)
             showImagePreview(item)
         }
         window?.toolbar?.validateVisibleItems()
@@ -721,20 +707,19 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         window?.makeFirstResponder(editorView)
     }
 
-    /// 에디터의 현재 도구를 두 세그먼트 그룹과 옵션 스트립에 반영한다.
+    /// 에디터의 현재 도구를 두 세그먼트 그룹에 반영한다.
     private func syncToolControl(to tool: EditorImageView.Tool) {
         editToolControl.selectedSegment = editTools.firstIndex(of: tool) ?? -1
         annotateToolControl.selectedSegment = annotateTools.firstIndex(of: tool) ?? -1
-        annotationOptions.isHidden = !(annotateTools.contains(tool) && selectedItem?.kind == .image)
     }
 
     @objc private func colorChanged(_ sender: NSColorWell) {
         editorView.strokeColor = sender.color
     }
 
-    @objc private func widthChanged(_ sender: NSSegmentedControl) {
-        guard strokeWidthPresets.indices.contains(sender.selectedSegment) else { return }
-        editorView.strokeWidth = strokeWidthPresets[sender.selectedSegment]
+    @objc private func widthChanged(_ sender: NSSlider) {
+        editorView.strokeWidth = CGFloat(sender.doubleValue.rounded())
+        updateWidthLabel()
     }
 
     @objc private func undoEdit() {

@@ -784,22 +784,30 @@ final class OverlayView: NSView {
         drawWindowHighlight(selectedRect, ctx)
     }
 
+    /// 크로스헤어: 픽셀에 정렬한 1px 흰 선 + 어두운 밑선(밝은 배경에서도 보임),
+    /// 커서 중심은 비워 조준점의 픽셀을 가리지 않고, 작은 링으로 정확한 지점을 표시한다.
     private func drawCrosshair() {
-        NSColor.white.withAlphaComponent(0.85).setStroke()
-        let vertical = NSBezierPath()
-        vertical.move(to: CGPoint(x: cursor.x, y: 0))
-        vertical.line(to: CGPoint(x: cursor.x, y: bounds.height))
-        let horizontal = NSBezierPath()
-        horizontal.move(to: CGPoint(x: 0, y: cursor.y))
-        horizontal.line(to: CGPoint(x: bounds.width, y: cursor.y))
-        vertical.lineWidth = 1
-        horizontal.lineWidth = 1
-        vertical.stroke()
-        horizontal.stroke()
+        let x = floor(cursor.x) + 0.5
+        let y = floor(cursor.y) + 0.5
+        let gap: CGFloat = 7
+
+        let lines = NSBezierPath()
+        lines.move(to: CGPoint(x: x, y: 0));               lines.line(to: CGPoint(x: x, y: y - gap))
+        lines.move(to: CGPoint(x: x, y: y + gap));         lines.line(to: CGPoint(x: x, y: bounds.height))
+        lines.move(to: CGPoint(x: 0, y: y));               lines.line(to: CGPoint(x: x - gap, y: y))
+        lines.move(to: CGPoint(x: x + gap, y: y));         lines.line(to: CGPoint(x: bounds.width, y: y))
+        NSColor(white: 0, alpha: 0.32).setStroke(); lines.lineWidth = 3; lines.stroke()
+        NSColor.white.withAlphaComponent(0.92).setStroke(); lines.lineWidth = 1; lines.stroke()
+
+        let ring = NSBezierPath(ovalIn: CGRect(x: x - 3.5, y: y - 3.5, width: 7, height: 7))
+        NSColor(white: 0, alpha: 0.45).setStroke(); ring.lineWidth = 2.5; ring.stroke()
+        NSColor.white.setStroke(); ring.lineWidth = 1; ring.stroke()
     }
 
+    /// 확대경: 앱의 HUD 표면과 같은 12pt 모서리·얇은 테두리, 중심 픽셀은 브랜드 레드,
+    /// 아래에 색상·좌표 판독 알약(치수 라벨·구역 이름표와 같은 스타일).
     private func drawLoupe(_ ctx: CGContext) {
-        let textHeight: CGFloat = 38
+        let textHeight: CGFloat = 32
         let gap: CGFloat = 24
 
         var origin = CGPoint(x: cursor.x + gap, y: cursor.y + gap)
@@ -813,8 +821,8 @@ final class OverlayView: NSView {
                                  width: loupeSize + 8, height: loupeSize + textHeight + 8)
 
         // 배경
-        let bg = NSBezierPath(roundedRect: frame, xRadius: 10, yRadius: 10)
-        NSColor(white: 0.12, alpha: 0.92).setFill()
+        let bg = NSBezierPath(roundedRect: frame, xRadius: Brand.cornerRadius, yRadius: Brand.cornerRadius)
+        NSColor(white: 0.08, alpha: 0.94).setFill()
         bg.fill()
 
         // 정지 화면은 풀 해상도 그대로, 라이브 스트림은 축소되어 있으므로 bufferScale로 좌표를 맞춘다.
@@ -856,37 +864,54 @@ final class OverlayView: NSView {
         NSColor.white.withAlphaComponent(0.9).setStroke(); cross.lineWidth = 1; cross.stroke()
         ctx.restoreGState()
 
-        // 중앙 픽셀 하이라이트
+        // 중앙 픽셀 하이라이트 — "빨간 프레임 = 잡히는 곳"과 같은 언어
         let highlight = CGRect(x: cx - pixelSize / 2, y: cy - pixelSize / 2,
                                width: pixelSize, height: pixelSize)
-        NSColor.white.setStroke()
-        let highlightPath = NSBezierPath(rect: highlight)
-        highlightPath.lineWidth = 1
-        highlightPath.stroke()
+        let highlightPath = NSBezierPath(rect: highlight.insetBy(dx: 0.75, dy: 0.75))
+        NSColor(white: 0, alpha: 0.5).setStroke(); highlightPath.lineWidth = 3; highlightPath.stroke()
+        Brand.red.setStroke(); highlightPath.lineWidth = 1.5; highlightPath.stroke()
 
-        // 테두리
-        NSColor.white.withAlphaComponent(0.5).setStroke()
+        // 테두리 (HUDSurfaceView와 동일)
+        NSColor.white.withAlphaComponent(0.14).setStroke()
         bg.lineWidth = 1
         bg.stroke()
 
         // 좌표/HEX 읽기
         let hex = String(format: "#%02X%02X%02X", lastColor.r, lastColor.g, lastColor.b)
-        let info = "X \(centerX)  Y \(centerY)\n\(hex)"
-        drawReadout(info, below: frame, swatch: lastColor)
+        drawReadout(hex: hex, coordinates: "\(centerX), \(centerY)", below: frame, swatch: lastColor)
     }
 
-    private func drawReadout(_ text: String, below frame: CGRect, swatch: (r: UInt8, g: UInt8, b: UInt8)) {
-        let attributes = overlayLabelAttributes(weight: .medium)
-        let textOrigin = CGPoint(x: frame.minX + 18, y: frame.maxY + 6)
-        (text as NSString).draw(at: textOrigin, withAttributes: attributes)
+    /// 루페 아래 판독 알약: ● HEX   X, Y
+    private func drawReadout(hex: String, coordinates: String, below frame: CGRect,
+                             swatch: (r: UInt8, g: UInt8, b: UInt8)) {
+        let hexText = hex as NSString
+        let coordText = coordinates as NSString
+        let hexAttributes = overlayLabelAttributes(weight: .semibold)
+        var coordAttributes = overlayLabelAttributes(weight: .medium)
+        coordAttributes[.foregroundColor] = NSColor.white.withAlphaComponent(0.7)
+        let hexSize = hexText.size(withAttributes: hexAttributes)
+        let coordSize = coordText.size(withAttributes: coordAttributes)
 
-        // 색상 스와치
-        let swatchRect = CGRect(x: frame.minX, y: frame.maxY + 8, width: 12, height: 12)
+        let swatchSide: CGFloat = 10
+        let padX: CGFloat = 9, padY: CGFloat = 5, spacing: CGFloat = 8
+        let pillSize = CGSize(width: padX * 2 + swatchSide + 6 + hexSize.width + spacing + coordSize.width,
+                              height: padY * 2 + max(hexSize.height, swatchSide))
+        let pill = CGRect(x: frame.minX, y: frame.maxY + 6, width: pillSize.width, height: pillSize.height)
+
+        NSColor(white: 0, alpha: 0.78).setFill()
+        NSBezierPath(roundedRect: pill, xRadius: Brand.innerCornerRadius, yRadius: Brand.innerCornerRadius).fill()
+
+        var x = pill.minX + padX
+        let swatchRect = CGRect(x: x, y: pill.midY - swatchSide / 2, width: swatchSide, height: swatchSide)
         NSColor(srgbRed: CGFloat(swatch.r) / 255, green: CGFloat(swatch.g) / 255,
                 blue: CGFloat(swatch.b) / 255, alpha: 1).setFill()
-        NSBezierPath(rect: swatchRect).fill()
-        NSColor.white.withAlphaComponent(0.6).setStroke()
-        NSBezierPath(rect: swatchRect).stroke()
+        NSBezierPath(ovalIn: swatchRect).fill()
+        NSColor.white.withAlphaComponent(0.5).setStroke()
+        NSBezierPath(ovalIn: swatchRect).stroke()
+        x += swatchSide + 6
+        hexText.draw(at: CGPoint(x: x, y: pill.midY - hexSize.height / 2), withAttributes: hexAttributes)
+        x += hexSize.width + spacing
+        coordText.draw(at: CGPoint(x: x, y: pill.midY - coordSize.height / 2), withAttributes: coordAttributes)
     }
 
     private func drawDimensionLabel(for sel: CGRect) {
