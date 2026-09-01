@@ -17,6 +17,12 @@ Open **System Settings → Privacy & Security → Screen & System Audio Recordin
 ### Where are captures saved?
 New installations save captures in Application Support by default. You can choose another folder in **Settings**. Existing installations that use the Desktop folder retain that location.
 
+### How do I change the language?
+The app ships in English by default and also supports Korean. Pick a language in the welcome popover on first launch, or later in **Settings → General → Language · 언어**. The change applies immediately.
+
+### How do I close the Library or Settings window?
+Press **Command-W** (or **Command-M** to minimize). The app keeps running in the menu bar.
+
 ### The menu bar icon is not visible
 Oh-my-opensnap is a menu bar app, so it does not appear in the Dock. Look for the camera icon at the top of the screen. If it is hidden by other menu bar icons, make room in the menu bar.
 

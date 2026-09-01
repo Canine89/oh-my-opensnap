@@ -56,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HotkeyManager.shared.stop()
     }
 
-    /// 편집 단축키(⌘Z/⌘C)가 first responder로 라우팅되도록 표준 Edit 메뉴를 둔다.
+    /// 편집 단축키(⌘Z/⌘C)와 창 단축키(⌘W/⌘M)가 first responder로 라우팅되도록 표준 Edit/Window 메뉴를 둔다.
     private func setupMainMenu() {
         let mainMenu = NSMenu()
 
@@ -73,6 +73,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(withTitle: loc("Redo", "다시 실행"), action: Selector(("redo:")), keyEquivalent: "Z")   // 대문자 = ⇧⌘Z
         editMenu.addItem(withTitle: loc("Copy", "복사"), action: Selector(("copy:")), keyEquivalent: "c")
         editItem.submenu = editMenu
+
+        // 라이브러리·설정 창을 ⌘W로 닫고 ⌘M으로 최소화할 수 있도록 표준 Window 메뉴를 둔다.
+        let windowItem = NSMenuItem()
+        mainMenu.addItem(windowItem)
+        let windowMenu = NSMenu(title: loc("Window", "윈도우"))
+        windowMenu.addItem(withTitle: loc("Close", "닫기"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowMenu.addItem(withTitle: loc("Minimize", "최소화"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowItem.submenu = windowMenu
+        NSApp.windowsMenu = windowMenu
 
         NSApp.mainMenu = mainMenu
     }
