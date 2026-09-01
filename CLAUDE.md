@@ -4,7 +4,7 @@
 1. **이 저장소(oh-my-opensnap)를 작업할 때의 운영 매뉴얼.**
 2. **다른 macOS 앱을 새로 만들 때 그대로 가져갈 검증된 청사진(blueprint).** 아래의 스택 선택과 릴리스 절차는 실제로 v1.0.65까지 운영하며 다듬은 것이다. 새 앱에서 흔들리지 말고 이 기본형에서 출발하라.
 
-> 새 macOS 앱을 **처음부터 스캐폴딩**할 때는 로컬 스킬 `macos-app-blueprint`(`.claude/skills/macos-app-blueprint/`)를, **배포/자동 업데이트 파이프라인**을 붙일 때는 전역 스킬 `mac-app-release`를 함께 쓴다. 이 문서는 "무엇을/왜" 골랐는지의 기준선이다.
+> 새 macOS 앱을 **처음부터 스캐폴딩**할 때는 로컬 스킬 `macos-app-blueprint`(`.claude/skills/macos-app-blueprint/`)를, **배포/자동 업데이트 파이프라인**을 붙일 때는 전역 스킬 `mac-app-release`를 함께 쓴다. **Mac App Store 제출**은 전역 스킬 `mas-submission`(`~/.claude/skills/mas-submission/`)을 쓴다 — 1.0.87 실제 제출로 검증된 절차와 ASC API 자동화 쿡북이 들어 있다. 이 문서는 "무엇을/왜" 골랐는지의 기준선이다.
 >
 > 이 저장소의 실제 배포는 **Developer ID Application + Apple 공증**이다. 전역 `mac-app-release` 스킬 템플릿의 “자체서명(공증 없음)” 경로는 멤버십이 없을 때의 대안이며, TCC 권한이 필요한 앱에서는 **고정된 코드 서명 신원**이 핵심이다(ad-hoc 금지).
 
