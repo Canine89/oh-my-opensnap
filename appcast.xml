@@ -6,18 +6,17 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.86</title>
-      <pubDate>Tue, 01 Sep 2026 13:03:20 +0000</pubDate>
-      <sparkle:version>87</sparkle:version>
-      <sparkle:shortVersionString>1.0.86</sparkle:shortVersionString>
+      <title>1.0.87</title>
+      <pubDate>Tue, 01 Sep 2026 23:12:59 +0000</pubDate>
+      <sparkle:version>88</sparkle:version>
+      <sparkle:shortVersionString>1.0.87</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.86</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.87</h2>
 <ul>
-<li>영어 UI 지원: 앱 전체(메뉴·라이브러리·설정·캡처 HUD·시작 안내)가 영어로 제공되고 기본 언어가 영어로 바뀝니다. 한국어는 그대로 지원 — 업데이트 후 영어로 보이면 Settings &gt; General &gt; "Language · 언어"에서 한국어를 선택하세요(시작 안내 팝오버에서도 바로 선택 가능, 변경 즉시 적용)</li>
-<li>라이브러리 툴바의 스타일 그룹(색상·굵기)이 캡슐 모서리에 붙어 보이던 여백을 편집/주석 그룹과 같은 밀도로 정리</li>
-<li>미리보기 오른쪽 아래 배율 표시(예: 77%)를 재질 배경 알약으로 바꿔 체커보드·어두운 캡처 위에서도 잘 읽히게 개선</li>
+<li>앱 아이콘 교체: 어두운 유리 질감의 뷰파인더 모양 새 아이콘 (Mac App Store 판과 동일). 업데이트 후에도 Dock·Finder에 옛 아이콘이 보이면 앱을 한 번 다시 실행하거나 Dock에서 뺐다가 다시 넣으세요</li>
+<li>Homebrew로 설치한 경우: 앱 안의 자동 업데이트(Sparkle)로 최신 버전을 받아도 `brew upgrade`가 같은 버전을 다시 덮어쓰지 않도록 Cask에 자동 업데이트 표시를 추가</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.86.zip" type="application/octet-stream" sparkle:edSignature="Ob/SbtnZMLZyU6KbCc9iSULGNPZBhlvugmg12yvEO8w1TxCaRrxrSrQrLIy8PHk8KXNpbv/1osQ+KSsAzoFfDg==" length="1571409" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.87.zip" type="application/octet-stream" sparkle:edSignature="N2ERO8wBWulxXOA8SrbQWIstAitVNBJNHang/SQuibIR7VjqrtOdgi+GSqAirHCpBVwekNLD14CiubvpsdLzBA==" length="4252652" />
     </item>
   </channel>
 </rss>
