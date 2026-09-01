@@ -22,6 +22,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private let cropDoneButton = NSButton(title: "완료", target: nil, action: nil)
     private let cropCancelButton = NSButton(title: "취소", target: nil, action: nil)
     private let zoomButton = NSButton(title: "100%", target: nil, action: nil)
+    private let zoomBadge = NSVisualEffectView()
     private let colorWell = NSColorWell()
     private let widthSlider = NSSlider()
     private let widthLabel = NSTextField(labelWithString: "")
@@ -334,16 +335,24 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         cropButtons.translatesAutoresizingMaskIntoConstraints = false
         previewContainer.addSubview(cropButtons)
 
-        // 배율 알약 — 클릭하면 창에 맞춤
+        // 배율 알약 — 클릭하면 창에 맞춤. 체커보드 위에서도 읽히게 재질 배경 위에 얹는다.
         zoomButton.bezelStyle = .inline
-        zoomButton.isBordered = true
+        zoomButton.isBordered = false
         zoomButton.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        zoomButton.contentTintColor = .secondaryLabelColor
+        zoomButton.contentTintColor = .labelColor
         zoomButton.toolTip = "창에 맞춤 (⌘0) · ⌘+/⌘- 또는 ⌘+스크롤로 확대/축소"
         zoomButton.target = self
         zoomButton.action = #selector(zoomFit)
         zoomButton.translatesAutoresizingMaskIntoConstraints = false
-        previewContainer.addSubview(zoomButton)
+        zoomBadge.material = .popover
+        zoomBadge.blendingMode = .withinWindow
+        zoomBadge.state = .active
+        zoomBadge.wantsLayer = true
+        zoomBadge.layer?.cornerRadius = 11
+        zoomBadge.layer?.masksToBounds = true
+        zoomBadge.translatesAutoresizingMaskIntoConstraints = false
+        zoomBadge.addSubview(zoomButton)
+        previewContainer.addSubview(zoomBadge)
 
         NSLayoutConstraint.activate([
             previewScroll.topAnchor.constraint(equalTo: previewContainer.topAnchor),
@@ -368,8 +377,12 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             cropButtons.centerXAnchor.constraint(equalTo: previewContainer.centerXAnchor),
             cropButtons.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor, constant: -18),
 
-            zoomButton.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -14),
-            zoomButton.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor, constant: -12)
+            zoomButton.leadingAnchor.constraint(equalTo: zoomBadge.leadingAnchor, constant: 8),
+            zoomButton.trailingAnchor.constraint(equalTo: zoomBadge.trailingAnchor, constant: -8),
+            zoomButton.topAnchor.constraint(equalTo: zoomBadge.topAnchor, constant: 4),
+            zoomButton.bottomAnchor.constraint(equalTo: zoomBadge.bottomAnchor, constant: -4),
+            zoomBadge.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -14),
+            zoomBadge.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor, constant: -12)
         ])
         return previewContainer
     }
@@ -434,15 +447,18 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
         widthLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         widthLabel.textColor = .secondaryLabelColor
-        widthLabel.alignment = .left
-        widthLabel.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        // 오른쪽 정렬 + 고정폭: 값이 1→20으로 변해도 "px"가 같은 자리에 붙어 캡슐 오른쪽 여백이 일정하다.
+        widthLabel.alignment = .right
+        widthLabel.widthAnchor.constraint(equalToConstant: 30).isActive = true
         updateWidthLabel()
 
         let row = NSStackView(views: [colorWell, widthSlider, widthLabel])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 8
-        row.setCustomSpacing(4, after: widthSlider)
+        row.setCustomSpacing(6, after: widthSlider)
+        // 커스텀 뷰 툴바 항목은 캡슐이 뷰에 딱 붙는다 — 세그먼트 그룹과 같은 밀도로 보이게 안쪽 여백을 직접 준다.
+        row.edgeInsets = NSEdgeInsets(top: 0, left: 9, bottom: 0, right: 7)
         return row
     }
 
@@ -580,7 +596,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             animatedImageView.loadHTMLString("", baseURL: nil)
             animatedImageView.isHidden = true
             previewScroll.isHidden = true
-            zoomButton.isHidden = true
+            zoomBadge.isHidden = true
             emptyState.isHidden = false
             window?.toolbar?.validateVisibleItems()
         }
@@ -642,7 +658,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             animatedImageView.loadHTMLString("", baseURL: nil)
             animatedImageView.isHidden = true
             previewScroll.isHidden = true
-            zoomButton.isHidden = true
+            zoomBadge.isHidden = true
             videoEditorView.isHidden = false
             videoEditorView.load(url: item.url)
         case .animatedImage:
@@ -650,7 +666,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             videoEditorView.stop()
             videoEditorView.isHidden = true
             previewScroll.isHidden = true
-            zoomButton.isHidden = true
+            zoomBadge.isHidden = true
             animatedImageView.isHidden = false
             showAnimatedImagePreview(item)
         case .image:
@@ -659,7 +675,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             animatedImageView.loadHTMLString("", baseURL: nil)
             animatedImageView.isHidden = true
             previewScroll.isHidden = false
-            zoomButton.isHidden = false
+            zoomBadge.isHidden = false
             showImagePreview(item)
         }
         window?.toolbar?.validateVisibleItems()
