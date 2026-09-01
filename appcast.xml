@@ -6,18 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.82</title>
-      <pubDate>Tue, 01 Sep 2026 00:23:37 +0000</pubDate>
-      <sparkle:version>83</sparkle:version>
-      <sparkle:shortVersionString>1.0.82</sparkle:shortVersionString>
+      <title>1.0.83</title>
+      <pubDate>Tue, 01 Sep 2026 00:36:14 +0000</pubDate>
+      <sparkle:version>84</sparkle:version>
+      <sparkle:shortVersionString>1.0.83</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.82</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.83</h2>
 <ul>
-<li>활성 AI 에이전트에 캡처 붙여넣기: 터미널에서 실행 중인 Claude Code·Codex·Gemini CLI 등과 Claude·ChatGPT 앱을 자동으로 찾아, 선택 툴바의 "에이전트로"(A) 버튼 한 번으로 캡처한 이미지를 그 채팅 세션에 바로 붙여넣음. 여러 세션이 있으면 선택 메뉴가 뜨고, 캡처 직전에 보던 앱의 세션이 기본 대상</li>
-<li>설정 &gt; 일반에 "이미지 캡처 후 활성 AI 에이전트에 자동 붙여넣기" 옵션 추가(기본 꺼짐). 붙여넣기 키 전송에는 손쉬운 사용(접근성) 권한이 필요하며, 없으면 안내 후 클립보드 복사까지만 수행</li>
-<li>자동 업데이트 서명 키를 교체. 1.0.81 이하에서는 자동 업데이트 설치가 실패하므로, 이 버전부터는 GitHub에서 DMG를 한 번 수동으로 내려받아 설치해 주세요 — 이후 버전부터 자동 업데이트가 다시 이어집니다</li>
+<li>1.0.82에서 추가한 "AI 에이전트에 캡처 붙여넣기" 기능 제거. 캡처는 항상 클립보드에 복사되므로, 원하는 곳에서 직접 붙여넣는 단순한 흐름으로 되돌림 (선택 툴바의 "에이전트로" 버튼·자동 붙여넣기 설정 삭제, 접근성 권한도 창 구조 인식에만 사용)</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.82.zip" type="application/octet-stream" sparkle:edSignature="cvWl41bsFCJwxBz3bgFK+ZDKoM70U0nsnkCBF+XZdZiWWUnajUKlU6IZffWxHSN+PurmQdXSZlG+XORvmkwaBQ==" length="1569563" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.83.zip" type="application/octet-stream" sparkle:edSignature="mld0KybIahbkowDWLoFKamCOMoT2mGDHW4zh8pCzoJmLHp4budLJ7Qewwa0h52D2jLDmho/6o+8WqVwFcuMBAA==" length="1543175" />
     </item>
   </channel>
 </rss>
