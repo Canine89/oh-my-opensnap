@@ -91,7 +91,7 @@ targets:
         com.apple.security.files.bookmarks.app-scope: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.goldenrabbit.ohmyopensnap.mas
+        PRODUCT_BUNDLE_IDENTIFIER: com.goldenrabbit.omopensnap.mas
         # 버전은 공유 MARKETING_VERSION을 그대로 상속한다 — 공증 트랙과 같은 최신 버전.
         # Finder/Applications에 보이는 Mac App Store용 앱 이름.
         PRODUCT_NAME: Oh-my-opensnap

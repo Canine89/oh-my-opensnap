@@ -16,7 +16,7 @@
 #   - Apple Distribution + Mac Installer Distribution 인증서 (Xcode → Settings → Accounts
 #     → Manage Certificates). WWDR G3 중간 인증서가 없으면 인증서가 "신뢰되지 않음"으로
 #     보인다 → https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer 설치.
-#   - App Store Connect 에 앱 레코드 (번들 ID com.goldenrabbit.ohmyopensnap.mas).
+#   - App Store Connect 에 앱 레코드 (번들 ID com.goldenrabbit.omopensnap.mas).
 #     레코드가 없으면 업로드가 "no app with bundle id" 로 거부된다.
 #   - 업로드 인증: App Store Connect API 키를 쓰려면 아래 두 환경변수를 설정한다.
 #       export OMOS_ASC_API_KEY=<Key ID>       # ~/.appstoreconnect/private_keys/AuthKey_<KeyID>.p8
@@ -36,7 +36,7 @@ PROJECT="oh-my-opensnap.xcodeproj"
 APP_NAME="Oh-my-opensnap.app"
 PKG_NAME="Oh-my-opensnap.pkg"
 TEAM_ID="M7NU9F8CZN"
-BUNDLE_ID="com.goldenrabbit.ohmyopensnap.mas"
+BUNDLE_ID="com.goldenrabbit.omopensnap.mas"
 DD="$ROOT/build/masdd"
 ARCHIVE="$ROOT/build/mas.xcarchive"
 EXPORT_DIR="$ROOT/build/mas-export"
