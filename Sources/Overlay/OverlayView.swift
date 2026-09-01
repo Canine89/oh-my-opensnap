@@ -495,11 +495,17 @@ final class OverlayView: NSView {
         let snapshotScale = self.scale
 
         accessibilityQueue.async { [weak self] in
+            // MAS 판은 접근성(다른 앱 창 구조 검사)을 쓰지 않는다 — 심사 리젝 회피 + 샌드박스 제약.
+            // 접근성 기반 크롬 트림 대신 아래 폴백(HeaderEdgeRefiner)만 사용한다.
+            #if MAS
+            let measured: CGFloat? = nil
+            #else
             let measured = AccessibilityPermission.isGranted
                 ? WindowChromeDetector.topInset(pid: pid,
                                                 windowFrame: globalFrame,
                                                 primaryHeight: primaryHeight)
                 : nil
+            #endif
             let refined = measured == nil && fallbackInset > 0
                 ? snapshot.flatMap {
                     HeaderEdgeRefiner.refine(in: $0,

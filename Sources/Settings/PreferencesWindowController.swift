@@ -12,7 +12,9 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     private var launchAtLoginCheck: NSButton?
     private var permissionBanner: NSView?
     private var screenStatus: PermissionStatusRow?
+    #if !MAS
     private var accessibilityStatus: PermissionStatusRow?
+    #endif
     private var permissionTimer: Timer?
     private var recordingMonitor: Any?
     private var isRecording = false
@@ -154,7 +156,14 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         launch.state = LaunchAtLoginController.isEnabled ? .on : .off
         launchAtLoginCheck = launch
 
-        return pane([banner, shortcutRow, usage, sound, openLibrary, freeze, launch], spacing: 12)
+        var views: [NSView] = [banner, shortcutRow, usage, sound, openLibrary, freeze]
+        #if !MAS
+        views.append(checkbox("이미지 캡처 후 활성 AI 에이전트에 자동 붙여넣기",
+                              detail: "터미널에서 실행 중인 Claude Code·Codex·Gemini CLI 등이나 Claude·ChatGPT 앱을 찾아, 캡처한 이미지를 그 채팅 세션에 바로 붙여넣습니다. 선택 툴바의 \"에이전트로\" 버튼은 이 설정과 무관하게 항상 쓸 수 있으며, 붙여넣기 키 전송에는 접근성 권한이 필요합니다.",
+                              on: Settings.shared.autoPasteToAgent, action: #selector(toggleAgentPaste(_:))))
+        #endif
+        views.append(launch)
+        return pane(views, spacing: 12)
     }
 
     // MARK: 저장
@@ -195,14 +204,19 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         screen.footnote = "권한을 켠 뒤에는 앱을 다시 실행해야 반영되는 경우가 있습니다. 이미 켜져 있는데도 캡처가 막히면 토글을 껐다 켠 뒤 재시작하세요."
         screenStatus = screen
 
+        // MAS 판은 접근성 권한을 요청하지 않는다(심사 리젝 회피). 화면 녹화 권한만 노출한다.
+        #if MAS
+        return pane([screen], spacing: 12)
+        #else
         let accessibility = PermissionStatusRow(
-            title: "창 구조 인식 (선택 사항)",
-            detail: "허용하면 브라우저·터미널 등 각 앱이 공개한 접근성 구조로 툴바/탭 영역과 본문을 정확히 구분합니다. 화면 픽셀·키 입력·문서 내용은 읽지 않습니다.")
+            title: "창 구조 인식 · 에이전트 붙여넣기 (선택 사항)",
+            detail: "허용하면 ① 각 앱이 공개한 접근성 구조로 툴바/탭 영역과 본문을 정확히 구분하고, ② 캡처를 AI 에이전트에 붙여넣을 때 붙여넣기 키(⌃V·⌘V)를 대상 앱에 보낼 수 있습니다. 화면 픽셀·키 입력·문서 내용은 읽지 않습니다.")
         accessibility.addButton("권한 요청", target: self, action: #selector(requestAccessibilityPermission))
         accessibility.addButton("시스템 설정 열기", target: self, action: #selector(openAccessibilitySettings))
         accessibilityStatus = accessibility
 
         return pane([screen, accessibility], spacing: 12)
+        #endif
     }
 
     // MARK: 정보
@@ -327,6 +341,17 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         Settings.shared.freezeScreenDuringCapture = (sender.state == .on)
     }
 
+    #if !MAS
+    @objc private func toggleAgentPaste(_ sender: NSButton) {
+        Settings.shared.autoPasteToAgent = (sender.state == .on)
+        // 켜는 순간 권한을 미리 확인해 두면 첫 캡처에서 붙여넣기가 조용히 실패하지 않는다.
+        if sender.state == .on, !AccessibilityPermission.isGranted {
+            AccessibilityPermission.request()
+            goToPermissions()
+        }
+    }
+    #endif
+
     @objc private func toggleLaunchAtLogin(_ sender: NSButton) {
         do {
             try LaunchAtLoginController.setEnabled(sender.state == .on)
@@ -373,11 +398,13 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         permissionBanner?.isHidden = screenGranted
         screenStatus?.set(granted: screenGranted,
                           text: screenGranted ? "허용됨" : "필요함 — 캡처 전에 시스템 설정에서 허용하세요")
+        #if !MAS
         let axGranted = AccessibilityPermission.isGranted
         accessibilityStatus?.set(granted: axGranted,
                                  text: axGranted ? "허용됨 — 앱별 창 구조로 헤더와 본문을 구분합니다"
                                                  : "미허용 — 앱별 기본 추정값을 사용합니다",
                                  optional: true)
+        #endif
     }
 
     @objc private func openScreenCaptureSettings() {
@@ -389,6 +416,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         AppRelauncher.relaunch()
     }
 
+    #if !MAS
     @objc private func requestAccessibilityPermission() {
         _ = AccessibilityPermission.request()
         refreshPermissionStatus()
@@ -397,6 +425,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     @objc private func openAccessibilitySettings() {
         AccessibilityPermission.openSystemSettings()
     }
+    #endif
 
     private func showLaunchAtLoginError(_ error: Error) {
         let alert = NSAlert()

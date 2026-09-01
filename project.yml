@@ -42,7 +42,9 @@ targets:
         NSHumanReadableCopyright: "Copyright © 2026 Golden Rabbit"
         # Sparkle 자동 업데이트
         SUFeedURL: https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/appcast.xml
-        SUPublicEDKey: iWBHueR8+zpSgvCBOBj1RUNqJbSGpQHkSyuCcMFeDoM=
+        # 2026-09-01 키 교체(구 릴리스 Mac 접근 불가) — 1.0.81 이하 설치본은 이 키와 불일치해
+        # 자동 업데이트가 끊기며, 수동 재설치로만 새 트랙에 합류한다.
+        SUPublicEDKey: XxOSs5M6eh6sZZU72846xGyexQCnt9X4ylmnEKZNO7s=
         SUEnableAutomaticChecks: true
         SUScheduledCheckInterval: 86400                # 하루 1회 백그라운드 확인
     settings:
@@ -90,6 +92,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.goldenrabbit.ohmyopensnap.mas
+        # 버전은 공유 MARKETING_VERSION(현재 1.0.81)을 그대로 상속한다 — 공증 트랙과 같은 최신 버전.
         # Finder/Applications에 보이는 Mac App Store용 앱 이름.
         PRODUCT_NAME: Open Capture Record
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

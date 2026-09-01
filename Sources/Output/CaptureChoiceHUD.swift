@@ -2,7 +2,8 @@ import AppKit
 
 /// 선택 영역 아래 붙는 결정 툴바. 두 행으로 구성한다.
 /// - 위 행: 무엇을 잡았는지(앱 아이콘·이름·구역, 또는 "선택 영역")와 픽셀 크기·배율.
-/// - 아래 행: 이미지 캡처(⏎) · 영상 촬영(R) · 취소(Esc). 우클릭도 취소.
+/// - 아래 행: 이미지 캡처(⏎) · 영상 촬영(R) · 활성 AI 에이전트가 있으면 에이전트로(A) · 취소(Esc).
+///   우클릭도 취소.
 /// 선택을 조정하면 위치와 크기 표시가 따라 바뀐다.
 @MainActor
 final class CaptureChoiceHUD {
@@ -46,7 +47,10 @@ final class CaptureChoiceHUD {
     private let panel: CaptureChoicePanel
     private let onImage: () -> Void
     private let onVideo: () -> Void
+    private let onAgent: (AgentSession) -> Void
     private let onCancel: () -> Void
+    private let agents: [AgentSession]
+    private var agentButton: HUDButton?
     private var decided = false
 
     private let container: HUDSurfaceView
@@ -57,11 +61,15 @@ final class CaptureChoiceHUD {
 
     init(anchor: CGRect,
          context: Context,
+         agents: [AgentSession] = [],
          onImage: @escaping () -> Void,
          onVideo: @escaping () -> Void,
+         onAgent: @escaping (AgentSession) -> Void = { _ in },
          onCancel: @escaping () -> Void) {
+        self.agents = agents
         self.onImage = onImage
         self.onVideo = onVideo
+        self.onAgent = onAgent
         self.onCancel = onCancel
 
         container = HUDSurfaceView(frame: NSRect(x: 0, y: 0, width: Self.minimumWidth, height: 96))
@@ -128,11 +136,16 @@ final class CaptureChoiceHUD {
         case 36, 76: captureImage(); return true          // Return / 키패드 Enter
         default: break
         }
-        if event.charactersIgnoringModifiers?.lowercased() == "r" {
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case "r":
             recordVideo()
             return true
+        case "a" where !agents.isEmpty:
+            pasteToAgent()
+            return true
+        default:
+            return false
         }
-        return false
     }
 
     // MARK: 구성
@@ -190,11 +203,24 @@ final class CaptureChoiceHUD {
         cancelButton.toolTip = "캡처 취소 (Esc · 우클릭)"
         cancelButton.setContentHuggingPriority(.required, for: .horizontal)
 
-        let actions = NSStackView(views: [imageButton, videoButton, cancelButton])
+        var actionViews: [NSView] = [imageButton, videoButton]
+        if !agents.isEmpty {
+            // 활성 AI 에이전트가 있을 때만: 캡처 → 해당 채팅 세션에 바로 붙여넣기.
+            let button = HUDButton(title: "에이전트로", role: .secondary, symbol: "paperplane.fill",
+                                   keyHint: "A", target: self, action: #selector(pasteToAgent))
+            button.toolTip = agents.count == 1
+                ? "\(agents[0].displayName)에 캡처를 붙여넣기 (A)"
+                : "캡처를 활성 에이전트에 붙여넣기 — \(agents.count)개 감지됨 (A)"
+            agentButton = button
+            actionViews.append(button)
+        }
+        actionViews.append(cancelButton)
+
+        let actions = NSStackView(views: actionViews)
         actions.orientation = .horizontal
         actions.alignment = .centerY
         actions.spacing = 8
-        actions.setCustomSpacing(6, after: videoButton)
+        actions.setCustomSpacing(6, after: actionViews[actionViews.count - 2])
         actions.translatesAutoresizingMaskIntoConstraints = false
 
         container.addSubview(info)
@@ -271,6 +297,41 @@ final class CaptureChoiceHUD {
         decided = true
         dismiss()
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.captureDismissalDelay) { [onVideo] in onVideo() }
+    }
+
+    /// 에이전트가 하나면 바로, 여럿이면 버튼 위로 선택 메뉴를 띄운다.
+    @objc private func pasteToAgent() {
+        guard !decided, !agents.isEmpty else { return }
+        if agents.count == 1 {
+            choose(agent: agents[0])
+            return
+        }
+        let menu = NSMenu()
+        for (index, agent) in agents.enumerated() {
+            let item = NSMenuItem(title: agent.displayName, action: #selector(agentMenuItemPicked(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            if let icon = agent.icon {
+                let sized = icon.copy() as? NSImage
+                sized?.size = NSSize(width: 16, height: 16)
+                item.image = sized
+            }
+            menu.addItem(item)
+        }
+        guard let button = agentButton else { return }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 6), in: button)
+    }
+
+    @objc private func agentMenuItemPicked(_ sender: NSMenuItem) {
+        guard agents.indices.contains(sender.tag) else { return }
+        choose(agent: agents[sender.tag])
+    }
+
+    private func choose(agent: AgentSession) {
+        guard !decided else { return }
+        decided = true
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.captureDismissalDelay) { [onAgent] in onAgent(agent) }
     }
 
     @objc private func cancel() {

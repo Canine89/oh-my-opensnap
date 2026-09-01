@@ -6,6 +6,8 @@
 #   ./scripts/release.sh 1.0.1                # 1.0.1 로 올려 DMG+ZIP+appcast 생성 (게시 X)
 #   ./scripts/release.sh 1.0.1 --publish      # 위 + appcast 푸시 + GitHub Release 업로드
 #   (옵션) --skip-notary                       # 공증 건너뛰고 Developer ID 서명만 (빠른 로컬 테스트)
+#   (옵션) --skip-appcast                      # EdDSA 키 없는 Mac: appcast/자동업데이트 생략, 공증 DMG만 배포
+#       예) ./scripts/release.sh 1.0.82 --skip-appcast --publish   # 공증 DMG 를 GitHub Release 에만 올림
 #
 # 하는 일:
 #   1) (버전 인자 있으면) project.yml 의 MARKETING_VERSION/CURRENT_PROJECT_VERSION 올림
@@ -44,10 +46,12 @@ CASK="$ROOT/Casks/oh-my-opensnap.rb"
 VERSION_ARG=""
 PUBLISH=0
 SKIP_NOTARY=0
+SKIP_APPCAST=0     # EdDSA 개인키가 없는 Mac에서: appcast/자동업데이트 생략, 공증 DMG만 배포
 for a in "$@"; do
   case "$a" in
     --publish) PUBLISH=1 ;;
     --skip-notary) SKIP_NOTARY=1 ;;
+    --skip-appcast) SKIP_APPCAST=1 ;;
     *) VERSION_ARG="$a" ;;
   esac
 done
@@ -72,8 +76,10 @@ xcodegen generate >/dev/null
 
 echo "▸ Release 빌드"
 rm -rf "$DD" "$DIST"
+# 빌드 자체는 서명 없이 한다 — 서명은 아래에서 Developer ID 로 inside-out 으로 다시 하므로,
+# Xcode 자동 서명이 요구하는 'Apple Development' 인증서가 없는 Mac 에서도 릴리스가 가능하다.
 xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
-  -derivedDataPath "$DD" clean build >/dev/null
+  -derivedDataPath "$DD" clean build CODE_SIGNING_ALLOWED=NO >/dev/null
 
 APP="$DD/Build/Products/Release/$APP_NAME"
 [ -d "$APP" ] || { echo "✗ 빌드 결과 앱 없음: $APP"; exit 1; }
@@ -154,6 +160,50 @@ echo "   $ZIP"
 if [ -z "$VERSION_ARG" ]; then
   echo
   echo "(버전 인자 없이 실행 → appcast/게시는 건너뜀. 예: ./scripts/release.sh 1.0.1 --publish)"
+  exit 0
+fi
+
+# --- [skip-appcast] EdDSA 키가 없는 Mac용 경로: 자동 업데이트(appcast) 생략, 공증 DMG만 배포 ---
+if [ "$SKIP_APPCAST" = "1" ]; then
+  echo "▸ [skip-appcast] EdDSA/appcast 생략 — 공증 DMG만 배포 (자동 업데이트 푸시는 나중에 키 있는 Mac에서)"
+  # Homebrew Cask 는 GitHub Release 의 DMG 를 가리키므로 갱신해도 안전하다.
+  if [ -f "$CASK" ]; then
+    DMG_SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
+    sed -i '' "s/version \"[^\"]*\"/version \"$VERSION\"/" "$CASK"
+    sed -i '' "s/sha256 \"[^\"]*\"/sha256 \"$DMG_SHA\"/" "$CASK"
+    sed -i '' 's@oh-my-opensnap-#{version}[^"]*\.dmg@oh-my-opensnap-#{version}.dmg@' "$CASK"
+    echo "  Homebrew Cask 갱신 ✓ ($DMG_SHA)"
+  fi
+  NOTES_MD=""
+  if [ -f CHANGELOG.md ]; then
+    NOTES_MD="$(awk -v v="$VERSION" '$0 ~ ("^## " v "( |$)"){f=1;next} /^## /{f=0} f' CHANGELOG.md)"
+  fi
+  [ -n "$NOTES_MD" ] || NOTES_MD="- 개선 및 버그 수정"
+  if [ "$PUBLISH" = "1" ]; then
+    command -v gh >/dev/null || { echo "✗ 'brew install gh' 필요"; exit 1; }
+    TAG="v$VERSION"
+    echo "▸ project.yml(버전)$([ -f "$CASK" ] && echo ' + Cask') 커밋/푸시 (appcast/updates 제외)"
+    git add project.yml
+    [ -f "$CASK" ] && git add "$CASK"
+    git commit -q -m "release: v$VERSION (DMG 공증 배포, appcast 보류)" || true
+    git push
+    echo "▸ GitHub Release '$TAG' 업로드 (DMG)"
+    if gh release view "$TAG" >/dev/null 2>&1; then
+      gh release upload "$TAG" "$DMG" --clobber
+    else
+      gh release create "$TAG" "$DMG" \
+        --title "oh-my-opensnap $VERSION" \
+        --notes "$NOTES_MD
+
+---
+설치: [INSTALL.md](https://github.com/$REPO/blob/main/INSTALL.md) 참고.
+⚠️ 이 릴리스는 아직 자동 업데이트(appcast)에 반영되지 않았습니다 — 신규/수동 다운로드용입니다."
+    fi
+    echo "✅ 게시 완료(DMG 전용): $TAG"
+    echo "ℹ️ 자동 업데이트 푸시(기존 사용자용)는 EdDSA 키가 있는 Mac에서: ./scripts/release.sh $VERSION --publish"
+  else
+    echo "다음 단계(DMG 게시): ./scripts/release.sh $VERSION --skip-appcast --publish"
+  fi
   exit 0
 fi
 

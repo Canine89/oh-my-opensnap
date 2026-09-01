@@ -6,7 +6,15 @@ enum CaptureOutput {
     private static let encodeQueue = DispatchQueue(label: "com.goldenrabbit.ohmyopensnap.capture-encode",
                                                    qos: .userInitiated)
 
-    static func deliver(cgImage: CGImage, scale: CGFloat) {
+    /// `pasteTarget`이 있으면(HUD에서 직접 골랐거나 자동 붙여넣기 설정) 클립보드 복사가
+    /// 끝난 뒤 해당 에이전트를 활성화해 붙여넣는다. 그 경우 라이브러리 창은 열지 않는다
+    /// — 대상 앱에서 포커스를 다시 뺏어 붙여넣기를 망치기 때문.
+    static func deliver(cgImage: CGImage, scale: CGFloat, pasteTarget: AgentSession? = nil) {
+        var pasteTarget = pasteTarget
+        if pasteTarget == nil, Settings.shared.autoPasteToAgent {
+            pasteTarget = AgentPasteService.shared.bestSession()
+        }
+
         // 논리 크기(point)를 지정해 붙여넣기 시 올바른 크기로 들어가게 한다.
         let logicalSize = NSSize(width: CGFloat(cgImage.width) / scale,
                                  height: CGFloat(cgImage.height) / scale)
@@ -18,7 +26,8 @@ enum CaptureOutput {
         ThumbnailHUD.show(image)
 
         // PNG 인코딩은 메인 밖에서 — 큰 Retina 캡처에서 짧은 멈춤을 피한다.
-        let openLibrary = Settings.shared.openLibraryAfterCapture
+        let openLibrary = Settings.shared.openLibraryAfterCapture && pasteTarget == nil
+        let target = pasteTarget
         encodeQueue.async {
             let pngData = pngDataPreservingAlpha(from: cgImage, logicalSize: logicalSize)
             DispatchQueue.main.async {
@@ -28,6 +37,9 @@ enum CaptureOutput {
                     if openLibrary {
                         LibraryWindowController.shared.showWindowSelectingLatest()
                     }
+                }
+                if let target {
+                    AgentPasteService.shared.paste(into: target)
                 }
             }
         }
