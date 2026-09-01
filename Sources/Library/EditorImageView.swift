@@ -1352,7 +1352,7 @@ final class EditorImageView: NSView {
         field.font = .systemFont(ofSize: fontSize, weight: .semibold)
         field.textColor = pending.color
         field.stringValue = text
-        field.placeholderString = pending.kind == .callout ? "말풍선 텍스트" : "텍스트"
+        field.placeholderString = pending.kind == .callout ? loc("Callout text", "말풍선 텍스트") : loc("Text", "텍스트")
         field.focusRingType = .none
         field.isBordered = false
         field.isBezeled = false
@@ -1488,7 +1488,7 @@ final class EditorImageView: NSView {
 
     private func calloutTextRect(text: String, anchor: CGPoint, width: CGFloat) -> CGRect {
         let attributes = textAttributes(color: .labelColor, width: width)
-        let effectiveText = text.isEmpty ? "말풍선 텍스트" : text
+        let effectiveText = text.isEmpty ? loc("Callout text", "말풍선 텍스트") : text
         let textSize = (effectiveText as NSString).size(withAttributes: attributes)
         let padding = max(10, textFontSize(width: width) * 0.42)
         let bubbleSize = CGSize(width: max(90, min(360, textSize.width + padding * 2)),
@@ -1519,7 +1519,7 @@ final class EditorImageView: NSView {
     private func drawCallout(text: String, head: CGPoint, bubbleAnchor: CGPoint,
                              color: NSColor, width: CGFloat, bubble: CGRect? = nil,
                              alpha: CGFloat = 1, drawsText: Bool = true) {
-        let displayText = text.isEmpty ? "말풍선 텍스트" : text
+        let displayText = text.isEmpty ? loc("Callout text", "말풍선 텍스트") : text
         let bubble = bubble ?? calloutTextRect(text: displayText, anchor: bubbleAnchor, width: width)
         let radius = max(10, width * 2.2)
         let path = NSBezierPath(roundedRect: bubble, xRadius: radius, yRadius: radius)

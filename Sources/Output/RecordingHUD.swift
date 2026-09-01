@@ -4,9 +4,9 @@ import AppKit
 final class RecordingHUD {
     private let panel: RecordingPanel
     private let timeLabel = NSTextField(labelWithString: "00:00")
-    private let statusLabel = NSTextField(labelWithString: "촬영 중")
-    private let pauseButton = HUDButton(title: "일시정지")
-    private let stopButton = HUDButton(title: "중지", role: .destructive)
+    private let statusLabel = NSTextField(labelWithString: loc("Recording", "촬영 중"))
+    private let pauseButton = HUDButton(title: loc("Pause", "일시정지"))
+    private let stopButton = HUDButton(title: loc("Stop", "중지"), role: .destructive)
     private let onPauseToggle: () -> Void
     private let onStop: () -> Void
 
@@ -63,13 +63,13 @@ final class RecordingHUD {
         isPaused = paused
         if paused {
             pausedAt = Date()
-            statusLabel.stringValue = "일시정지"
-            pauseButton.title = "재개"
+            statusLabel.stringValue = loc("Paused", "일시정지")
+            pauseButton.title = loc("Resume", "재개")
         } else {
             if let pausedAt { pausedDuration += Date().timeIntervalSince(pausedAt) }
             pausedAt = nil
-            statusLabel.stringValue = "촬영 중"
-            pauseButton.title = "일시정지"
+            statusLabel.stringValue = loc("Recording", "촬영 중")
+            pauseButton.title = loc("Pause", "일시정지")
         }
         updateTime()
     }

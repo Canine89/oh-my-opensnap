@@ -16,7 +16,7 @@ final class MenuBarController: NSObject {
     private var pausedTotal: TimeInterval = 0
 
     private static let idleImage: NSImage? = {
-        let image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "\(Brand.name) 화면 캡처")
+        let image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: loc("\(Brand.name) screen capture", "\(Brand.name) 화면 캡처"))
         image?.isTemplate = true
         return image
     }()
@@ -31,27 +31,7 @@ final class MenuBarController: NSObject {
             button.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         }
 
-        let menu = NSMenu()
-        menu.delegate = self
-        menu.addItem(NSMenuItem.sectionHeader(title: Brand.name))
-        captureItem = addItem(to: menu, title: "캡처", action: #selector(captureArea))
-        pauseVideoItem = addItem(to: menu, title: pauseVideoTitle(), action: #selector(toggleVideoPause))
-        stopVideoItem = addItem(to: menu, title: "촬영 중지", action: #selector(stopVideo))
-        addItem(to: menu, title: "라이브러리…", action: #selector(openLibrary), key: "l")
-        menu.addItem(.separator())
-        addItem(to: menu, title: "설정…", action: #selector(openPreferences), key: ",")
-        #if !MAS
-        // Sparkle 업데이트 확인 (타깃은 UpdaterController) — MAS 판은 App Store가 업데이트를 맡는다.
-        let updateItem = NSMenuItem(title: "업데이트 확인…",
-                                    action: #selector(UpdaterController.checkForUpdates(_:)),
-                                    keyEquivalent: "")
-        updateItem.target = UpdaterController.shared
-        menu.addItem(updateItem)
-        #endif
-        addItem(to: menu, title: "시작 안내…", action: #selector(showWelcome))
-        menu.addItem(.separator())
-        addItem(to: menu, title: "\(Brand.name) 종료", action: #selector(quit), key: "q")
-        statusItem.menu = menu
+        rebuildMenu()
 
         NotificationCenter.default.addObserver(self, selector: #selector(refreshShortcut),
                                                name: .hotkeyChanged, object: nil)
@@ -59,8 +39,8 @@ final class MenuBarController: NSObject {
                                                name: .videoRecordingStateDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(showWelcome),
                                                name: .showWelcomeRequested, object: nil)
-        refreshShortcut()
-        refreshVideoState()
+        NotificationCenter.default.addObserver(self, selector: #selector(languageChanged),
+                                               name: .appLanguageDidChange, object: nil)
 
         // 첫 실행: Dock 아이콘이 없어 "실행됐는지"조차 알기 어렵다 → 아이콘에서 안내를 뻗어 보여 준다.
         if !WelcomePopover.wasShown {
@@ -70,8 +50,41 @@ final class MenuBarController: NSObject {
         }
     }
 
+    /// 메뉴는 언어가 바뀌면 통째로 다시 만든다 — 항목별 title 갱신보다 단순하고 빠짐이 없다.
+    private func rebuildMenu() {
+        let menu = NSMenu()
+        menu.delegate = self
+        menu.addItem(NSMenuItem.sectionHeader(title: Brand.name))
+        captureItem = addItem(to: menu, title: loc("Capture", "캡처"), action: #selector(captureArea))
+        pauseVideoItem = addItem(to: menu, title: pauseVideoTitle(), action: #selector(toggleVideoPause))
+        stopVideoItem = addItem(to: menu, title: loc("Stop Recording", "촬영 중지"), action: #selector(stopVideo))
+        addItem(to: menu, title: loc("Library…", "라이브러리…"), action: #selector(openLibrary), key: "l")
+        menu.addItem(.separator())
+        addItem(to: menu, title: loc("Settings…", "설정…"), action: #selector(openPreferences), key: ",")
+        #if !MAS
+        // Sparkle 업데이트 확인 (타깃은 UpdaterController) — MAS 판은 App Store가 업데이트를 맡는다.
+        let updateItem = NSMenuItem(title: loc("Check for Updates…", "업데이트 확인…"),
+                                    action: #selector(UpdaterController.checkForUpdates(_:)),
+                                    keyEquivalent: "")
+        updateItem.target = UpdaterController.shared
+        menu.addItem(updateItem)
+        #endif
+        addItem(to: menu, title: loc("Welcome Guide…", "시작 안내…"), action: #selector(showWelcome))
+        menu.addItem(.separator())
+        addItem(to: menu, title: loc("Quit \(Brand.name)", "\(Brand.name) 종료"), action: #selector(quit), key: "q")
+        statusItem.menu = menu
+        refreshShortcut()
+        refreshVideoState()
+    }
+
+    @objc private func languageChanged() {
+        rebuildMenu()   // 팝오버는 스스로 알림을 받아 내용을 다시 그린다
+    }
+
     private func pauseVideoTitle() -> String {
-        VideoRecordingController.shared.isPaused ? "촬영 재개" : "촬영 일시정지"
+        VideoRecordingController.shared.isPaused
+            ? loc("Resume Recording", "촬영 재개")
+            : loc("Pause Recording", "촬영 일시정지")
     }
 
     /// 단축키를 공백으로 흉내내지 않고 메뉴가 원래 그리는 자리(오른쪽 정렬)에 표시한다.
@@ -80,11 +93,11 @@ final class MenuBarController: NSObject {
         let code = Settings.shared.hotKeyCode
         let mods = Settings.shared.hotKeyModifiers
         if let equivalent = HotkeyFormatter.menuKeyEquivalent(keyCode: code, carbonModifiers: mods) {
-            captureItem.title = "캡처"
+            captureItem.title = loc("Capture", "캡처")
             captureItem.keyEquivalent = equivalent.key
             captureItem.keyEquivalentModifierMask = equivalent.modifiers
         } else {
-            captureItem.title = "캡처   \(HotkeyFormatter.displayString(keyCode: code, carbonModifiers: mods))"
+            captureItem.title = loc("Capture", "캡처") + "   \(HotkeyFormatter.displayString(keyCode: code, carbonModifiers: mods))"
             captureItem.keyEquivalent = ""
         }
     }
@@ -135,7 +148,7 @@ final class MenuBarController: NSObject {
         button.title = String(format: " %02d:%02d", total / 60, total % 60)
         let symbol = paused ? "pause.circle.fill" : "record.circle.fill"
         let config = NSImage.SymbolConfiguration(paletteColors: [paused ? .secondaryLabelColor : Brand.red])
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: paused ? "촬영 일시정지" : "촬영 중")?
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: paused ? loc("Recording paused", "촬영 일시정지") : loc("Recording", "촬영 중"))?
             .withSymbolConfiguration(config)
         image?.isTemplate = false
         button.image = image

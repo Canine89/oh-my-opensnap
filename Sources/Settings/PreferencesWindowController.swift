@@ -33,19 +33,39 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     private func buildWindow() {
         tabs.tabStyle = .toolbar
         tabs.transitionOptions = []
-        tabs.addTabViewItem(tabItem("일반", symbol: "gearshape", view: buildGeneralPane()))
-        tabs.addTabViewItem(tabItem("저장", symbol: "folder", view: buildStoragePane()))
-        tabs.addTabViewItem(tabItem("권한", symbol: "lock.shield", view: buildPermissionsPane()))
-        tabs.addTabViewItem(tabItem("정보", symbol: "info.circle", view: buildAboutPane()))
+        buildTabs()
 
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
-        window.title = "\(Brand.name) 설정"
+        window.title = loc("\(Brand.name) Settings", "\(Brand.name) 설정")
         window.toolbarStyle = .preference
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("PreferencesV2")
         self.window = window
+
+        NotificationCenter.default.addObserver(self, selector: #selector(languageChanged),
+                                               name: .appLanguageDidChange, object: nil)
+    }
+
+    private func buildTabs() {
+        tabs.addTabViewItem(tabItem(loc("General", "일반"), symbol: "gearshape", view: buildGeneralPane()))
+        tabs.addTabViewItem(tabItem(loc("Storage", "저장"), symbol: "folder", view: buildStoragePane()))
+        tabs.addTabViewItem(tabItem(loc("Permissions", "권한"), symbol: "lock.shield", view: buildPermissionsPane()))
+        tabs.addTabViewItem(tabItem(loc("About", "정보"), symbol: "info.circle", view: buildAboutPane()))
+    }
+
+    /// 언어가 바뀌면 창을 연 채로 탭 내용을 새 언어로 다시 만든다 (선택된 탭 유지).
+    @objc private func languageChanged() {
+        guard window != nil else { return }
+        let selected = tabs.selectedTabViewItemIndex
+        stopRecording()
+        while let first = tabs.tabViewItems.first { tabs.removeTabViewItem(first) }
+        buildTabs()
+        tabs.selectedTabViewItemIndex = selected
+        window?.title = loc("\(Brand.name) Settings", "\(Brand.name) 설정")
+        refreshLaunchAtLoginState()
+        refreshPermissionStatus()
     }
 
     private func tabItem(_ label: String, symbol: String, view: NSView) -> NSTabViewItem {
@@ -100,9 +120,9 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         // 권한이 없을 때만 보이는 배너 — 있는 사람에겐 소음이 되지 않게.
         let bannerIcon = NSImageView(image: NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil) ?? NSImage())
         bannerIcon.contentTintColor = .systemOrange
-        let bannerText = AppAppearance.secondaryText("화면 녹화 권한이 아직 없어 캡처가 동작하지 않습니다.", size: 12)
+        let bannerText = AppAppearance.secondaryText(loc("Screen Recording permission is missing, so capture cannot work yet.", "화면 녹화 권한이 아직 없어 캡처가 동작하지 않습니다."), size: 12)
         bannerText.textColor = .labelColor
-        let bannerButton = NSButton(title: "권한 탭으로", target: self, action: #selector(goToPermissions))
+        let bannerButton = NSButton(title: loc("Open Permissions Tab", "권한 탭으로"), target: self, action: #selector(goToPermissions))
         bannerButton.bezelStyle = .rounded
         bannerButton.controlSize = .small
         let bannerRow = NSStackView(views: [bannerIcon, bannerText, bannerButton])
@@ -128,8 +148,21 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         banner.isHidden = ScreenCapturePermission.isGranted
         permissionBanner = banner
 
+        // 언어 — 각 언어는 항상 자기 표기로 보여 준다.
+        let languageLabel = NSTextField(labelWithString: loc("Language · 언어", "Language · 언어"))
+        languageLabel.font = .systemFont(ofSize: 13)
+        let languagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        languagePopup.addItems(withTitles: AppLanguage.allCases.map(\.displayName))
+        languagePopup.selectItem(at: AppLanguage.allCases.firstIndex(of: Settings.shared.appLanguage) ?? 0)
+        languagePopup.target = self
+        languagePopup.action = #selector(languagePicked(_:))
+        let languageRow = NSStackView(views: [languageLabel, languagePopup])
+        languageRow.orientation = .horizontal
+        languageRow.alignment = .firstBaseline
+        languageRow.spacing = 10
+
         // 단축키 레코더
-        let shortcutLabel = NSTextField(labelWithString: "캡처 단축키")
+        let shortcutLabel = NSTextField(labelWithString: loc("Capture shortcut", "캡처 단축키"))
         shortcutLabel.font = .systemFont(ofSize: 13)
         let recordButton = NSButton(title: currentShortcutString(), target: self, action: #selector(toggleRecording))
         recordButton.bezelStyle = .rounded
@@ -137,51 +170,51 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         recordButton.setButtonType(.momentaryPushIn)
         recordButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 96).isActive = true
         self.recordButton = recordButton
-        let recordHint = AppAppearance.secondaryText("클릭한 뒤 새 조합을 누르세요")
+        let recordHint = AppAppearance.secondaryText(loc("Click, then press a new combination", "클릭한 뒤 새 조합을 누르세요"))
         self.recordHint = recordHint
         let shortcutRow = NSStackView(views: [shortcutLabel, recordButton, recordHint])
         shortcutRow.orientation = .horizontal
         shortcutRow.alignment = .firstBaseline
         shortcutRow.spacing = 10
 
-        let usage = AppAppearance.secondaryText("창의 헤더 위에서 클릭하면 창 전체를, 본문 위에서 클릭하면 본문만 캡처합니다. 드래그하면 원하는 영역을 고를 수 있고, Esc 또는 우클릭으로 취소합니다.")
+        let usage = AppAppearance.secondaryText(loc("Click a window's header to capture the whole window, or its body to capture just the content. Drag to select any area; press Esc or right-click to cancel.", "창의 헤더 위에서 클릭하면 창 전체를, 본문 위에서 클릭하면 본문만 캡처합니다. 드래그하면 원하는 영역을 고를 수 있고, Esc 또는 우클릭으로 취소합니다."))
 
-        let sound = checkbox("캡처 시 소리 재생", on: Settings.shared.playSound, action: #selector(toggleSound(_:)))
-        let openLibrary = checkbox("캡처 후 라이브러리 자동으로 열기",
+        let sound = checkbox(loc("Play sound on capture", "캡처 시 소리 재생"), on: Settings.shared.playSound, action: #selector(toggleSound(_:)))
+        let openLibrary = checkbox(loc("Open library after capture", "캡처 후 라이브러리 자동으로 열기"),
                                    on: Settings.shared.openLibraryAfterCapture, action: #selector(toggleOpenLibrary(_:)))
-        let freeze = checkbox("캡처 모드에서 화면 정지",
-                              detail: "캡처 모드에 들어간 순간의 화면에서 영역을 고르고, 그 화면을 그대로 저장합니다. 영상이 재생 중이어도 조준한 프레임이 저장됩니다.",
+        let freeze = checkbox(loc("Freeze screen while capturing", "캡처 모드에서 화면 정지"),
+                              detail: loc("Pick your area on a frozen snapshot of the screen and save exactly those pixels — even mid-video, the frame you aimed at is what you get.", "캡처 모드에 들어간 순간의 화면에서 영역을 고르고, 그 화면을 그대로 저장합니다. 영상이 재생 중이어도 조준한 프레임이 저장됩니다."),
                               on: Settings.shared.freezeScreenDuringCapture, action: #selector(toggleFreezeScreen(_:)))
-        let launch = NSButton(checkboxWithTitle: "macOS 로그인 시 자동 실행", target: self, action: #selector(toggleLaunchAtLogin(_:)))
+        let launch = NSButton(checkboxWithTitle: loc("Launch at login", "macOS 로그인 시 자동 실행"), target: self, action: #selector(toggleLaunchAtLogin(_:)))
         launch.state = LaunchAtLoginController.isEnabled ? .on : .off
         launchAtLoginCheck = launch
 
-        return pane([banner, shortcutRow, usage, sound, openLibrary, freeze, launch], spacing: 12)
+        return pane([banner, languageRow, shortcutRow, usage, sound, openLibrary, freeze, launch], spacing: 12)
     }
 
     // MARK: 저장
     private func buildStoragePane() -> NSView {
-        let title = AppAppearance.sectionTitle("캡처 저장 폴더")
+        let title = AppAppearance.sectionTitle(loc("Capture folder", "캡처 저장 폴더"))
         let path = NSPathControl()
         path.pathStyle = .standard
         path.url = Settings.shared.libraryDirectory
         path.isEditable = false
         path.target = self
         path.action = #selector(revealFolder)
-        path.toolTip = "클릭하면 Finder에서 엽니다"
+        path.toolTip = loc("Click to open in Finder", "클릭하면 Finder에서 엽니다")
         path.font = .systemFont(ofSize: 12)
         path.translatesAutoresizingMaskIntoConstraints = false
         pathControl = path
 
-        let choose = NSButton(title: "폴더 선택…", target: self, action: #selector(chooseFolder))
-        let reset = NSButton(title: "기본값으로", target: self, action: #selector(resetFolder))
+        let choose = NSButton(title: loc("Choose Folder…", "폴더 선택…"), target: self, action: #selector(chooseFolder))
+        let reset = NSButton(title: loc("Reset to Default", "기본값으로"), target: self, action: #selector(resetFolder))
         choose.bezelStyle = .rounded
         reset.bezelStyle = .rounded
         let buttons = NSStackView(views: [choose, reset])
         buttons.orientation = .horizontal
         buttons.spacing = 8
 
-        let hint = AppAppearance.secondaryText("새 설치의 기본 위치는 Application Support입니다. 예전 버전의 바탕화면 폴더가 이미 있으면 그대로 유지됩니다. 폴더를 바꿔도 기존 캡처는 옮겨지지 않습니다.")
+        let hint = AppAppearance.secondaryText(loc("New installs default to Application Support. If an older Desktop folder already exists, it is kept. Changing the folder does not move existing captures.", "새 설치의 기본 위치는 Application Support입니다. 예전 버전의 바탕화면 폴더가 이미 있으면 그대로 유지됩니다. 폴더를 바꿔도 기존 캡처는 옮겨지지 않습니다."))
         let container = pane([title, path, buttons, hint], spacing: 10)
         path.widthAnchor.constraint(equalToConstant: 476).isActive = true
         return container
@@ -190,11 +223,11 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     // MARK: 권한
     private func buildPermissionsPane() -> NSView {
         let screen = PermissionStatusRow(
-            title: "화면 녹화",
-            detail: "캡처에 반드시 필요한 권한입니다. macOS가 사용자 동의로만 부여하며, 앱은 시스템 설정으로 안내할 수만 있습니다.")
-        screen.addButton("시스템 설정 열기", target: self, action: #selector(openScreenCaptureSettings))
-        screen.addButton("설정 열고 재시작", target: self, action: #selector(openSettingsAndRelaunch))
-        screen.footnote = "권한을 켠 뒤에는 앱을 다시 실행해야 반영되는 경우가 있습니다. 이미 켜져 있는데도 캡처가 막히면 토글을 껐다 켠 뒤 재시작하세요."
+            title: loc("Screen Recording", "화면 녹화"),
+            detail: loc("Required for capturing. macOS grants it only with your consent; the app can only guide you to System Settings.", "캡처에 반드시 필요한 권한입니다. macOS가 사용자 동의로만 부여하며, 앱은 시스템 설정으로 안내할 수만 있습니다."))
+        screen.addButton(loc("Open System Settings", "시스템 설정 열기"), target: self, action: #selector(openScreenCaptureSettings))
+        screen.addButton(loc("Open Settings & Relaunch", "설정 열고 재시작"), target: self, action: #selector(openSettingsAndRelaunch))
+        screen.footnote = loc("After enabling the permission, a relaunch is sometimes needed. If capture is still blocked while the toggle is on, turn it off and on again, then relaunch.", "권한을 켠 뒤에는 앱을 다시 실행해야 반영되는 경우가 있습니다. 이미 켜져 있는데도 캡처가 막히면 토글을 껐다 켠 뒤 재시작하세요.")
         screenStatus = screen
 
         // MAS 판은 접근성 권한을 요청하지 않는다(심사 리젝 회피). 화면 녹화 권한만 노출한다.
@@ -202,10 +235,10 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         return pane([screen], spacing: 12)
         #else
         let accessibility = PermissionStatusRow(
-            title: "창 구조 인식 (선택 사항)",
-            detail: "허용하면 브라우저·터미널 등 각 앱이 공개한 접근성 구조로 툴바/탭 영역과 본문을 정확히 구분합니다. 화면 픽셀·키 입력·문서 내용은 읽지 않습니다.")
-        accessibility.addButton("권한 요청", target: self, action: #selector(requestAccessibilityPermission))
-        accessibility.addButton("시스템 설정 열기", target: self, action: #selector(openAccessibilitySettings))
+            title: loc("Window layout detection (optional)", "창 구조 인식 (선택 사항)"),
+            detail: loc("When allowed, the accessibility structure that apps expose is used to precisely tell toolbars and tabs apart from content. Screen pixels, keystrokes, and document contents are never read.", "허용하면 브라우저·터미널 등 각 앱이 공개한 접근성 구조로 툴바/탭 영역과 본문을 정확히 구분합니다. 화면 픽셀·키 입력·문서 내용은 읽지 않습니다."))
+        accessibility.addButton(loc("Request Permission", "권한 요청"), target: self, action: #selector(requestAccessibilityPermission))
+        accessibility.addButton(loc("Open System Settings", "시스템 설정 열기"), target: self, action: #selector(openAccessibilitySettings))
         accessibilityStatus = accessibility
 
         return pane([screen, accessibility], spacing: 12)
@@ -222,7 +255,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         let name = AppAppearance.title(Brand.name)
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-        let versionLabel = AppAppearance.secondaryText("버전 \(version) (\(build)) · \(Brand.tagline)", size: 12)
+        let versionLabel = AppAppearance.secondaryText(loc("Version \(version) (\(build)) · \(Brand.tagline)", "버전 \(version) (\(build)) · \(Brand.tagline)"), size: 12)
         let text = NSStackView(views: [name, versionLabel])
         text.orientation = .vertical
         text.alignment = .leading
@@ -234,12 +267,12 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
 
         var actions: [NSView] = []
         #if !MAS
-        let update = NSButton(title: "업데이트 확인…", target: UpdaterController.shared,
+        let update = NSButton(title: loc("Check for Updates…", "업데이트 확인…"), target: UpdaterController.shared,
                               action: #selector(UpdaterController.checkForUpdates(_:)))
         update.bezelStyle = .rounded
         actions.append(update)
         #endif
-        let welcome = NSButton(title: "시작 안내 다시 보기", target: self, action: #selector(showWelcome))
+        let welcome = NSButton(title: loc("Show Welcome Guide", "시작 안내 다시 보기"), target: self, action: #selector(showWelcome))
         welcome.bezelStyle = .rounded
         actions.append(welcome)
         let actionRow = NSStackView(views: actions)
@@ -248,8 +281,8 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
 
         let links = NSStackView(views: [
             linkButton("GitHub", url: "https://github.com/Canine89/oh-my-opensnap"),
-            linkButton("문제 신고 · 문의", url: "https://github.com/Canine89/oh-my-opensnap/issues"),
-            linkButton("개인정보 처리방침", url: "https://github.com/Canine89/oh-my-opensnap/blob/main/PRIVACY.md")
+            linkButton(loc("Report an Issue", "문제 신고 · 문의"), url: "https://github.com/Canine89/oh-my-opensnap/issues"),
+            linkButton(loc("Privacy Policy", "개인정보 처리방침"), url: "https://github.com/Canine89/oh-my-opensnap/blob/main/PRIVACY.md")
         ])
         links.orientation = .horizontal
         links.spacing = 16
@@ -279,9 +312,9 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
 
     private func startRecording() {
         isRecording = true
-        recordButton?.title = "키 입력…"
+        recordButton?.title = loc("Press keys…", "키 입력…")
         recordButton?.highlight(true)
-        recordHint?.stringValue = "새 조합을 누르세요 · Esc로 취소"
+        recordHint?.stringValue = loc("Press a new combination · Esc to cancel", "새 조합을 누르세요 · Esc로 취소")
         // 녹화 중에는 기존 전역 단축키를 잠시 끈다 — 안 그러면 현재 단축키(예: ⌘⇧2)를
         // 누를 때 녹화 대신 캡처가 실행돼 버린다.
         HotkeyManager.shared.suspend()
@@ -291,7 +324,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
             if event.keyCode == 53 { self.stopRecording(); return nil }
             // 적어도 하나의 modifier 필요
             guard HotkeyFormatter.hasModifier(event.modifierFlags) else {
-                self.recordHint?.stringValue = "⌘ ⌥ ⌃ ⇧ 중 하나 이상과 함께 누르세요"
+                self.recordHint?.stringValue = loc("Include at least one of ⌘ ⌥ ⌃ ⇧", "⌘ ⌥ ⌃ ⇧ 중 하나 이상과 함께 누르세요")
                 return nil
             }
 
@@ -307,7 +340,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         isRecording = false
         recordButton?.highlight(false)
         recordButton?.title = currentShortcutString()
-        recordHint?.stringValue = "클릭한 뒤 새 조합을 누르세요"
+        recordHint?.stringValue = loc("Click, then press a new combination", "클릭한 뒤 새 조합을 누르세요")
         if let monitor = recordingMonitor {
             NSEvent.removeMonitor(monitor)
             recordingMonitor = nil
@@ -342,6 +375,12 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
             refreshLaunchAtLoginState()
             showLaunchAtLoginError(error)
         }
+    }
+
+    @objc private func languagePicked(_ sender: NSPopUpButton) {
+        guard sender.indexOfSelectedItem >= 0,
+              sender.indexOfSelectedItem < AppLanguage.allCases.count else { return }
+        Settings.shared.appLanguage = AppLanguage.allCases[sender.indexOfSelectedItem]
     }
 
     @objc private func goToPermissions() {
@@ -379,12 +418,12 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         let screenGranted = ScreenCapturePermission.isGranted
         permissionBanner?.isHidden = screenGranted
         screenStatus?.set(granted: screenGranted,
-                          text: screenGranted ? "허용됨" : "필요함 — 캡처 전에 시스템 설정에서 허용하세요")
+                          text: screenGranted ? loc("Granted", "허용됨") : loc("Required — allow it in System Settings before capturing", "필요함 — 캡처 전에 시스템 설정에서 허용하세요"))
         #if !MAS
         let axGranted = AccessibilityPermission.isGranted
         accessibilityStatus?.set(granted: axGranted,
-                                 text: axGranted ? "허용됨 — 앱별 창 구조로 헤더와 본문을 구분합니다"
-                                                 : "미허용 — 앱별 기본 추정값을 사용합니다",
+                                 text: axGranted ? loc("Granted — per-app window structure tells headers from content", "허용됨 — 앱별 창 구조로 헤더와 본문을 구분합니다")
+                                                 : loc("Not granted — per-app defaults are used instead", "미허용 — 앱별 기본 추정값을 사용합니다"),
                                  optional: true)
         #endif
     }
@@ -411,8 +450,8 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
 
     private func showLaunchAtLoginError(_ error: Error) {
         let alert = NSAlert()
-        alert.messageText = "자동 실행 설정을 변경하지 못했습니다."
-        alert.informativeText = "앱을 Applications 폴더에서 실행한 뒤 다시 시도하세요.\n\n\(error.localizedDescription)"
+        alert.messageText = loc("Could not change the launch-at-login setting.", "자동 실행 설정을 변경하지 못했습니다.")
+        alert.informativeText = loc("Run the app from the Applications folder and try again.", "앱을 Applications 폴더에서 실행한 뒤 다시 시도하세요.") + "\n\n\(error.localizedDescription)"
         alert.alertStyle = .warning
         if let window {
             alert.beginSheetModal(for: window)
@@ -431,7 +470,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = true
-        panel.prompt = "이 폴더에 저장"
+        panel.prompt = loc("Save to This Folder", "이 폴더에 저장")
         panel.directoryURL = Settings.shared.libraryDirectory
         if panel.runModal() == .OK, let url = panel.url {
             Settings.shared.libraryDirectory = url

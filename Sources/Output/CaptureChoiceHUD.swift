@@ -35,7 +35,7 @@ final class CaptureChoiceHUD {
             let full = selection.fullRect
             let isFullWindow = abs(selection.rect.width - full.width) < 1
                 && abs(selection.rect.height - full.height) < 1
-            context.zone = isFullWindow ? "창 전체" : "본문"
+            context.zone = isFullWindow ? loc("Entire window", "창 전체") : loc("Content", "본문")
             return context
         }
     }
@@ -179,15 +179,15 @@ final class CaptureChoiceHUD {
         divider.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.10).cgColor
 
         // 아래 행 — 동작
-        let imageButton = HUDButton(title: "이미지 캡처", role: .primary, symbol: "camera.fill",
+        let imageButton = HUDButton(title: loc("Capture Image", "이미지 캡처"), role: .primary, symbol: "camera.fill",
                                     keyHint: "⏎", target: self, action: #selector(captureImage))
-        let videoButton = HUDButton(title: "영상 촬영", role: .secondary, symbol: "record.circle",
+        let videoButton = HUDButton(title: loc("Record Video", "영상 촬영"), role: .secondary, symbol: "record.circle",
                                     keyHint: "R", target: self, action: #selector(recordVideo))
-        let cancelButton = HUDButton(title: "취소", role: .tertiary, symbol: nil,
+        let cancelButton = HUDButton(title: loc("Cancel", "취소"), role: .tertiary, symbol: nil,
                                      keyHint: "Esc", target: self, action: #selector(cancel))
-        imageButton.toolTip = "선택 영역을 이미지로 캡처하고 클립보드에 복사 (⏎)"
-        videoButton.toolTip = "선택 영역을 영상으로 촬영 (R)"
-        cancelButton.toolTip = "캡처 취소 (Esc · 우클릭)"
+        imageButton.toolTip = loc("Capture the selection as an image and copy it to the clipboard (⏎)", "선택 영역을 이미지로 캡처하고 클립보드에 복사 (⏎)")
+        videoButton.toolTip = loc("Record the selection as a video (R)", "선택 영역을 영상으로 촬영 (R)")
+        cancelButton.toolTip = loc("Cancel capture (Esc · right-click)", "캡처 취소 (Esc · 우클릭)")
         cancelButton.setContentHuggingPriority(.required, for: .horizontal)
 
         let actions = NSStackView(views: [imageButton, videoButton, cancelButton])
@@ -231,14 +231,14 @@ final class CaptureChoiceHUD {
         if let appName = context.appName, !appName.isEmpty {
             targetLabel.stringValue = context.zone.map { "\(appName) · \($0)" } ?? appName
         } else {
-            targetLabel.stringValue = "선택 영역"
+            targetLabel.stringValue = loc("Selected area", "선택 영역")
         }
         if let icon = context.appIcon {
             targetIcon.image = icon
             targetIcon.contentTintColor = nil
         } else {
             let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
-            targetIcon.image = NSImage(systemSymbolName: "rectangle.dashed", accessibilityDescription: "선택 영역")?
+            targetIcon.image = NSImage(systemSymbolName: "rectangle.dashed", accessibilityDescription: loc("Selected area", "선택 영역"))?
                 .withSymbolConfiguration(config)
             targetIcon.contentTintColor = NSColor.white.withAlphaComponent(0.85)
         }
@@ -248,7 +248,7 @@ final class CaptureChoiceHUD {
             : String(format: "%.1f×", context.scale)
         scaleChip.text = scaleText
         scaleChip.isHidden = context.scale <= 1
-        scaleChip.toolTip = "화면 배율 \(scaleText) — 표시 크기의 \(scaleText) 픽셀로 저장"
+        scaleChip.toolTip = loc("Display scale \(scaleText) — saved at \(scaleText) the displayed size in pixels", "화면 배율 \(scaleText) — 표시 크기의 \(scaleText) 픽셀로 저장")
     }
 
     private var fittingSize: NSSize {

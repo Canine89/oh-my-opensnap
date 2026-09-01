@@ -3,7 +3,7 @@ import AppKit
 /// Oh-my-opensnap 브랜드 상수.
 enum Brand {
     static let name = "Oh-my-opensnap"
-    static let tagline = "빠르고 정밀한 화면 캡처"
+    static var tagline: String { loc("Fast, precise screen capture", "빠르고 정밀한 화면 캡처") }
 
     /// 브랜드 레드. 캡처 프레임과 주요 동작에만 쓰는 단일 강조색이다.
     static let red = NSColor(srgbRed: 0.88, green: 0.20, blue: 0.18, alpha: 1)

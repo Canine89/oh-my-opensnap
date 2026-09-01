@@ -33,8 +33,8 @@ targets:
       path: Config/Info.plist
       properties:
         LSUIElement: true                              # 메뉴바 상주, Dock 아이콘 숨김
-        CFBundleDevelopmentRegion: ko                  # AppKit 시스템 문자열(사이드바·색상 패널·열기/저장 창)을 한국어로
-        CFBundleLocalizations: [ko]
+        CFBundleDevelopmentRegion: en                  # 기본 영어. AppKit 시스템 문자열은 시스템 언어(en/ko)를 따른다
+        CFBundleLocalizations: [en, ko]
         CFBundleDisplayName: Oh-my-opensnap
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
@@ -74,8 +74,8 @@ targets:
       path: Config/Info-MAS.plist
       properties:
         LSUIElement: true
-        CFBundleDevelopmentRegion: ko                  # AppKit 시스템 문자열(사이드바·색상 패널·열기/저장 창)을 한국어로
-        CFBundleLocalizations: [ko]
+        CFBundleDevelopmentRegion: en                  # 기본 영어. AppKit 시스템 문자열은 시스템 언어(en/ko)를 따른다
+        CFBundleLocalizations: [en, ko]
         CFBundleDisplayName: Oh-my-opensnap
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"

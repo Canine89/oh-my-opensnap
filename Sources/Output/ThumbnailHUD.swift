@@ -56,7 +56,7 @@ final class ThumbnailHUD {
         imageView.layer?.masksToBounds = true
         container.addSubview(imageView)
 
-        let label = NSTextField(labelWithString: "클립보드에 복사됨 · 클릭하면 라이브러리")
+        let label = NSTextField(labelWithString: loc("Copied to clipboard · click for library", "클립보드에 복사됨 · 클릭하면 라이브러리"))
         label.font = .systemFont(ofSize: 11, weight: .medium)
         label.textColor = .secondaryLabelColor
         label.lineBreakMode = .byTruncatingTail

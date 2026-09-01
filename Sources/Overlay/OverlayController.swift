@@ -85,8 +85,8 @@ final class OverlayController {
             view.hitTester = tester
             view.confirmEnabled = mode != .askAfterSelection
             view.adjustingHint = mode == .askAfterSelection
-                ? "드래그 조절 · ⏎ 이미지 · R 영상 · Esc 취소"
-                : "드래그 조절 · ⏎ 캡처 · Esc 취소"
+                ? loc("Drag to adjust · ⏎ image · R video · Esc cancel", "드래그 조절 · ⏎ 이미지 · R 영상 · Esc 취소")
+                : loc("Drag to adjust · ⏎ capture · Esc cancel", "드래그 조절 · ⏎ 캡처 · Esc 취소")
             view.onFinish = { [weak self, weak window] rect in
                 switch mode {
                 case .stillImage:

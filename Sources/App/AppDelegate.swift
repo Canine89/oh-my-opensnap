@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if UserDefaults.standard.bool(forKey: "SnapshotChoiceHUDWindow") {
                 context.appName = "Safari"
                 context.appIcon = NSWorkspace.shared.icon(forFile: "/Applications/Safari.app")
-                context.zone = "창 전체"
+                context.zone = loc("Entire window", "창 전체")
             }
             let hud = CaptureChoiceHUD(anchor: anchor, context: context, onImage: {}, onVideo: {}, onCancel: {})
             debugChoiceHUD = hud
@@ -63,15 +63,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appItem = NSMenuItem()
         mainMenu.addItem(appItem)
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "\(Brand.name) 종료", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: loc("Quit \(Brand.name)", "\(Brand.name) 종료"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
 
         let editItem = NSMenuItem()
         mainMenu.addItem(editItem)
-        let editMenu = NSMenu(title: "편집")
-        editMenu.addItem(withTitle: "되돌리기", action: Selector(("undo:")), keyEquivalent: "z")
-        editMenu.addItem(withTitle: "다시 실행", action: Selector(("redo:")), keyEquivalent: "Z")   // 대문자 = ⇧⌘Z
-        editMenu.addItem(withTitle: "복사", action: Selector(("copy:")), keyEquivalent: "c")
+        let editMenu = NSMenu(title: loc("Edit", "편집"))
+        editMenu.addItem(withTitle: loc("Undo", "되돌리기"), action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: loc("Redo", "다시 실행"), action: Selector(("redo:")), keyEquivalent: "Z")   // 대문자 = ⇧⌘Z
+        editMenu.addItem(withTitle: loc("Copy", "복사"), action: Selector(("copy:")), keyEquivalent: "c")
         editItem.submenu = editMenu
 
         NSApp.mainMenu = mainMenu

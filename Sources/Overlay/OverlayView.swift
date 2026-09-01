@@ -61,8 +61,8 @@ final class OverlayView: NSView {
     /// ⏎/더블클릭 확정 허용 여부. 선택 HUD가 결정을 맡는 모드에선 꺼서 이중 확정을 막는다.
     var confirmEnabled = true
     /// 조정 단계 안내 문구. 확정 방식(⏎ vs 선택 HUD)이 모드마다 달라 컨트롤러가 채운다.
-    var adjustingHint = "드래그 조절 · ⏎ 캡처 · Esc 취소"
-    private let idleHint = "드래그 영역 선택 · 클릭 창 캡처 · Esc 취소"
+    var adjustingHint = loc("Drag to adjust · ⏎ capture · Esc cancel", "드래그 조절 · ⏎ 캡처 · Esc 취소")
+    private let idleHint = loc("Drag to select · click to capture a window · Esc cancel", "드래그 영역 선택 · 클릭 창 캡처 · Esc 취소")
 
     // MARK: 상태 기계
     /// 크기 조절 핸들 8개. 배열 순서가 히트 테스트 우선순위라 코너가 변 중앙보다 먼저다.
@@ -947,7 +947,7 @@ final class OverlayView: NSView {
         let clipped = rect.intersection(bounds)
         guard !clipped.isEmpty else { return }
 
-        let zone = isFullWindow ? "창 전체" : "본문"
+        let zone = isFullWindow ? loc("Entire window", "창 전체") : loc("Content", "본문")
         let appName = hoveredWindow?.owningApplication?.applicationName ?? ""
         let text = (appName.isEmpty ? zone : "\(appName) · \(zone)") as NSString
         let attributes = overlayLabelAttributes(weight: .semibold, size: 11)

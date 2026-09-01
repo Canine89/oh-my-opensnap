@@ -12,19 +12,19 @@ final class VideoEditorView: NSView {
     private let statusLabel = NSTextField(labelWithString: "")
     private let startLabel = NSTextField(labelWithString: "00:00.0")
     private let endLabel = NSTextField(labelWithString: "00:00.0")
-    private let playButton = NSButton(image: NSImage(systemSymbolName: "play.fill", accessibilityDescription: "재생") ?? NSImage(),
+    private let playButton = NSButton(image: NSImage(systemSymbolName: "play.fill", accessibilityDescription: loc("Play", "재생")) ?? NSImage(),
                                       target: nil,
                                       action: nil)
-    private let backButton = NSButton(image: NSImage(systemSymbolName: "gobackward.5", accessibilityDescription: "5초 뒤로") ?? NSImage(),
+    private let backButton = NSButton(image: NSImage(systemSymbolName: "gobackward.5", accessibilityDescription: loc("Back 5 seconds", "5초 뒤로")) ?? NSImage(),
                                       target: nil,
                                       action: nil)
-    private let forwardButton = NSButton(image: NSImage(systemSymbolName: "goforward.5", accessibilityDescription: "5초 앞으로") ?? NSImage(),
+    private let forwardButton = NSButton(image: NSImage(systemSymbolName: "goforward.5", accessibilityDescription: loc("Forward 5 seconds", "5초 앞으로")) ?? NSImage(),
                                          target: nil,
                                          action: nil)
-    private let setStartButton = NSButton(title: "시작점", target: nil, action: nil)
-    private let setEndButton = NSButton(title: "끝점", target: nil, action: nil)
+    private let setStartButton = NSButton(title: loc("Set Start", "시작점"), target: nil, action: nil)
+    private let setEndButton = NSButton(title: loc("Set End", "끝점"), target: nil, action: nil)
     private let exportButton = NSPopUpButton(frame: .zero, pullsDown: true)
-    private let resetButton = NSButton(title: "구간 초기화", target: nil, action: nil)
+    private let resetButton = NSButton(title: loc("Reset Range", "구간 초기화"), target: nil, action: nil)
 
     private var representedURL: URL?
     private var duration: Double = 0
@@ -92,22 +92,22 @@ final class VideoEditorView: NSView {
             button.controlSize = .regular
             button.target = self
         }
-        setStartButton.toolTip = "현재 재생 위치를 구간 시작으로"
-        setEndButton.toolTip = "현재 재생 위치를 구간 끝으로"
-        resetButton.toolTip = "선택 구간을 전체로 되돌림"
-        backButton.toolTip = "5초 뒤로"
-        forwardButton.toolTip = "5초 앞으로"
-        playButton.toolTip = "재생/일시정지 (Space)"
+        setStartButton.toolTip = loc("Use the current position as the range start", "현재 재생 위치를 구간 시작으로")
+        setEndButton.toolTip = loc("Use the current position as the range end", "현재 재생 위치를 구간 끝으로")
+        resetButton.toolTip = loc("Reset the range to the full video", "선택 구간을 전체로 되돌림")
+        backButton.toolTip = loc("Back 5 seconds", "5초 뒤로")
+        forwardButton.toolTip = loc("Forward 5 seconds", "5초 앞으로")
+        playButton.toolTip = loc("Play/Pause (Space)", "재생/일시정지 (Space)")
 
         // 내보내기 세 가지를 풀다운 메뉴 하나로 — "GIF 30"처럼 뜻 모를 버튼을 없앤다.
         exportButton.bezelStyle = .rounded
         exportButton.controlSize = .regular
-        exportButton.addItem(withTitle: "내보내기")
+        exportButton.addItem(withTitle: loc("Export", "내보내기"))
         exportButton.item(at: 0)?.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: nil)
         let exportItems: [(String, Selector)] = [
-            ("선택 구간을 MP4로 저장", #selector(exportTrimmedMP4)),
-            ("선택 구간을 GIF로 · 가볍게 (30프레임)", #selector(exportGIF30)),
-            ("선택 구간을 GIF로 · 부드럽게 (45프레임)", #selector(exportGIF45))
+            (loc("Save Range as MP4", "선택 구간을 MP4로 저장"), #selector(exportTrimmedMP4)),
+            (loc("Save Range as GIF · Light (30 frames)", "선택 구간을 GIF로 · 가볍게 (30프레임)"), #selector(exportGIF30)),
+            (loc("Save Range as GIF · Smooth (45 frames)", "선택 구간을 GIF로 · 부드럽게 (45프레임)"), #selector(exportGIF45))
         ]
         for (title, action) in exportItems {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -234,12 +234,12 @@ final class VideoEditorView: NSView {
         guard let url = representedURL else { return }
         let range = selectedRange()
         guard range.duration.seconds > 0.05, range.duration.seconds < max(duration - 0.05, 0) else {
-            onToast?("시작점과 끝점을 먼저 지정하세요")
+            onToast?(loc("Set the start and end points first", "시작점과 끝점을 먼저 지정하세요"))
             return
         }
-        setBusy(true, message: "선택 구간 MP4 저장 중...")
+        setBusy(true, message: loc("Saving range as MP4...", "선택 구간 MP4 저장 중..."))
         VideoExportService.trimmedMP4(source: url, timeRange: range) { [weak self] result in
-            self?.handleExport(result, successMessage: "선택 구간 MP4 저장됨")
+            self?.handleExport(result, successMessage: loc("Range saved as MP4", "선택 구간 MP4 저장됨"))
         }
     }
 
@@ -253,9 +253,9 @@ final class VideoEditorView: NSView {
 
     private func exportGIF(frameCount: Int) {
         guard let url = representedURL else { return }
-        setBusy(true, message: "GIF \(frameCount)프레임 내보내는 중...")
+        setBusy(true, message: loc("Exporting GIF (\(frameCount) frames)...", "GIF \(frameCount)프레임 내보내는 중..."))
         VideoExportService.gif(source: url, timeRange: selectedRange(), frameCount: frameCount) { [weak self] result in
-            self?.handleExport(result, successMessage: "GIF \(frameCount)프레임 저장됨")
+            self?.handleExport(result, successMessage: loc("GIF saved (\(frameCount) frames)", "GIF \(frameCount)프레임 저장됨"))
         }
     }
 
@@ -296,7 +296,7 @@ final class VideoEditorView: NSView {
         startLabel.stringValue = formatTime(timelineView.startTime)
         endLabel.stringValue = formatTime(timelineView.endTime)
         let range = selectedRange()
-        statusLabel.stringValue = "선택 구간 \(formatTime(range.duration.seconds)) / 전체 \(formatTime(duration))"
+        statusLabel.stringValue = loc("Range \(formatTime(range.duration.seconds)) / total \(formatTime(duration))", "선택 구간 \(formatTime(range.duration.seconds)) / 전체 \(formatTime(duration))")
     }
 
     private func setBusy(_ busy: Bool, message: String) {
@@ -425,8 +425,8 @@ private final class TrimTimelineView: NSView {
         rounded(selected, radius: 5).fill()
 
         drawTickMarks(in: track)
-        drawHandle(x: x(for: startTime), color: .systemGreen, label: "시작")
-        drawHandle(x: x(for: endTime), color: .systemRed, label: "끝")
+        drawHandle(x: x(for: startTime), color: .systemGreen, label: loc("Start", "시작"))
+        drawHandle(x: x(for: endTime), color: .systemRed, label: loc("End", "끝"))
         drawPlayhead(x: x(for: currentTime))
     }
 

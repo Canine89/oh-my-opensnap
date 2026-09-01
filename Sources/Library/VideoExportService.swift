@@ -110,10 +110,10 @@ enum VideoExportService {
 
         var errorDescription: String? {
             switch self {
-            case .exportSessionFailed: return "영상 내보내기 세션을 만들 수 없습니다."
-            case .writerFailed: return "영상 저장 중 오류가 발생했습니다."
-            case .gifDestinationFailed: return "GIF 파일을 만들 수 없습니다."
-            case .gifFinalizeFailed: return "GIF 저장을 완료할 수 없습니다."
+            case .exportSessionFailed: return loc("Could not create the video export session.", "영상 내보내기 세션을 만들 수 없습니다.")
+            case .writerFailed: return loc("An error occurred while saving the video.", "영상 저장 중 오류가 발생했습니다.")
+            case .gifDestinationFailed: return loc("Could not create the GIF file.", "GIF 파일을 만들 수 없습니다.")
+            case .gifFinalizeFailed: return loc("Could not finish saving the GIF.", "GIF 저장을 완료할 수 없습니다.")
             }
         }
     }

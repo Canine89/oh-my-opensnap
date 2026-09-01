@@ -19,8 +19,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private let animatedImageView = WKWebView()
     private let emptyState = NSStackView()
     private let emptyHintLabel = NSTextField(wrappingLabelWithString: "")
-    private let cropDoneButton = NSButton(title: "완료", target: nil, action: nil)
-    private let cropCancelButton = NSButton(title: "취소", target: nil, action: nil)
+    private let cropDoneButton = NSButton(title: loc("Done", "완료"), target: nil, action: nil)
+    private let cropCancelButton = NSButton(title: loc("Cancel", "취소"), target: nil, action: nil)
     private let zoomButton = NSButton(title: "100%", target: nil, action: nil)
     private let zoomBadge = NSVisualEffectView()
     private let colorWell = NSColorWell()
@@ -151,7 +151,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         let window = NSWindow(contentRect: contentRect,
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
-        window.title = "라이브러리"
+        window.title = loc("Library", "라이브러리")
         window.titleVisibility = .visible
         window.toolbarStyle = .unified
         window.delegate = self
@@ -189,7 +189,34 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         self.window = window
         NotificationCenter.default.addObserver(self, selector: #selector(refreshEmptyHint),
                                                name: .hotkeyChanged, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .appLanguageDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(languageChanged),
+                                               name: .appLanguageDidChange, object: nil)
         syncToolControl(to: editorView.tool)
+    }
+
+    /// 언어가 바뀌면 창을 허물고 새 언어로 다시 짓는다. 열려 있었다면 그대로 다시 연다.
+    /// (툴바·사이드바·빈 상태 등 문자열이 창 구성 시점에 박히므로 재구성이 가장 확실하다.)
+    @objc private func languageChanged() {
+        guard let window else { return }
+        let wasVisible = window.isVisible
+        editorView.flushPendingAnnotationChanges()
+        window.delegate = nil
+        window.close()
+        if let boundsObserver {
+            NotificationCenter.default.removeObserver(boundsObserver)
+            self.boundsObserver = nil
+        }
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+            self.keyMonitor = nil
+        }
+        NotificationCenter.default.removeObserver(self, name: .libraryDidChange, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .hotkeyChanged, object: nil)
+        self.window = nil
+        splitViewController = nil
+        styleControls = nil
+        if wasVisible { showWindow() }
     }
 
     private func buildSidebar() -> NSView {
@@ -217,15 +244,15 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             guard let self, self.item(at: indexPath) != nil else { return nil }
             self.select(indexPath)     // 우클릭한 항목을 선택 + 미리보기로
             let menu = NSMenu()
-            for (title, action) in [("클립보드에 복사", #selector(self.copySelected)),
-                                    ("Finder에서 보기", #selector(self.revealSelected)),
-                                    ("다른 이름으로 저장…", #selector(self.saveSelected))] {
+            for (title, action) in [(loc("Copy to Clipboard", "클립보드에 복사"), #selector(self.copySelected)),
+                                    (loc("Reveal in Finder", "Finder에서 보기"), #selector(self.revealSelected)),
+                                    (loc("Save As…", "다른 이름으로 저장…"), #selector(self.saveSelected))] {
                 let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
                 item.target = self
                 menu.addItem(item)
             }
             menu.addItem(.separator())
-            let trash = NSMenuItem(title: "휴지통으로 이동", action: #selector(self.deleteSelected), keyEquivalent: "")
+            let trash = NSMenuItem(title: loc("Move to Trash", "휴지통으로 이동"), action: #selector(self.deleteSelected), keyEquivalent: "")
             trash.target = self
             menu.addItem(trash)
             return menu
@@ -256,7 +283,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             self?.cropCancelButton.isHidden = !progressed
         }
         editorView.onDidCopy = { [weak self] in
-            self?.showToast("클립보드에 복사됨")
+            self?.showToast(loc("Copied to clipboard", "클립보드에 복사됨"))
         }
         // 크롭 적용/되돌리기로 이미지가 바뀌면 라이브러리 파일에 반영하고 썸네일만 갱신.
         // (에디터를 reload하지 않으므로 undo 스택이 보존된다 → 크롭도 ⌘Z로 되돌릴 수 있음)
@@ -340,7 +367,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         zoomButton.isBordered = false
         zoomButton.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         zoomButton.contentTintColor = .labelColor
-        zoomButton.toolTip = "창에 맞춤 (⌘0) · ⌘+/⌘- 또는 ⌘+스크롤로 확대/축소"
+        zoomButton.toolTip = loc("Fit to window (⌘0) · zoom with ⌘+/⌘- or ⌘+scroll", "창에 맞춤 (⌘0) · ⌘+/⌘- 또는 ⌘+스크롤로 확대/축소")
         zoomButton.target = self
         zoomButton.action = #selector(zoomFit)
         zoomButton.translatesAutoresizingMaskIntoConstraints = false
@@ -388,12 +415,17 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     }
 
     private func buildEmptyState() {
+        // 언어 변경으로 창을 다시 지을 때 이전 내용이 겹쳐 쌓이지 않게 비운다.
+        for view in emptyState.arrangedSubviews {
+            emptyState.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
         let symbolConfig = NSImage.SymbolConfiguration(pointSize: 44, weight: .light)
         let icon = NSImageView(image: NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: nil)?
             .withSymbolConfiguration(symbolConfig) ?? NSImage())
         icon.contentTintColor = .tertiaryLabelColor
 
-        let title = NSTextField(labelWithString: "아직 캡처가 없어요")
+        let title = NSTextField(labelWithString: loc("No captures yet", "아직 캡처가 없어요"))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
         title.textColor = .secondaryLabelColor
         title.alignment = .center
@@ -403,7 +435,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         emptyHintLabel.alignment = .center
         refreshEmptyHint()
 
-        let captureButton = NSButton(title: "지금 캡처", target: self, action: #selector(captureNow))
+        let captureButton = NSButton(title: loc("Capture Now", "지금 캡처"), target: self, action: #selector(captureNow))
         AppAppearance.accentButton(captureButton)
         captureButton.controlSize = .large
 
@@ -422,7 +454,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     @objc private func refreshEmptyHint() {
         let shortcut = HotkeyFormatter.displayString(keyCode: Settings.shared.hotKeyCode,
                                                      carbonModifiers: Settings.shared.hotKeyModifiers)
-        emptyHintLabel.stringValue = "\(shortcut) 를 누르면 화면 어디서든 캡처할 수 있고,\n결과는 클립보드와 여기에 함께 담깁니다."
+        emptyHintLabel.stringValue = loc("Press \(shortcut) to capture anywhere on screen.\nResults land on the clipboard and collect here.", "\(shortcut) 를 누르면 화면 어디서든 캡처할 수 있고,\n결과는 클립보드와 여기에 함께 담깁니다.")
     }
 
     /// 주석 스타일(색·굵기)은 툴바의 한 항목(스타일)으로 항상 보인다 — 편집/주석 그룹과 같은 밀도로.
@@ -433,7 +465,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         if #available(macOS 13.0, *) { colorWell.colorWellStyle = .minimal }
         colorWell.widthAnchor.constraint(equalToConstant: 28).isActive = true
         colorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
-        colorWell.toolTip = "주석 색상 (번호·텍스트·말풍선·화살표·도형)"
+        colorWell.toolTip = loc("Annotation color (numbers · text · callouts · arrows · shapes)", "주석 색상 (번호·텍스트·말풍선·화살표·도형)")
 
         widthSlider.minValue = 1
         widthSlider.maxValue = 20
@@ -443,7 +475,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         widthSlider.target = self
         widthSlider.action = #selector(widthChanged(_:))
         widthSlider.widthAnchor.constraint(equalToConstant: 96).isActive = true
-        widthSlider.toolTip = "선 굵기 · 텍스트 크기 (1–20px)"
+        widthSlider.toolTip = loc("Stroke width · text size (1–20px)", "선 굵기 · 텍스트 크기 (1–20px)")
 
         widthLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         widthLabel.textColor = .secondaryLabelColor
@@ -485,37 +517,39 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         case ToolbarID.editTools:
             configure(editToolControl,
                       symbols: ["cursorarrow", "crop", "arrow.down.and.line.horizontal.and.arrow.up", "arrow.right.and.line.vertical.and.arrow.left"],
-                      tips: ["선택 (V) · 드래그로 이동, 방향키로 1px, ⇧방향키로 10px, 핸들로 크기 조절. 다른 도구에서도 주석 위 클릭은 이동, ⌥드래그는 겹쳐 그리기", "크롭 (C · 드래그 후 ⏎ 적용)",
-                             "가로 띠 잘라내기 — 위아래로 드래그한 구간을 없애고 높이를 줄임",
-                             "세로 띠 잘라내기 — 좌우로 드래그한 구간을 없애고 너비를 줄임"])
-            return viewItem(itemIdentifier, view: editToolControl, label: "편집")
+                      tips: [loc("Select (V) · drag to move, arrow keys 1px, ⇧+arrows 10px, handles to resize. Clicking an annotation moves it in any tool; ⌥-drag draws on top", "선택 (V) · 드래그로 이동, 방향키로 1px, ⇧방향키로 10px, 핸들로 크기 조절. 다른 도구에서도 주석 위 클릭은 이동, ⌥드래그는 겹쳐 그리기"),
+                             loc("Crop (C · drag, then ⏎ to apply)", "크롭 (C · 드래그 후 ⏎ 적용)"),
+                             loc("Cut horizontal strip — removes the dragged band and reduces height", "가로 띠 잘라내기 — 위아래로 드래그한 구간을 없애고 높이를 줄임"),
+                             loc("Cut vertical strip — removes the dragged band and reduces width", "세로 띠 잘라내기 — 좌우로 드래그한 구간을 없애고 너비를 줄임")])
+            return viewItem(itemIdentifier, view: editToolControl, label: loc("Edit", "편집"))
         case ToolbarID.annotateTools:
             configure(annotateToolControl,
                       symbols: ["1.circle", "textformat", "text.bubble", "arrow.up.right", "rectangle", "circle", "checkerboard.rectangle"],
-                      tips: ["번호 ➊–➒ (N · 클릭)", "텍스트 (T · 클릭 후 입력)", "말풍선 (B · 가리킬 곳에서 드래그)", "화살표 (A · ⇧ 45° 스냅)", "사각형 (R · ⇧ 정사각형)", "원 (O · ⇧ 정원)", "모자이크 (M · 드래그)"])
-            return viewItem(itemIdentifier, view: annotateToolControl, label: "주석")
+                      tips: [loc("Numbers ➊–➒ (N · click)", "번호 ➊–➒ (N · 클릭)"), loc("Text (T · click, then type)", "텍스트 (T · 클릭 후 입력)"), loc("Callout (B · drag from the point of interest)", "말풍선 (B · 가리킬 곳에서 드래그)"), loc("Arrow (A · ⇧ snaps to 45°)", "화살표 (A · ⇧ 45° 스냅)"), loc("Rectangle (R · ⇧ square)", "사각형 (R · ⇧ 정사각형)"), loc("Ellipse (O · ⇧ circle)", "원 (O · ⇧ 정원)"), loc("Mosaic (M · drag)", "모자이크 (M · 드래그)")])
+            return viewItem(itemIdentifier, view: annotateToolControl, label: loc("Annotate", "주석"))
         case ToolbarID.style:
             if styleControls == nil { styleControls = buildStyleControls() }
-            return viewItem(itemIdentifier, view: styleControls!, label: "스타일")
+            return viewItem(itemIdentifier, view: styleControls!, label: loc("Style", "스타일"))
         case ToolbarID.undo:
-            return actionItem(itemIdentifier, symbol: "arrow.uturn.backward", label: "되돌리기", tip: "되돌리기 (⌘Z)", action: #selector(undoEdit))
+            return actionItem(itemIdentifier, symbol: "arrow.uturn.backward", label: loc("Undo", "되돌리기"), tip: loc("Undo (⌘Z)", "되돌리기 (⌘Z)"), action: #selector(undoEdit))
         case ToolbarID.redo:
-            return actionItem(itemIdentifier, symbol: "arrow.uturn.forward", label: "다시 실행", tip: "다시 실행 (⇧⌘Z)", action: #selector(redoEdit))
+            return actionItem(itemIdentifier, symbol: "arrow.uturn.forward", label: loc("Redo", "다시 실행"), tip: loc("Redo (⇧⌘Z)", "다시 실행 (⇧⌘Z)"), action: #selector(redoEdit))
         case ToolbarID.copy:
-            return actionItem(itemIdentifier, symbol: "doc.on.clipboard", label: "복사", tip: "클립보드에 복사 (⌘C)", action: #selector(copySelected))
+            return actionItem(itemIdentifier, symbol: "doc.on.clipboard", label: loc("Copy", "복사"), tip: loc("Copy to clipboard (⌘C)", "클립보드에 복사 (⌘C)"), action: #selector(copySelected))
         case ToolbarID.save:
-            return actionItem(itemIdentifier, symbol: "square.and.arrow.down", label: "저장", tip: "다른 이름으로 저장…", action: #selector(saveSelected))
+            return actionItem(itemIdentifier, symbol: "square.and.arrow.down", label: loc("Save", "저장"), tip: loc("Save As…", "다른 이름으로 저장…"), action: #selector(saveSelected))
         case ToolbarID.reveal:
-            return actionItem(itemIdentifier, symbol: "folder", label: "Finder", tip: "Finder에서 보기", action: #selector(revealSelected))
+            return actionItem(itemIdentifier, symbol: "folder", label: "Finder", tip: loc("Reveal in Finder", "Finder에서 보기"), action: #selector(revealSelected))
         case ToolbarID.delete:
-            return actionItem(itemIdentifier, symbol: "trash", label: "삭제", tip: "휴지통으로 이동 (⌫)", action: #selector(deleteSelected))
+            return actionItem(itemIdentifier, symbol: "trash", label: loc("Delete", "삭제"), tip: loc("Move to Trash (⌫)", "휴지통으로 이동 (⌫)"), action: #selector(deleteSelected))
         default:
             return nil
         }
     }
 
     private func configure(_ control: NSSegmentedControl, symbols: [String], tips: [String]) {
-        guard control.segmentCount != symbols.count else { return }
+        // 언어 변경 후 재구성 시 툴팁도 새 언어로 다시 박아야 하므로 매번 전체를 다시 설정한다.
+        let alreadySized = control.segmentCount == symbols.count
         control.segmentCount = symbols.count
         control.segmentStyle = .automatic
         for (i, symbol) in symbols.enumerated() {
@@ -525,7 +559,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             control.setToolTip(tips[i], forSegment: i)
             control.setWidth(32, forSegment: i)
         }
-        control.selectedSegment = -1
+        if !alreadySized { control.selectedSegment = -1 }   // 재구성 시엔 현재 도구 선택 유지
     }
 
     private func viewItem(_ id: NSToolbarItem.Identifier, view: NSView, label: String) -> NSToolbarItem {
@@ -574,7 +608,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private func applyItems(_ items: [LibraryItem]) {
         sections = Self.groupByDate(items)
         collectionView.reloadData()
-        window?.subtitle = items.isEmpty ? "" : "\(items.count)개 항목"
+        window?.subtitle = items.isEmpty ? "" : loc("\(items.count) items", "\(items.count)개 항목")
 
         // 캡처 직후: 이전 선택을 무시하고 방금 저장된 최신(첫) 항목을 선택.
         if selectLatestPending, let first = firstIndexPath {
@@ -610,7 +644,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: today) ?? today
 
-        var buckets: [(String, [LibraryItem])] = [("오늘", []), ("어제", []), ("최근 7일", []), ("이전", [])]
+        var buckets: [(String, [LibraryItem])] = [(loc("Today", "오늘"), []), (loc("Yesterday", "어제"), []), (loc("Last 7 Days", "최근 7일"), []), (loc("Earlier", "이전"), [])]
         for item in items {
             if item.date >= today { buckets[0].1.append(item) }
             else if item.date >= yesterday { buckets[1].1.append(item) }
@@ -914,7 +948,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         guard let item = selectedItem else { return }
         selectedItem = nil
         CaptureLibrary.shared.delete(item)   // libraryDidChange → reload()
-        showToast("휴지통으로 이동함")
+        showToast(loc("Moved to Trash", "휴지통으로 이동함"))
     }
 
     #if DEBUG
@@ -1206,22 +1240,24 @@ final class ThumbnailItem: NSCollectionViewItem {
     /// "방금 전" / "14:03" / "어제 14:03" / "8월 20일" — 파일명 대신 사람이 읽는 시간.
     private static func relativeTime(_ date: Date) -> String {
         let now = Date()
-        if now.timeIntervalSince(date) < 60 { return "방금 전" }
+        if now.timeIntervalSince(date) < 60 { return loc("Just now", "방금 전") }
         let calendar = Calendar.current
         let time = timeFormatter.string(from: date)
         if calendar.isDateInToday(date) { return time }
-        if calendar.isDateInYesterday(date) { return "어제 \(time)" }
+        if calendar.isDateInYesterday(date) { return loc("Yesterday \(time)", "어제 \(time)") }
         if calendar.isDate(date, equalTo: now, toGranularity: .year) { return dayFormatter.string(from: date) }
         return fullFormatter.string(from: date)
     }
 
-    private static let timeFormatter: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "ko_KR"); f.dateFormat = "HH:mm"; return f
-    }()
-    private static let dayFormatter: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "ko_KR"); f.dateFormat = "M월 d일"; return f
-    }()
-    private static let fullFormatter: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "ko_KR"); f.dateFormat = "yyyy. M. d."; return f
-    }()
+    // 언어 설정을 따라가야 해서 static let 캐시 대신 언어별로 만든다 (가벼운 포맷터라 충분).
+    private static var timeFormatter: DateFormatter { makeFormatter("HH:mm", "HH:mm") }
+    private static var dayFormatter: DateFormatter { makeFormatter("MMM d", "M월 d일") }
+    private static var fullFormatter: DateFormatter { makeFormatter("M/d/yyyy", "yyyy. M. d.") }
+    private static func makeFormatter(_ en: String, _ ko: String) -> DateFormatter {
+        let f = DateFormatter()
+        let korean = Settings.shared.appLanguage == .korean
+        f.locale = Locale(identifier: korean ? "ko_KR" : "en_US")
+        f.dateFormat = korean ? ko : en
+        return f
+    }
 }
