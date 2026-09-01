@@ -35,11 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 context.appIcon = NSWorkspace.shared.icon(forFile: "/Applications/Safari.app")
                 context.zone = "창 전체"
             }
-            // 실제 감지 결과를 그대로 써서 "에이전트로" 버튼 레이아웃과 감지 로직을 함께 검토한다.
-            let hud = CaptureChoiceHUD(anchor: anchor,
-                                       context: context,
-                                       agents: AgentPasteService.shared.detectSessions(),
-                                       onImage: {}, onVideo: {}, onCancel: {})
+            let hud = CaptureChoiceHUD(anchor: anchor, context: context, onImage: {}, onVideo: {}, onCancel: {})
             debugChoiceHUD = hud
             hud.show()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {

@@ -156,14 +156,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         launch.state = LaunchAtLoginController.isEnabled ? .on : .off
         launchAtLoginCheck = launch
 
-        var views: [NSView] = [banner, shortcutRow, usage, sound, openLibrary, freeze]
-        #if !MAS
-        views.append(checkbox("이미지 캡처 후 활성 AI 에이전트에 자동 붙여넣기",
-                              detail: "터미널에서 실행 중인 Claude Code·Codex·Gemini CLI 등이나 Claude·ChatGPT 앱을 찾아, 캡처한 이미지를 그 채팅 세션에 바로 붙여넣습니다. 선택 툴바의 \"에이전트로\" 버튼은 이 설정과 무관하게 항상 쓸 수 있으며, 붙여넣기 키 전송에는 접근성 권한이 필요합니다.",
-                              on: Settings.shared.autoPasteToAgent, action: #selector(toggleAgentPaste(_:))))
-        #endif
-        views.append(launch)
-        return pane(views, spacing: 12)
+        return pane([banner, shortcutRow, usage, sound, openLibrary, freeze, launch], spacing: 12)
     }
 
     // MARK: 저장
@@ -209,8 +202,8 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         return pane([screen], spacing: 12)
         #else
         let accessibility = PermissionStatusRow(
-            title: "창 구조 인식 · 에이전트 붙여넣기 (선택 사항)",
-            detail: "허용하면 ① 각 앱이 공개한 접근성 구조로 툴바/탭 영역과 본문을 정확히 구분하고, ② 캡처를 AI 에이전트에 붙여넣을 때 붙여넣기 키(⌃V·⌘V)를 대상 앱에 보낼 수 있습니다. 화면 픽셀·키 입력·문서 내용은 읽지 않습니다.")
+            title: "창 구조 인식 (선택 사항)",
+            detail: "허용하면 브라우저·터미널 등 각 앱이 공개한 접근성 구조로 툴바/탭 영역과 본문을 정확히 구분합니다. 화면 픽셀·키 입력·문서 내용은 읽지 않습니다.")
         accessibility.addButton("권한 요청", target: self, action: #selector(requestAccessibilityPermission))
         accessibility.addButton("시스템 설정 열기", target: self, action: #selector(openAccessibilitySettings))
         accessibilityStatus = accessibility
@@ -340,17 +333,6 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     @objc private func toggleFreezeScreen(_ sender: NSButton) {
         Settings.shared.freezeScreenDuringCapture = (sender.state == .on)
     }
-
-    #if !MAS
-    @objc private func toggleAgentPaste(_ sender: NSButton) {
-        Settings.shared.autoPasteToAgent = (sender.state == .on)
-        // 켜는 순간 권한을 미리 확인해 두면 첫 캡처에서 붙여넣기가 조용히 실패하지 않는다.
-        if sender.state == .on, !AccessibilityPermission.isGranted {
-            AccessibilityPermission.request()
-            goToPermissions()
-        }
-    }
-    #endif
 
     @objc private func toggleLaunchAtLogin(_ sender: NSButton) {
         do {

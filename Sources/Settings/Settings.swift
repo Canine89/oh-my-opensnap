@@ -10,7 +10,6 @@ final class Settings {
         static let playSound = "playSound"
         static let openLibraryAfterCapture = "openLibraryAfterCapture"
         static let freezeScreenDuringCapture = "freezeScreenDuringCapture"
-        static let autoPasteToAgent = "autoPasteToAgent"
         static let libraryDirectory = "libraryDirectoryPath"
         static let libraryDirectoryBookmark = "libraryDirectoryBookmark"
         static let hotKeyCode = "hotKeyCode"
@@ -59,13 +58,6 @@ final class Settings {
                 : defaults.bool(forKey: Keys.freezeScreenDuringCapture)
         }
         set { defaults.set(newValue, forKey: Keys.freezeScreenDuringCapture) }
-    }
-
-    /// 이미지 캡처 후 활성 AI 에이전트(터미널의 Claude Code 등)에 자동으로 붙여넣을지.
-    /// 기본값 false — 다른 앱을 활성화하고 키 입력을 보내는 동작이라 명시적으로 켠 사람에게만.
-    var autoPasteToAgent: Bool {
-        get { defaults.bool(forKey: Keys.autoPasteToAgent) }
-        set { defaults.set(newValue, forKey: Keys.autoPasteToAgent) }
     }
 
     /// 캡처본 저장(라이브러리) 폴더.

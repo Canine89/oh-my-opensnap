@@ -40,8 +40,6 @@ final class OverlayController {
         active = true
         // 캡처 모드에선 라이브러리 창이 화면(스틸 캡처)에 찍히지 않도록 자동으로 가린다.
         LibraryWindowController.shared.hideForCapture()
-        // 우리가 활성화되기 전의 프론트 앱을 기억 — 에이전트 붙여넣기의 기본 대상 판단 기준.
-        AgentPasteService.shared.noteFrontmostBeforeCapture()
         NSApp.activate(ignoringOtherApps: true)
         Task { await setup(mode: mode) }
     }
@@ -350,14 +348,6 @@ final class OverlayController {
                                            display: display,
                                            displayID: displayID,
                                            excluding: excluded)
-                      },
-                      agentAction: { [weak self] session in
-                          self?.captureStillImage(viewRect: viewRect,
-                                                  scale: scale,
-                                                  display: display,
-                                                  excluding: excluded,
-                                                  snapshot: snapshot,
-                                                  pasteTarget: session)
                       })
     }
 
@@ -375,7 +365,6 @@ final class OverlayController {
         }
         let hud = CaptureChoiceHUD(anchor: anchor,
                                    context: context,
-                                   agents: AgentPasteService.shared.detectSessions(),
                                    onImage: { [weak self, weak view] in
                                        guard let self else { return }
                                        self.choiceHUD = nil
@@ -406,27 +395,6 @@ final class OverlayController {
                                                        displayID: displayID,
                                                        excluding: excluded)
                                    },
-                                   onAgent: { [weak self, weak view] session in
-                                       guard let self else { return }
-                                       self.choiceHUD = nil
-                                       let snapshot = self.snapshots[displayID]
-                                       if let windowSelection = view?.currentWindowSelection {
-                                           self.teardown()
-                                           self.captureWindowSelection(windowSelection,
-                                                                       snapshot: snapshot,
-                                                                       pasteTarget: session)
-                                           return
-                                       }
-                                       guard let rect = view?.currentSelection else { self.cancel(); return }
-                                       let excluded = self.overlayWindows
-                                       self.teardown()
-                                       self.captureStillImage(viewRect: rect,
-                                                              scale: scale,
-                                                              display: display,
-                                                              excluding: excluded,
-                                                              snapshot: snapshot,
-                                                              pasteTarget: session)
-                                   },
                                    onCancel: { [weak self] in
                                        self?.choiceHUD = nil
                                        self?.cancel()
@@ -455,20 +423,15 @@ final class OverlayController {
                                            display: display,
                                            displayID: displayID,
                                            excluding: excluded)
-                      },
-                      agentAction: { [weak self] session in
-                          self?.captureWindowSelection(windowSelection, snapshot: snapshot, pasteTarget: session)
                       })
     }
 
     private func presentChoice(anchor: CGRect,
                                context: CaptureChoiceHUD.Context,
                                imageAction: @escaping () -> Void,
-                               videoAction: @escaping () -> Void,
-                               agentAction: @escaping (AgentSession) -> Void) {
+                               videoAction: @escaping () -> Void) {
         let hud = CaptureChoiceHUD(anchor: anchor,
                                    context: context,
-                                   agents: AgentPasteService.shared.detectSessions(),
                                    onImage: { [weak self] in
                                        self?.choiceHUD = nil
                                        imageAction()
@@ -476,10 +439,6 @@ final class OverlayController {
                                    onVideo: { [weak self] in
                                        self?.choiceHUD = nil
                                        videoAction()
-                                   },
-                                   onAgent: { [weak self] session in
-                                       self?.choiceHUD = nil
-                                       agentAction(session)
                                    },
                                    onCancel: { [weak self] in
                                        self?.choiceHUD = nil
@@ -493,12 +452,11 @@ final class OverlayController {
                                    scale: CGFloat,
                                    display: SCDisplay,
                                    excluding excluded: [SCWindow],
-                                   snapshot: DisplaySnapshot?,
-                                   pasteTarget: AgentSession? = nil) {
+                                   snapshot: DisplaySnapshot?) {
         // 정지 화면이 있으면 진입 순간의 픽셀을 그대로 잘라 쓴다 — 화면에서 조준한 프레임이 저장된다.
         if let snapshot, let crop = snapshot.crop(viewRect: viewRect) {
             defer { LibraryWindowController.shared.restoreAfterCapture() }
-            CaptureOutput.deliver(cgImage: crop, scale: snapshot.scale, pasteTarget: pasteTarget)
+            CaptureOutput.deliver(cgImage: crop, scale: snapshot.scale)
             return
         }
 
@@ -510,7 +468,7 @@ final class OverlayController {
                                                                  excluding: excluded)
                 await MainActor.run {
                     defer { LibraryWindowController.shared.restoreAfterCapture() }
-                    CaptureOutput.deliver(cgImage: image, scale: scale, pasteTarget: pasteTarget)
+                    CaptureOutput.deliver(cgImage: image, scale: scale)
                 }
             } catch {
                 NSLog("Still capture failed: \(error)")
@@ -538,13 +496,11 @@ final class OverlayController {
         }
     }
 
-    private func captureWindowSelection(_ selection: OverlayView.WindowSelection,
-                                        snapshot: DisplaySnapshot?,
-                                        pasteTarget: AgentSession? = nil) {
+    private func captureWindowSelection(_ selection: OverlayView.WindowSelection, snapshot: DisplaySnapshot?) {
         // 정지 화면이 있으면 오버레이에서 하이라이트로 보여 준 픽셀을 그대로 잘라낸다.
         if let snapshot, let crop = snapshot.crop(viewRect: selection.rect) {
             defer { LibraryWindowController.shared.restoreAfterCapture() }
-            CaptureOutput.deliver(cgImage: crop, scale: snapshot.scale, pasteTarget: pasteTarget)
+            CaptureOutput.deliver(cgImage: crop, scale: snapshot.scale)
             return
         }
 
@@ -564,7 +520,7 @@ final class OverlayController {
                     let imageBounds = CGRect(x: 0, y: 0, width: result.image.width, height: result.image.height)
                     let clamped = pxRect.intersection(imageBounds)
                     guard !clamped.isEmpty, let crop = result.image.cropping(to: clamped) else { return }
-                    CaptureOutput.deliver(cgImage: crop, scale: result.scale, pasteTarget: pasteTarget)
+                    CaptureOutput.deliver(cgImage: crop, scale: result.scale)
                 }
             } catch {
                 NSLog("Window selection capture failed: \(error)")
