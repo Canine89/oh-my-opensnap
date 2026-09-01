@@ -48,7 +48,7 @@ final class WelcomePopover: NSObject, NSPopoverDelegate {
         icon.widthAnchor.constraint(equalToConstant: 56).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 56).isActive = true
 
-        let title = NSTextField(labelWithString: "\(Brand.name)가 메뉴 막대에 있어요")
+        let title = NSTextField(labelWithString: "\(Brand.name)이 메뉴 막대에 있어요")
         title.font = .systemFont(ofSize: 16, weight: .bold)
         let subtitle = AppAppearance.secondaryText("Dock에는 나타나지 않습니다. 위의 아이콘을 누르면 메뉴가 열립니다.", size: 12)
 

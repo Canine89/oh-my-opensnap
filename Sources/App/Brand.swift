@@ -1,8 +1,8 @@
 import AppKit
 
-/// Open Capture Record 브랜드 상수.
+/// Oh-my-opensnap 브랜드 상수.
 enum Brand {
-    static let name = "Open Capture Record"
+    static let name = "Oh-my-opensnap"
     static let tagline = "빠르고 정밀한 화면 캡처"
 
     /// 브랜드 레드. 캡처 프레임과 주요 동작에만 쓰는 단일 강조색이다.

@@ -30,7 +30,7 @@ enum PermissionAlert {
         let alert = NSAlert()
         alert.messageText = "화면 녹화 권한이 필요합니다"
         alert.informativeText = """
-        \(Brand.name)가 화면을 캡처하려면 시스템 설정에서 권한을 허용해야 합니다.
+        \(Brand.name)이 화면을 캡처하려면 시스템 설정에서 권한을 허용해야 합니다.
 
         '화면 및 시스템 오디오 녹화' 목록에서 \(Brand.name)을 켜 주세요. 앱은 자동으로 다시 시작됩니다.
         이미 켜져 있다면 한 번 끄고 다시 켜야 macOS가 새 권한을 반영할 수 있습니다.

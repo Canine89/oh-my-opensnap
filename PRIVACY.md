@@ -1,12 +1,12 @@
-# Privacy Policy for Open Capture Record
+# Privacy Policy for Oh-my-opensnap
 
 **Effective date: August 24, 2026**
 
-Open Capture Record is a macOS screen capture and recording application developed by Golden Rabbit.
+Oh-my-opensnap is a macOS screen capture and recording application developed by Golden Rabbit.
 
 ## Data collection
 
-Open Capture Record does not collect, transmit, sell, or share personal data. It does not use analytics, advertising SDKs, tracking technologies, accounts, or remote servers.
+Oh-my-opensnap does not collect, transmit, sell, or share personal data. It does not use analytics, advertising SDKs, tracking technologies, accounts, or remote servers.
 
 ## Screens, recordings, and files
 
@@ -23,7 +23,7 @@ You can revoke permissions at any time in macOS System Settings.
 
 ## Children's privacy
 
-Open Capture Record is not directed to children and does not collect personal information from anyone.
+Oh-my-opensnap is not directed to children and does not collect personal information from anyone.
 
 ## Changes to this policy
 
