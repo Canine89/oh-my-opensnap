@@ -12,6 +12,7 @@ cask "oh-my-opensnap" do
     strategy :github_latest
   end
 
+  auto_updates true
   depends_on macos: :tahoe
 
   app "oh-my-opensnap.app"
