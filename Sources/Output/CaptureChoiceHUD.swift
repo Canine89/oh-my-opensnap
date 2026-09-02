@@ -50,6 +50,11 @@ final class CaptureChoiceHUD {
     private var decided = false
 
     private let container: HUDSurfaceView
+    /// 자동 배치 프레임. 사용자가 끌어 옮기면 그 차이를 `userOffset`으로 기억해 선택 조정 시에도 따라간다.
+    private var autoFrame: NSRect = .zero
+    private var userOffset: CGPoint?
+    private var repositioning = false
+    private var moveObserver: NSObjectProtocol?
     private let targetIcon = NSImageView()
     private let targetLabel = NSTextField(labelWithString: "")
     private let sizeLabel = NSTextField(labelWithString: "")
@@ -82,9 +87,44 @@ final class CaptureChoiceHUD {
         panel.onKey = { [weak self] event in self?.handleKey(event) ?? false }
         panel.onRightClick = { [weak self] in self?.cancel() }
 
+        // 배경을 잡고 끌면 HUD를 옮길 수 있다 (핸들을 가리거나 보기에 거슬릴 때).
+        panel.isMovableByWindowBackground = true
+        container.movesWindowOnDrag = true
+        moveObserver = NotificationCenter.default.addObserver(forName: NSWindow.didMoveNotification,
+                                                              object: panel, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.noteUserMove() }
+        }
+
         buildContent()
         apply(context)
-        panel.setFrame(Self.frame(size: fittingSize, near: anchor), display: false)
+        place(near: anchor, display: false)
+    }
+
+    deinit {
+        if let moveObserver { NotificationCenter.default.removeObserver(moveObserver) }
+    }
+
+    /// 자동 배치(+사용자 오프셋)로 HUD를 옮긴다. 프로그램적 이동은 사용자 드래그로 세지 않는다.
+    private func place(near anchor: CGRect, display: Bool) {
+        autoFrame = Self.frame(size: fittingSize, near: anchor)
+        var target = autoFrame
+        if let userOffset {
+            target.origin.x += userOffset.x
+            target.origin.y += userOffset.y
+            target = Self.clamped(target, near: anchor)
+        }
+        repositioning = true
+        panel.setFrame(target, display: display)
+        repositioning = false
+    }
+
+    /// 사용자가 끌어 옮긴 경우 자동 위치와의 차이를 기억한다.
+    private func noteUserMove() {
+        guard !repositioning else { return }
+        let dx = panel.frame.origin.x - autoFrame.origin.x
+        let dy = panel.frame.origin.y - autoFrame.origin.y
+        guard abs(dx) > 1 || abs(dy) > 1 else { return }
+        userOffset = CGPoint(x: dx, y: dy)
     }
 
     func show() {
@@ -94,12 +134,15 @@ final class CaptureChoiceHUD {
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         panel.makeKeyAndOrderFront(nil)
-        NSAnimationContext.runAnimationGroup { context in
+        repositioning = true
+        NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.16
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 1
             panel.animator().setFrame(target, display: true)
-        }
+        }, completionHandler: { [weak self] in
+            MainActor.assumeIsolated { self?.repositioning = false }
+        })
     }
 
     func dismiss() {
@@ -113,7 +156,7 @@ final class CaptureChoiceHUD {
     /// 선택 영역이 조정되면 HUD를 새 영역 근처로 옮기고 크기 표시를 갱신한다.
     func update(anchor: CGRect, context: Context) {
         apply(context)
-        panel.setFrame(Self.frame(size: fittingSize, near: anchor), display: true)
+        place(near: anchor, display: true)
     }
 
     /// HUD가 key가 아니어도(오버레이를 클릭해 조정 중) 키로 결정할 수 있게, 컨트롤러의
@@ -280,14 +323,38 @@ final class CaptureChoiceHUD {
         onCancel()
     }
 
-    private static func frame(size: NSSize, near anchor: CGRect) -> NSRect {
+    private static func visibleFrame(near anchor: CGRect) -> NSRect {
         let screen = NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main ?? NSScreen.screens.first
-        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        return screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+    }
+
+    /// 화면 밖으로 나가지 않게 가둔다 (사용자 오프셋을 적용한 뒤 다른 디스플레이/크기에서 재배치될 때).
+    private static func clamped(_ frame: NSRect, near anchor: CGRect) -> NSRect {
+        let visible = visibleFrame(near: anchor)
+        let gap: CGFloat = 12
+        var f = frame
+        f.origin.x = min(max(f.origin.x, visible.minX + gap), visible.maxX - f.width - gap)
+        f.origin.y = min(max(f.origin.y, visible.minY + gap), visible.maxY - f.height - gap)
+        return f
+    }
+
+    private static func frame(size: NSSize, near anchor: CGRect) -> NSRect {
+        let visible = visibleFrame(near: anchor)
         let gap: CGFloat = 12
         var x = anchor.midX - size.width / 2
-        var y = anchor.minY - size.height - gap
-        if y < visible.minY + gap {
-            y = anchor.maxY + gap
+        let below = anchor.minY - size.height - gap
+        let above = anchor.maxY + gap
+        var y: CGFloat
+        if below >= visible.minY + gap {
+            y = below
+        } else if above + size.height <= visible.maxY - gap {
+            y = above
+        } else {
+            // 위아래 모두 자리가 없으면(거의 전체 화면 선택) 화면 가장자리로 밀어 넣지 않고
+            // 영역 안쪽 아래에 띄운다. 가장자리로 밀면 위쪽 핸들을 정확히 덮어 크기 조절이 막힌다.
+            // 아래 변 핸들(히트 반경 12pt)도 가리지 않도록 넉넉히 띄운다.
+            let handleClearance: CGFloat = 40
+            y = anchor.minY + handleClearance
         }
         x = min(max(x, visible.minX + gap), visible.maxX - size.width - gap)
         y = min(max(y, visible.minY + gap), visible.maxY - size.height - gap)

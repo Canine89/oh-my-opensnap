@@ -65,8 +65,12 @@ final class OverlayController {
         }
 
         // 오버레이가 올라오기 전에 정지 화면을 먼저 찍는다. 이 순서라야 오버레이 자신이 스냅샷에 찍히지 않는다.
+        // 방금 orderOut한 라이브러리 창은 윈도우 서버가 아직 지우는 중이라 스냅샷에 반투명하게 남을 수 있다
+        // → 우리 프로세스의 창(라이브러리·HUD·설정)은 전부 제외 목록에 넣는다.
         if Settings.shared.freezeScreenDuringCapture {
-            snapshots = await Self.captureSnapshots(targets.map { (display: $0.display, scale: $0.scale) })
+            let own = Self.ownWindows(in: content)
+            snapshots = await Self.captureSnapshots(targets.map { (display: $0.display, scale: $0.scale) },
+                                                    excluding: own)
         }
 
         for target in targets {
@@ -216,13 +220,15 @@ final class OverlayController {
     }
 
     /// 각 디스플레이의 정지 화면을 병렬로 찍는다. 실패한 디스플레이는 빠지고 라이브 동작으로 폴백한다.
-    private static func captureSnapshots(_ targets: [(display: SCDisplay, scale: CGFloat)]) async
+    private static func captureSnapshots(_ targets: [(display: SCDisplay, scale: CGFloat)],
+                                         excluding: [SCWindow]) async
         -> [CGDirectDisplayID: DisplaySnapshot] {
         await withTaskGroup(of: (CGDirectDisplayID, DisplaySnapshot)?.self) { group in
             for target in targets {
                 group.addTask {
                     do {
-                        let image = try await StillImageCapturer.capture(display: target.display, scale: target.scale)
+                        let image = try await StillImageCapturer.capture(display: target.display, scale: target.scale,
+                                                                         excluding: excluding)
                         return (target.display.displayID, DisplaySnapshot(image: image, scale: target.scale))
                     } catch {
                         NSLog("Freeze snapshot failed for display \(target.display.displayID): \(error)")
@@ -239,12 +245,20 @@ final class OverlayController {
         }
     }
 
-    /// 화면에 올라온 오버레이 NSWindow들을 SCWindow로 매핑한다.
-    /// (NSWindow.windowNumber ↔ SCWindow.windowID). 캡처 제외 목록으로 쓴다.
+    /// 캡처 제외 목록: 화면에 올라온 오버레이 NSWindow들(NSWindow.windowNumber ↔ SCWindow.windowID)에
+    /// 더해 우리 프로세스의 다른 창(가려 둔 라이브러리, HUD, 설정)도 전부 뺀다. 라이브러리 창은
+    /// 캡처 진입 직전에 orderOut되지만 윈도우 서버의 제거가 늦어 결과물에 반투명하게 겹칠 수 있다.
     private static func resolveOverlayWindows(_ windows: [OverlayWindow]) async -> [SCWindow] {
         let ids = Set(windows.compactMap { $0.windowNumber > 0 ? CGWindowID($0.windowNumber) : nil })
-        guard !ids.isEmpty, let content = try? await SCShareableContent.current else { return [] }
-        return content.windows.filter { ids.contains($0.windowID) }
+        guard let content = try? await SCShareableContent.current else { return [] }
+        let pid = ProcessInfo.processInfo.processIdentifier
+        return content.windows.filter { ids.contains($0.windowID) || $0.owningApplication?.processID == pid }
+    }
+
+    /// 우리 프로세스가 소유한 모든 SCWindow (스냅샷/캡처 제외용).
+    private static func ownWindows(in content: SCShareableContent) -> [SCWindow] {
+        let pid = ProcessInfo.processInfo.processIdentifier
+        return content.windows.filter { $0.owningApplication?.processID == pid }
     }
 
     /// 커서가 있는 디스플레이의 루페 스트림만 켠다. 다른 디스플레이 스트림은 끈다.
