@@ -6,19 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.88</title>
-      <pubDate>수, 02  9월 2026 04:47:18 +0000</pubDate>
-      <sparkle:version>89</sparkle:version>
-      <sparkle:shortVersionString>1.0.88</sparkle:shortVersionString>
+      <title>1.0.89</title>
+      <pubDate>목, 03  9월 2026 07:02:00 +0000</pubDate>
+      <sparkle:version>90</sparkle:version>
+      <sparkle:shortVersionString>1.0.89</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.88</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.89</h2>
 <ul>
-<li>라이브러리 창이 열린 채 캡처 모드에 들어가면 창이 미처 사라지기 전에 화면이 찍혀 결과물에 라이브러리가 반투명하게 겹치던 문제 수정. 앱 자신의 창(라이브러리·HUD·설정)은 정지 화면과 최종 캡처에서 항상 제외</li>
-<li>거의 전체 화면을 선택했을 때 선택 HUD(이미지/영상/취소)가 화면 위쪽으로 밀리면서 선택 영역의 위쪽 핸들을 덮어 크기 조절이 안 되던 문제 수정. 위아래에 자리가 없으면 HUD를 영역 안쪽 아래에 핸들과 겹치지 않게 띄움. HUD 배경을 잡고 끌면 원하는 위치로 옮길 수 있고, 옮긴 뒤 선택 영역을 조정해도 그 위치를 따라감</li>
-<li>라이브러리·설정 창을 ⌘W로 닫고 ⌘M으로 최소화할 수 있도록 표준 윈도우 메뉴 추가 (GitHub 이슈 #2)</li>
-<li>README·설치 안내를 현재 기능(창 스냅·영상 촬영·주석 도구·언어 설정·저장 위치)에 맞게 갱신하고 로고를 새 앱 아이콘으로 교체</li>
+<li>라이브러리 창을 좁혔을 때 툴바 오른쪽에 생기는 »(더보기) 버튼을 눌러도 빈 메뉴만 뜨던 문제 수정. 이제 밀려난 편집·주석 도구, 색상·굵기, 되돌리기/복사/저장/Finder/삭제를 메뉴에서 그대로 쓸 수 있고 현재 도구에 체크 표시. 스타일 항목을 열면 툴바와 같은 색상 웰·굵기 슬라이더가 메뉴 안에 나타남</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.88.zip" type="application/octet-stream" sparkle:edSignature="NPrxJmAyyVBxmDrLuDTHNtZq0GrbuUMKQrBR8zkKNVFHPXzQtq53FNYcDOUOsvhsIOm+IBLxr0uxGm1r5qEiDA==" length="4255095" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.89.zip" type="application/octet-stream" sparkle:edSignature="+/ILqVCQVQGG0wctsj6qp03YIa8cjCD2Ma3yW/nXnMJtWrzPjXWnGIBugzCszhpGuTPFR+TxUw44RDW4rDZnAg==" length="4259731" />
     </item>
   </channel>
 </rss>
