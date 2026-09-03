@@ -7,7 +7,7 @@ import WebKit
 /// 레이아웃: 네이티브 통합 툴바 + 접히는 사이드바(날짜별 썸네일) + 큰 미리보기.
 @MainActor
 final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionViewDataSource, NSCollectionViewDelegate,
-                                     NSToolbarDelegate, NSToolbarItemValidation, NSMenuItemValidation {
+                                     NSToolbarDelegate, NSToolbarItemValidation, NSMenuItemValidation, NSMenuDelegate {
     static let shared = LibraryWindowController()
 
     private var window: NSWindow?
@@ -42,6 +42,11 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     }
     private var sections: [Section] = []
     private var styleControls: NSView?
+    /// »(더보기) 메뉴 안에 들어가는 스타일 컨트롤 사본. 툴바 것과 값을 서로 맞춘다.
+    private let menuColorWell = NSColorWell()
+    private let menuWidthSlider = NSSlider()
+    private let menuWidthLabel = NSTextField(labelWithString: "")
+    private var menuStyleView: NSView?
     private static let toolShortcuts: [String: EditorImageView.Tool] = [
         "v": .none, "c": .crop, "n": .number, "t": .text, "b": .callout,
         "a": .arrow, "r": .rectangle, "o": .ellipse, "m": .mosaic
@@ -496,6 +501,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
     private func updateWidthLabel() {
         widthLabel.stringValue = "\(Int(editorView.strokeWidth))px"
+        menuWidthLabel.stringValue = widthLabel.stringValue
     }
 
     // MARK: 툴바
@@ -598,16 +604,12 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             toolEntry(loc("Ellipse", "원") + "  O", .ellipse)
             toolEntry(loc("Mosaic", "모자이크") + "  M", .mosaic)
         case ToolbarID.style:
-            let color = NSMenuItem(title: loc("Color…", "색상…"), action: #selector(chooseColorFromMenu), keyEquivalent: "")
-            color.target = self
-            menu.addItem(color)
-            menu.addItem(.separator())
-            for width in [2, 4, 8, 12] {
-                let entry = NSMenuItem(title: loc("Width \(width)px", "굵기 \(width)px"), action: #selector(selectWidthFromMenu(_:)), keyEquivalent: "")
-                entry.target = self
-                entry.tag = width
-                menu.addItem(entry)
-            }
+            // 스타일은 메뉴 항목 목록이 아니라 툴바에 있던 색상 웰 + 굵기 슬라이더를 그대로 보여 준다.
+            let entry = NSMenuItem(title: label, action: nil, keyEquivalent: "")
+            if menuStyleView == nil { menuStyleView = buildMenuStyleControls() }
+            entry.view = menuStyleView
+            menu.addItem(entry)
+            menu.delegate = self          // 열릴 때 현재 색·굵기로 동기화
         default:
             break
         }
@@ -625,17 +627,44 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         window?.makeFirstResponder(editorView)
     }
 
-    @objc private func chooseColorFromMenu() {
-        // 색상 웰이 더보기 메뉴 뒤에 숨어 있어도 시스템 색상 패널을 웰에 연결해 연다.
-        colorWell.activate(true)
-        NSColorPanel.shared.orderFront(nil)
+    /// 더보기 메뉴용 스타일 컨트롤: 툴바와 같은 구성(색상 웰 · 굵기 슬라이더 · px 표시), 메뉴 폭에 맞춘 여백.
+    private func buildMenuStyleControls() -> NSView {
+        menuColorWell.color = colorWell.color
+        menuColorWell.target = self
+        menuColorWell.action = #selector(colorChanged(_:))
+        if #available(macOS 13.0, *) { menuColorWell.colorWellStyle = .minimal }
+        menuColorWell.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        menuColorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
+
+        menuWidthSlider.minValue = 1
+        menuWidthSlider.maxValue = 20
+        menuWidthSlider.doubleValue = Double(editorView.strokeWidth)
+        menuWidthSlider.isContinuous = true
+        menuWidthSlider.controlSize = .small
+        menuWidthSlider.target = self
+        menuWidthSlider.action = #selector(widthChanged(_:))
+        menuWidthSlider.widthAnchor.constraint(equalToConstant: 140).isActive = true
+
+        menuWidthLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        menuWidthLabel.textColor = .secondaryLabelColor
+        menuWidthLabel.alignment = .right
+        menuWidthLabel.widthAnchor.constraint(equalToConstant: 34).isActive = true
+        updateWidthLabel()
+
+        let row = NSStackView(views: [menuColorWell, menuWidthSlider, menuWidthLabel])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        row.edgeInsets = NSEdgeInsets(top: 4, left: 14, bottom: 4, right: 14)
+        row.translatesAutoresizingMaskIntoConstraints = true
+        row.frame = NSRect(x: 0, y: 0, width: 28 + 8 + 140 + 8 + 34 + 28, height: 30)
+        return row
     }
 
-    @objc private func selectWidthFromMenu(_ sender: NSMenuItem) {
-        let width = CGFloat(sender.tag)
-        widthSlider.doubleValue = Double(width)
-        editorView.strokeWidth = width
-        editorView.applyStyleToSelection(width: width, undoKey: "width")
+    func menuWillOpen(_ menu: NSMenu) {
+        // 더보기 메뉴의 스타일 컨트롤을 현재 값으로 맞춘다.
+        menuColorWell.color = colorWell.color
+        menuWidthSlider.doubleValue = Double(editorView.strokeWidth)
         updateWidthLabel()
     }
 
@@ -646,11 +675,6 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         case #selector(selectToolFromMenu(_:)):
             let isCurrent = Self.menuTools.indices.contains(menuItem.tag) && Self.menuTools[menuItem.tag] == editorView.tool
             menuItem.state = isCurrent ? .on : .off
-            return hasImage
-        case #selector(selectWidthFromMenu(_:)):
-            menuItem.state = CGFloat(menuItem.tag) == editorView.strokeWidth ? .on : .off
-            return hasImage
-        case #selector(chooseColorFromMenu):
             return hasImage
         case #selector(undoEdit):
             return hasImage && editorView.canUndo
@@ -907,12 +931,17 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     @objc private func colorChanged(_ sender: NSColorWell) {
         editorView.strokeColor = sender.color
         editorView.applyStyleToSelection(color: sender.color, undoKey: "color")
+        // 툴바 웰과 더보기 메뉴 웰을 서로 맞춘다.
+        if sender !== colorWell { colorWell.color = sender.color }
+        if sender !== menuColorWell { menuColorWell.color = sender.color }
     }
 
     @objc private func widthChanged(_ sender: NSSlider) {
         let width = CGFloat(sender.doubleValue.rounded())
         editorView.strokeWidth = width
         editorView.applyStyleToSelection(width: width, undoKey: "width")
+        if sender !== widthSlider { widthSlider.doubleValue = Double(width) }
+        if sender !== menuWidthSlider { menuWidthSlider.doubleValue = Double(width) }
         updateWidthLabel()
     }
 
