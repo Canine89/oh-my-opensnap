@@ -7,7 +7,7 @@ import WebKit
 /// 레이아웃: 네이티브 통합 툴바 + 접히는 사이드바(날짜별 썸네일) + 큰 미리보기.
 @MainActor
 final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionViewDataSource, NSCollectionViewDelegate,
-                                     NSToolbarDelegate, NSToolbarItemValidation {
+                                     NSToolbarDelegate, NSToolbarItemValidation, NSMenuItemValidation {
     static let shared = LibraryWindowController()
 
     private var window: NSWindow?
@@ -567,7 +567,102 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         item.view = view
         item.label = label
         item.paletteLabel = label
+        // 창이 좁아져 »(더보기) 메뉴로 밀려나면 뷰 대신 이 메뉴가 보인다. 없으면 더보기 메뉴가 비어
+        // "눌러도 아무것도 안 뜨는" 버튼이 된다.
+        item.menuFormRepresentation = overflowMenuItem(for: id, label: label)
         return item
+    }
+
+    /// 뷰 기반 툴바 항목(편집·주석·스타일)의 더보기 메뉴 표현.
+    private func overflowMenuItem(for id: NSToolbarItem.Identifier, label: String) -> NSMenuItem {
+        let root = NSMenuItem(title: label, action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: label)
+        func toolEntry(_ title: String, _ tool: EditorImageView.Tool) {
+            let entry = NSMenuItem(title: title, action: #selector(selectToolFromMenu(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.tag = Self.menuTools.firstIndex(of: tool) ?? -1
+            menu.addItem(entry)
+        }
+        switch id {
+        case ToolbarID.editTools:
+            toolEntry(loc("Select", "선택") + "  V", .none)
+            toolEntry(loc("Crop", "크롭") + "  C", .crop)
+            toolEntry(loc("Cut Horizontal Strip", "가로 띠 잘라내기"), .cutHorizontal)
+            toolEntry(loc("Cut Vertical Strip", "세로 띠 잘라내기"), .cutVertical)
+        case ToolbarID.annotateTools:
+            toolEntry(loc("Numbers", "번호") + "  N", .number)
+            toolEntry(loc("Text", "텍스트") + "  T", .text)
+            toolEntry(loc("Callout", "말풍선") + "  B", .callout)
+            toolEntry(loc("Arrow", "화살표") + "  A", .arrow)
+            toolEntry(loc("Rectangle", "사각형") + "  R", .rectangle)
+            toolEntry(loc("Ellipse", "원") + "  O", .ellipse)
+            toolEntry(loc("Mosaic", "모자이크") + "  M", .mosaic)
+        case ToolbarID.style:
+            let color = NSMenuItem(title: loc("Color…", "색상…"), action: #selector(chooseColorFromMenu), keyEquivalent: "")
+            color.target = self
+            menu.addItem(color)
+            menu.addItem(.separator())
+            for width in [2, 4, 8, 12] {
+                let entry = NSMenuItem(title: loc("Width \(width)px", "굵기 \(width)px"), action: #selector(selectWidthFromMenu(_:)), keyEquivalent: "")
+                entry.target = self
+                entry.tag = width
+                menu.addItem(entry)
+            }
+        default:
+            break
+        }
+        root.submenu = menu
+        return root
+    }
+
+    /// 더보기 메뉴의 tag ↔ 도구 매핑 (편집 도구 + 주석 도구 순서).
+    private static let menuTools: [EditorImageView.Tool] = [.none, .crop, .cutHorizontal, .cutVertical,
+                                                            .number, .text, .callout, .arrow, .rectangle, .ellipse, .mosaic]
+
+    @objc private func selectToolFromMenu(_ sender: NSMenuItem) {
+        guard Self.menuTools.indices.contains(sender.tag) else { return }
+        editorView.tool = Self.menuTools[sender.tag]
+        window?.makeFirstResponder(editorView)
+    }
+
+    @objc private func chooseColorFromMenu() {
+        // 색상 웰이 더보기 메뉴 뒤에 숨어 있어도 시스템 색상 패널을 웰에 연결해 연다.
+        colorWell.activate(true)
+        NSColorPanel.shared.orderFront(nil)
+    }
+
+    @objc private func selectWidthFromMenu(_ sender: NSMenuItem) {
+        let width = CGFloat(sender.tag)
+        widthSlider.doubleValue = Double(width)
+        editorView.strokeWidth = width
+        editorView.applyStyleToSelection(width: width, undoKey: "width")
+        updateWidthLabel()
+    }
+
+    /// 더보기 메뉴 항목의 활성/체크 상태. 툴바 항목 검증과 같은 기준을 쓴다.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let hasImage = selectedItem?.kind == .image
+        switch menuItem.action {
+        case #selector(selectToolFromMenu(_:)):
+            let isCurrent = Self.menuTools.indices.contains(menuItem.tag) && Self.menuTools[menuItem.tag] == editorView.tool
+            menuItem.state = isCurrent ? .on : .off
+            return hasImage
+        case #selector(selectWidthFromMenu(_:)):
+            menuItem.state = CGFloat(menuItem.tag) == editorView.strokeWidth ? .on : .off
+            return hasImage
+        case #selector(chooseColorFromMenu):
+            return hasImage
+        case #selector(undoEdit):
+            return hasImage && editorView.canUndo
+        case #selector(redoEdit):
+            return hasImage && editorView.canRedo
+        case #selector(copySelected):
+            return hasImage
+        case #selector(saveSelected), #selector(revealSelected), #selector(deleteSelected):
+            return selectedItem != nil
+        default:
+            return true
+        }
     }
 
     private func actionItem(_ id: NSToolbarItem.Identifier, symbol: String, label: String, tip: String, action: Selector) -> NSToolbarItem {
@@ -579,6 +674,10 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         item.isBordered = true
         item.target = self
         item.action = action
+        let menuForm = NSMenuItem(title: label, action: action, keyEquivalent: "")
+        menuForm.target = self
+        menuForm.image = item.image
+        item.menuFormRepresentation = menuForm
         return item
     }
 
