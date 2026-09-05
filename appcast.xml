@@ -6,16 +6,23 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.89</title>
-      <pubDate>목, 03  9월 2026 07:02:00 +0000</pubDate>
-      <sparkle:version>90</sparkle:version>
-      <sparkle:shortVersionString>1.0.89</sparkle:shortVersionString>
+      <title>1.0.90</title>
+      <pubDate>Sat, 05 Sep 2026 01:58:21 +0000</pubDate>
+      <sparkle:version>91</sparkle:version>
+      <sparkle:shortVersionString>1.0.90</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.89</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.90</h2>
 <ul>
-<li>라이브러리 창을 좁혔을 때 툴바 오른쪽에 생기는 »(더보기) 버튼을 눌러도 빈 메뉴만 뜨던 문제 수정. 이제 밀려난 편집·주석 도구, 색상·굵기, 되돌리기/복사/저장/Finder/삭제를 메뉴에서 그대로 쓸 수 있고 현재 도구에 체크 표시. 스타일 항목을 열면 툴바와 같은 색상 웰·굵기 슬라이더가 메뉴 안에 나타남</li>
+<li>크롭을 되돌린 뒤 원본에 주석이 굳어 남는 문제를 수정. 원본 위치에 합성본을 저장한 경우에도 되돌리기 가능</li>
+<li>이미지·주석 동시 저장에 복구 기록을 추가하고, 저장 실패를 알리며 대기 중인 편집을 순서대로 재시도</li>
+<li>휴지통 이동이 실패해도 주석을 보존하고, 성공 시에도 원본 위치 복원을 위한 주석을 유지</li>
+<li>항목 재선택으로 되돌리기 이력이 초기화되는 문제를 수정하고 이미지·주석을 함께 읽도록 변경</li>
+<li>녹화 시작·중지·저장 상태를 분리하고 앱 종료가 녹화·캡처·내보내기·저장 완료를 기다리도록 개선</li>
+<li>빈 녹화와 파일 쓰기 실패를 성공으로 처리하지 않도록 수정. GIF·MP4 내보내기는 비동기 API와 임시 파일 사용</li>
+<li>썸네일 캐시에 메모리 한도를 두고, 영상 메타데이터·썸네일 읽기를 비동기로 변경</li>
+<li>회귀 테스트와 두 배포 타깃 자동 빌드를 추가. 배포 검증 실패 시 게시를 차단하고 의존성 버전을 고정</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.89.zip" type="application/octet-stream" sparkle:edSignature="+/ILqVCQVQGG0wctsj6qp03YIa8cjCD2Ma3yW/nXnMJtWrzPjXWnGIBugzCszhpGuTPFR+TxUw44RDW4rDZnAg==" length="4259731" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.90.zip" type="application/octet-stream" sparkle:edSignature="UeSzPay8xh3U4vhuZ1E4uT6c8amu8edzvV4ahtpscXIYTp9XTl3X6CrG6n2wvTlTZer+txSEtK/7a6GpeBHYCg==" length="4315491" />
     </item>
   </channel>
 </rss>
