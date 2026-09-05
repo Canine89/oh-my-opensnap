@@ -4,7 +4,8 @@
 # 사용법:
 #   ./scripts/mas-release.sh                 # 현재 버전으로 .pkg 만들기(업로드 안 함)
 #   ./scripts/mas-release.sh 1.0.84          # 버전 올려 .pkg 만들기
-#   ./scripts/mas-release.sh 1.0.84 --upload # 위 + App Store Connect 업로드
+#   ./scripts/mas-release.sh 1.0.91 --upload # API 키로 App Store Connect 업로드
+#   ./scripts/mas-release.sh 1.0.91 --upload-xcode # Xcode에 로그인된 계정으로 업로드
 #
 # 하는 일:
 #   1) (버전 인자 있으면) project.yml 의 MARKETING_VERSION/CURRENT_PROJECT_VERSION 올림
@@ -44,9 +45,11 @@ EXPORT_DIR="$ROOT/build/mas-export"
 
 VERSION_ARG=""
 UPLOAD=0
+UPLOAD_VIA_XCODE=0
 for a in "$@"; do
   case "$a" in
     --upload) UPLOAD=1 ;;
+    --upload-xcode) UPLOAD=1; UPLOAD_VIA_XCODE=1 ;;
     --*) echo "✗ 알 수 없는 옵션: $a" >&2; exit 1 ;;
     *) [ -z "$VERSION_ARG" ] || { echo "✗ 버전은 하나만 지정하세요." >&2; exit 1; }; VERSION_ARG="$a" ;;
   esac
@@ -55,10 +58,12 @@ done
 validate_release_options "$VERSION_ARG" 0 0
 if [ "$UPLOAD" = 1 ]; then
   require_clean_release_tree
+  if [ "$UPLOAD_VIA_XCODE" = 0 ]; then
   [ -n "${OMOS_ASC_API_KEY:-}" ] && [ -n "${OMOS_ASC_API_ISSUER:-}" ] || {
     echo "✗ 업로드에는 OMOS_ASC_API_KEY와 OMOS_ASC_API_ISSUER가 필요합니다." >&2
     exit 1
   }
+  fi
 fi
 "$ROOT/scripts/check.sh" > "$ROOT/build-check.log" 2>&1 || { cat "$ROOT/build-check.log" >&2; exit 1; }
 
@@ -136,7 +141,7 @@ rm -f "$OPTS"
 
 PKG="$EXPORT_DIR/$PKG_NAME"
 [ -f "$PKG" ] || { echo "✗ .pkg 생성 실패"; exit 1; }
-pkgutil --check-signature "$PKG"
+python3 "$ROOT/scripts/verify-mas-package.py" "$PKG"
 echo "✅ 제출용 패키지: $PKG"
 
 # --- 5) 업로드 ---
@@ -144,6 +149,23 @@ if [ "$UPLOAD" = "0" ]; then
   echo
   echo "다음 단계(업로드): ./scripts/mas-release.sh $VERSION --upload"
   echo "또는 Xcode → Window → Organizer → 이 아카이브 선택 → Distribute App"
+  exit 0
+fi
+
+if [ "$UPLOAD_VIA_XCODE" = 1 ]; then
+  echo "▸ Xcode 계정으로 App Store Connect 업로드"
+  UPLOAD_OPTS="$(mktemp -t masupload).plist"
+  trap 'rm -f "$UPLOAD_OPTS"' EXIT
+  python3 - "$UPLOAD_OPTS" "$TEAM_ID" <<'PYUPLOAD'
+import plistlib, sys
+with open(sys.argv[1], 'wb') as stream:
+    plistlib.dump({'method':'app-store-connect', 'teamID':sys.argv[2], 'destination':'upload',
+                  'signingStyle':'automatic', 'manageAppVersionAndBuildNumber':False,
+                  'uploadSymbols':True}, stream)
+PYUPLOAD
+  xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$EXPORT_DIR/upload" \
+    -exportOptionsPlist "$UPLOAD_OPTS" -allowProvisioningUpdates
+  echo "✅ App Store Connect 업로드 완료: $VERSION (build $BUILD)"
   exit 0
 fi
 
@@ -159,11 +181,11 @@ fi
 
 echo "▸ 검증 (altool --validate-app)"
 xcrun altool --validate-app -f "$PKG" -t macos \
-  --apiKey "$OMOS_ASC_API_KEY" --apiIssuer "$OMOS_ASC_API_ISSUER"
+  --api-key "$OMOS_ASC_API_KEY" --api-issuer "$OMOS_ASC_API_ISSUER"
 
 echo "▸ 업로드 (altool --upload-app)"
 xcrun altool --upload-app -f "$PKG" -t macos \
-  --apiKey "$OMOS_ASC_API_KEY" --apiIssuer "$OMOS_ASC_API_ISSUER"
+  --api-key "$OMOS_ASC_API_KEY" --api-issuer "$OMOS_ASC_API_ISSUER"
 
 echo "✅ 업로드 완료: $VERSION (build $BUILD)"
 echo "   App Store Connect 에서 처리(수 분)가 끝나면 심사 제출할 수 있습니다."

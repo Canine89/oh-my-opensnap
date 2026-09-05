@@ -52,7 +52,7 @@ final class CaptureCoordinator {
         if pollTimer != nil { return }
 
         // 폴링이 끝났는데도 허용되지 않은 경우에만 설정으로 안내한다.
-        PermissionAlert.show()
+        if PermissionAlert.show() { startPolling() }
     }
 
     private func startPolling() {

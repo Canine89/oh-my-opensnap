@@ -3,8 +3,8 @@ import Foundation
 /// UserDefaults 기반 환경설정.
 final class Settings {
     static let shared = Settings()
-    private let defaults = UserDefaults.standard
-    private init() {}
+    private let defaults: UserDefaults
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
     private enum Keys {
         static let playSound = "playSound"
@@ -73,23 +73,55 @@ final class Settings {
             return Self.defaultLibraryDirectory
             #endif
         }
-        set {
-            defaults.set(newValue.path, forKey: Keys.libraryDirectory)
-            #if MAS
-            bookmarkLock.lock()
-            defer { bookmarkLock.unlock() }
-            if let data = try? newValue.bookmarkData(options: .withSecurityScope,
-                                                    includingResourceValuesForKeys: nil,
-                                                    relativeTo: nil) {
-                defaults.set(data, forKey: Keys.libraryDirectoryBookmark)
-            } else {
-                defaults.removeObject(forKey: Keys.libraryDirectoryBookmark)
-            }
-            scopedLibraryURL?.stopAccessingSecurityScopedResource()
-            scopedLibraryURL = resolveLibraryBookmarkLocked()
-            didResolveBookmark = true
-            #endif
+    }
+
+    /// 새 북마크를 열 수 있음을 확인한 뒤에만 기존 폴더를 교체한다.
+    func setLibraryDirectory(_ url: URL) throws {
+        guard url.isFileURL else { throw CocoaError(.fileReadUnsupportedScheme) }
+        #if MAS
+        let access = SecurityScopedAccess(url: url)
+        defer { withExtendedLifetime(access) {} }
+        let data = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+        var stale = false
+        let resolved = try URL(resolvingBookmarkData: data, options: .withSecurityScope,
+                               relativeTo: nil, bookmarkDataIsStale: &stale)
+        guard resolved.startAccessingSecurityScopedResource() else { throw CocoaError(.fileReadNoPermission) }
+        bookmarkLock.lock()
+        defer { bookmarkLock.unlock() }
+        scopedLibraryURL?.stopAccessingSecurityScopedResource()
+        scopedLibraryURL = resolved
+        didResolveBookmark = true
+        defaults.set(data, forKey: Keys.libraryDirectoryBookmark)
+        #endif
+        defaults.set(url.path, forKey: Keys.libraryDirectory)
+    }
+
+    /// 폴더 변경 뒤에도 예약된 I/O가 끝날 때까지 기존 접근 권한을 붙잡는다.
+    func retainLibraryAccess(for url: URL) -> SecurityScopedAccess? {
+        #if MAS
+        _ = masLibraryDirectory()
+        bookmarkLock.lock()
+        defer { bookmarkLock.unlock() }
+        if let folder = scopedLibraryURL,
+           url.standardizedFileURL.path == folder.standardizedFileURL.path
+            || url.standardizedFileURL.path.hasPrefix(folder.standardizedFileURL.path + "/") {
+            return SecurityScopedAccess(url: folder)
         }
+        return SecurityScopedAccess(url: url)
+        #else
+        return nil
+        #endif
+    }
+
+    var libraryFolderNeedsRenewal: Bool {
+        #if MAS
+        _ = masLibraryDirectory()
+        bookmarkLock.lock()
+        defer { bookmarkLock.unlock() }
+        return defaults.data(forKey: Keys.libraryDirectoryBookmark) != nil && scopedLibraryURL == nil
+        #else
+        return false
+        #endif
     }
 
     #if MAS
@@ -111,7 +143,7 @@ final class Settings {
         if let url = scopedLibraryURL { return url }
         // 북마크가 없거나 해석 실패(폴더 삭제·볼륨 분리 등): 저장된 raw path는
         // 샌드박스에서 접근 불가이므로 항상 컨테이너 기본 폴더로 폴백한다.
-        return Self.defaultLibraryDirectory
+        return Self.preferredLibraryDirectory
     }
 
     /// bookmarkLock을 잡은 상태에서만 호출. 북마크를 해석해 scope를 열고 URL을 돌려준다.

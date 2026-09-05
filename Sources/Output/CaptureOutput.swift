@@ -32,7 +32,7 @@ enum CaptureOutput {
                     case .success(let url):
                         if openLibrary { LibraryWindowController.shared.showWindow(selecting: url) }
                     case .failure(let error):
-                        OperationErrorPresenter.show(error, action: loc("Copied, but could not save the capture", "복사했지만 캡처 파일을 저장하지 못했습니다"))
+                        SaveRecoveryController.shared.show(error)
                     }
                 }
             }

@@ -87,6 +87,13 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         showWindow()
     }
 
+    func discardUnsavedPreview() {
+        previewGeneration += 1
+        editorView.image = nil
+        selectedItem = nil
+        reload()
+    }
+
     func flushPendingEdits() {
         editorView.flushPendingAnnotationChanges()
     }
@@ -315,8 +322,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         // (툴바 = "현재 스타일": 선택된 것과 앞으로 그릴 것 모두에 해당)
         // 주석은 사이드카 JSON으로 항목별 보관 — 다른 캡처를 보고 돌아와도 편집이 이어진다.
         editorView.onAnnotationsChanged = { [weak self] in
-            guard let self, let item = self.selectedItem, item.kind == .image else { return }
-            CaptureLibrary.shared.saveAnnotations(self.editorView.annotationsData(), for: item.url)
+            guard let self, let item = self.selectedItem, item.kind == .image, let image = self.editorView.baseCGImage() else { return }
+            CaptureLibrary.shared.saveAnnotations(self.editorView.annotationsData(), for: item.url, image: image)
         }
         editorView.onSelectionChanged = { [weak self] annotation in
             guard let self, let annotation else { return }
@@ -748,7 +755,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private func applyItems(_ items: [LibraryItem]) {
         sections = Self.groupByDate(items)
         collectionView.reloadData()
-        window?.subtitle = items.isEmpty ? "" : loc("\(items.count) items", "\(items.count)개 항목")
+        window?.subtitle = items.isEmpty ? "" : loc(items.count == 1 ? "1 item" : "\(items.count) items", "\(items.count)개 항목")
 
         if let url = requestedSelection, let indexPath = indexPath(for: url) {
             requestedSelection = nil
@@ -1047,7 +1054,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             switch result {
             case .success: self?.refreshThumbnail(for: item.url)
             case .failure(let error):
-                OperationErrorPresenter.show(error, action: loc("Could not save the edit", "편집 내용을 저장하지 못했습니다"))
+                SaveRecoveryController.shared.show(error)
             }
         }
     }

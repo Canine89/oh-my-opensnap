@@ -215,7 +215,13 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         buttons.spacing = 8
 
         let hint = AppAppearance.secondaryText(loc("New installs default to Application Support. If an older Desktop folder already exists, it is kept. Changing the folder does not move existing captures.", "새 설치의 기본 위치는 Application Support입니다. 예전 버전의 바탕화면 폴더가 이미 있으면 그대로 유지됩니다. 폴더를 바꿔도 기존 캡처는 옮겨지지 않습니다."))
-        let container = pane([title, path, buttons, hint], spacing: 10)
+        var content: [NSView] = [title, path, buttons, hint]
+        if Settings.shared.libraryFolderNeedsRenewal {
+            let warning = AppAppearance.secondaryText(loc("Access to your previous folder has expired. Choose it again to restore access to existing captures. New captures currently use the app’s default folder.",
+                                                          "이전 폴더의 접근 권한을 복구하지 못했습니다. 폴더를 다시 선택하면 기존 캡처에 접근할 수 있습니다. 새 캡처는 현재 앱의 기본 폴더에 저장됩니다."))
+            content.append(warning)
+        }
+        let container = pane(content, spacing: 10)
         path.widthAnchor.constraint(equalToConstant: 476).isActive = true
         return container
     }
@@ -226,7 +232,9 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
             title: loc("Screen Recording", "화면 녹화"),
             detail: loc("Required for capturing. macOS grants it only with your consent; the app can only guide you to System Settings.", "캡처에 반드시 필요한 권한입니다. macOS가 사용자 동의로만 부여하며, 앱은 시스템 설정으로 안내할 수만 있습니다."))
         screen.addButton(loc("Open System Settings", "시스템 설정 열기"), target: self, action: #selector(openScreenCaptureSettings))
+        #if !MAS
         screen.addButton(loc("Open Settings & Relaunch", "설정 열고 재시작"), target: self, action: #selector(openSettingsAndRelaunch))
+        #endif
         screen.footnote = loc("After enabling the permission, a relaunch is sometimes needed. If capture is still blocked while the toggle is on, turn it off and on again, then relaunch.", "권한을 켠 뒤에는 앱을 다시 실행해야 반영되는 경우가 있습니다. 이미 켜져 있는데도 캡처가 막히면 토글을 껐다 켠 뒤 재시작하세요.")
         screenStatus = screen
 
@@ -432,10 +440,12 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         ScreenCapturePermission.openSystemSettings()
     }
 
+    #if !MAS
     @objc private func openSettingsAndRelaunch() {
         ScreenCapturePermission.openSystemSettings()
         AppRelauncher.relaunch()
     }
+    #endif
 
     #if !MAS
     @objc private func requestAccessibilityPermission() {
@@ -473,7 +483,11 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         panel.prompt = loc("Save to This Folder", "이 폴더에 저장")
         panel.directoryURL = Settings.shared.libraryDirectory
         if panel.runModal() == .OK, let url = panel.url {
-            Settings.shared.libraryDirectory = url
+            do { try Settings.shared.setLibraryDirectory(url) }
+            catch {
+                OperationErrorPresenter.show(error, action: loc("Could not access the selected folder", "선택한 폴더의 접근 권한을 저장하지 못했습니다"))
+                return
+            }
             pathControl?.url = url
             CaptureLibrary.shared.directoryDidChange()
         }

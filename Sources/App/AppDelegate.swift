@@ -70,11 +70,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try await CaptureLibrary.shared.flush()
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {
-                preparingToTerminate = false
-                CaptureCoordinator.shared.isSuspended = false
-                sender.reply(toApplicationShouldTerminate: false)
-                OperationErrorPresenter.show(error, action: loc("Could not finish saving. The app remains open.",
-                                                               "저장을 완료하지 못해 앱을 열어 두었습니다."))
+                let hasPending = await CaptureLibrary.shared.pendingWriteCount() > 0
+                let canQuit = hasPending ? await SaveRecoveryController.shared.resolve(error, terminating: true) : false
+                if !canQuit {
+                    preparingToTerminate = false
+                    CaptureCoordinator.shared.isSuspended = false
+                }
+                sender.reply(toApplicationShouldTerminate: canQuit)
+                if !hasPending {
+                    OperationErrorPresenter.show(error, action: loc("Could not finish saving. The app remains open.",
+                                                                   "저장을 완료하지 못해 앱을 열어 두었습니다."))
+                }
             }
         }
         return .terminateLater

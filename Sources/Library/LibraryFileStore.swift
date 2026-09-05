@@ -58,6 +58,17 @@ final class LibraryFileStore {
         }
     }
 
+    func saveRecovered(image: Data, annotations: Data?, at destination: URL) throws {
+        try saveNew(image, at: destination)
+        do { try saveAnnotations(annotations, at: destination) }
+        catch {
+            // 이번 복구가 생성한 파일만 정리한다. 메모리의 원본 복구 스냅샷은 유지된다.
+            try? fm.removeItem(at: destination)
+            try? fm.removeItem(at: Self.annotationsURL(for: destination))
+            throw error
+        }
+    }
+
     func saveEdit(image data: Data, annotations: Data?, at image: URL) throws {
         let previous = try load(at: image)
         let journal = Self.recoveryURL(for: image)

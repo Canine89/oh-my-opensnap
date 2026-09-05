@@ -29,6 +29,8 @@ enum VideoExportService {
     }
 
     nonisolated static func exportMP4(source: URL, timeRange: CMTimeRange) async throws -> URL {
+        let access = Settings.shared.retainLibraryAccess(for: source)
+        defer { withExtendedLifetime(access) {} }
         let asset = AVURLAsset(url: source)
         let duration = try await asset.load(.duration)
         guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
@@ -46,6 +48,8 @@ enum VideoExportService {
 
     nonisolated static func exportGIF(source: URL, timeRange: CMTimeRange, frameCount: Int) async throws -> URL {
         guard frameCount > 0, frameCount <= 300 else { throw ExportError.invalidRange }
+        let access = Settings.shared.retainLibraryAccess(for: source)
+        defer { withExtendedLifetime(access) {} }
         let asset = AVURLAsset(url: source)
         let range = try clamped(timeRange: timeRange, duration: try await asset.load(.duration))
         let generator = AVAssetImageGenerator(asset: asset)

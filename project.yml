@@ -14,8 +14,8 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "5.0"            # Swift 5 language mode: AppKit/콜백 코드 안정성 우선
-    MARKETING_VERSION: "1.0.90"
-    CURRENT_PROJECT_VERSION: "91"
+    MARKETING_VERSION: "1.0.91"
+    CURRENT_PROJECT_VERSION: "92"
     SWIFT_STRICT_CONCURRENCY: minimal
     SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
     DEAD_CODE_STRIPPING: YES
@@ -34,6 +34,8 @@ targets:
       - path: Sources/Library/ZoomableScrollView.swift
       - path: Sources/Library/LibraryFileStore.swift
       - path: Sources/Library/LibraryWriteBuffer.swift
+      - path: Sources/Library/CoordinatedFileExporter.swift
+      - path: Sources/Library/LibraryCatalog.swift
       - path: Sources/Library/VideoExportService.swift
       - path: Sources/CaptureCore/RecordingSession.swift
       - path: Sources/CaptureCore/DisplayStreamProvider.swift

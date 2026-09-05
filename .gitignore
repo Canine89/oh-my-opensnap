@@ -26,3 +26,6 @@ dist/
 # 로컬 검증 로그 / Python 테스트 캐시
 build-check.log
 __pycache__/
+
+# App Store Connect 개인키
+*.p8
