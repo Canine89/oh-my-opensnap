@@ -30,6 +30,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
+source "$ROOT/scripts/release-validation.sh"
 
 SCHEME="oh-my-opensnap-mas"
 PROJECT="oh-my-opensnap.xcodeproj"
@@ -46,9 +47,20 @@ UPLOAD=0
 for a in "$@"; do
   case "$a" in
     --upload) UPLOAD=1 ;;
-    *) VERSION_ARG="$a" ;;
+    --*) echo "✗ 알 수 없는 옵션: $a" >&2; exit 1 ;;
+    *) [ -z "$VERSION_ARG" ] || { echo "✗ 버전은 하나만 지정하세요." >&2; exit 1; }; VERSION_ARG="$a" ;;
   esac
 done
+
+validate_release_options "$VERSION_ARG" 0 0
+if [ "$UPLOAD" = 1 ]; then
+  require_clean_release_tree
+  [ -n "${OMOS_ASC_API_KEY:-}" ] && [ -n "${OMOS_ASC_API_ISSUER:-}" ] || {
+    echo "✗ 업로드에는 OMOS_ASC_API_KEY와 OMOS_ASC_API_ISSUER가 필요합니다." >&2
+    exit 1
+  }
+fi
+"$ROOT/scripts/check.sh" > "$ROOT/build-check.log" 2>&1 || { cat "$ROOT/build-check.log" >&2; exit 1; }
 
 # --- 1) 버전 올림 (요청 버전이 현재와 다를 때만) ---
 if [ -n "$VERSION_ARG" ]; then
@@ -124,7 +136,7 @@ rm -f "$OPTS"
 
 PKG="$EXPORT_DIR/$PKG_NAME"
 [ -f "$PKG" ] || { echo "✗ .pkg 생성 실패"; exit 1; }
-pkgutil --check-signature "$PKG" | head -3
+pkgutil --check-signature "$PKG"
 echo "✅ 제출용 패키지: $PKG"
 
 # --- 5) 업로드 ---

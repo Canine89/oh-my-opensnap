@@ -1,0 +1,24 @@
+name: 빌드와 회귀 테스트
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: XcodeGen 준비
+        run: command -v xcodegen || brew install xcodegen
+      - name: 두 배포 타깃 빌드 및 회귀 테스트
+        run: ./scripts/check.sh

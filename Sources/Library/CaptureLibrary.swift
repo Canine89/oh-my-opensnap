@@ -35,17 +35,23 @@ extension Notification.Name {
 /// 동의창이 뜬다. 이 동의 검사는 호출 스레드를 블로킹하므로, **모든 디스크 I/O를
 /// 메인 스레드가 아닌 `ioQueue`에서** 수행한다. (메인에서 하면 동의창이 떠 있는 동안
 /// 런루프가 멈춰 무한 바람개비가 된다.)
-final class CaptureLibrary {
+// writeBuffer와 디스크 상태는 ioQueue에 한정하며 NSCache는 자체 동기화한다.
+final class CaptureLibrary: @unchecked Sendable {
     static let shared = CaptureLibrary()
 
     /// 현재 저장 폴더. 사용자가 설정에서 고른 폴더(기본값: 바탕화면/oh-my-opensnap).
     var directory: URL { Settings.shared.libraryDirectory }
     /// thumbnailCache 는 메인 스레드에서만 읽고 쓴다.
-    private var thumbnailCache: [URL: NSImage] = [:]
+    private let thumbnailCache = NSCache<NSURL, NSImage>()
+    private let store = LibraryFileStore()
+    // 실패한 쓰기는 메모리에 유지하고 다음 저장/종료 때 순서대로 재시도한다.
+    private let writeBuffer = LibraryWriteBuffer()
     /// 바탕화면(TCC 보호) 디스크 I/O를 메인 런루프 밖에서 직렬 수행.
     private let ioQueue = DispatchQueue(label: "com.goldenrabbit.ohmyopensnap.library.io", qos: .userInitiated)
 
     private init() {
+        thumbnailCache.countLimit = 300
+        thumbnailCache.totalCostLimit = 64 * 1024 * 1024
         // 디렉터리 생성 + 레거시 이관은 바탕화면 접근이라 백그라운드에서.
         let dir = directory
         ioQueue.async { [weak self] in
@@ -58,9 +64,13 @@ final class CaptureLibrary {
     func directoryDidChange() {
         let dir = directory
         ioQueue.async {
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(name: .libraryDidChange, object: nil)
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                DispatchQueue.main.async { NotificationCenter.default.post(name: .libraryDidChange, object: nil) }
+            } catch {
+                DispatchQueue.main.async {
+                    OperationErrorPresenter.show(error, action: loc("Could not use the selected folder", "선택한 저장 폴더를 사용할 수 없습니다"))
+                }
             }
         }
     }
@@ -74,11 +84,12 @@ final class CaptureLibrary {
     }
 
     /// 충돌을 피한 PNG 대상 URL. (ioQueue에서 호출)
-    private func uniqueURL(for date: Date) -> URL {
+    private func uniqueURL(for date: Date, directory: URL) -> URL {
         let base = fileName(for: date)
         var url = directory.appendingPathComponent(base + ".png")
         var suffix = 2
-        while FileManager.default.fileExists(atPath: url.path) {
+        while writeBuffer.contains(url) || FileManager.default.fileExists(atPath: url.path)
+                || FileManager.default.fileExists(atPath: LibraryFileStore.annotationsURL(for: url).path) {
             url = directory.appendingPathComponent("\(base)-\(suffix).png")
             suffix += 1
         }
@@ -87,18 +98,36 @@ final class CaptureLibrary {
 
     /// 캡처본 저장 후 변경 알림 발송. 디스크 쓰기는 백그라운드에서 수행하고
     /// 알림만 메인으로 되돌린다.
-    func save(pngData: Data, date: Date) {
-        ioQueue.async { [weak self] in
-            guard let self else { return }
-            try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
-            let url = self.uniqueURL(for: date)
-            do {
-                try pngData.write(to: url)
-                DispatchQueue.main.async {
+    func save(pngData: Data, date: Date, completion: @escaping (Result<URL, Error>) -> Void) {
+        let directory = directory
+        ioQueue.async {
+            let url = self.uniqueURL(for: date, directory: directory)
+            let result = self.performWrite(at: url) { try self.store.saveNew(pngData, at: url) }
+            DispatchQueue.main.async {
+                completion(result.map { url })
+                if case .success = result {
                     NotificationCenter.default.post(name: .libraryDidChange, object: nil)
                 }
-            } catch {
-                NSLog("Library save failed: \(error)")
+            }
+        }
+    }
+
+    /// 이 메서드와 writeBuffer는 ioQueue에서만 접근한다.
+    private func performWrite(at url: URL, operation: @escaping () throws -> Void) -> Result<Void, Error> {
+        Result { try writeBuffer.enqueue(at: url, operation: operation) }
+    }
+
+    private func drainWrites(at url: URL) throws {
+        try writeBuffer.retry(at: url)
+    }
+
+    func flush() async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            ioQueue.async {
+                do {
+                    try self.writeBuffer.flush()
+                    DispatchQueue.main.async { continuation.resume() }
+                } catch { DispatchQueue.main.async { continuation.resume(throwing: error) } }
             }
         }
     }
@@ -120,11 +149,11 @@ final class CaptureLibrary {
             let urls = (try? fm.contentsOfDirectory(at: legacy, includingPropertiesForKeys: [.creationDateKey])) ?? []
             for old in urls where old.pathExtension.lowercased() == "png" {
                 let date = (try? old.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()
-                try? fm.moveItem(at: old, to: uniqueURL(for: date))
+                try? fm.moveItem(at: old, to: uniqueURL(for: date, directory: directory))
             }
             // PNG 외 파일(gif/mp4, 사용자가 넣어둔 것)이 남아 있으면 폴더를 지우지 않는다.
-            let remaining = ((try? fm.contentsOfDirectory(atPath: legacy.path)) ?? [])
-                .filter { $0 != ".DS_Store" }
+            guard let contents = try? fm.contentsOfDirectory(atPath: legacy.path) else { continue }
+            let remaining = contents.filter { $0 != ".DS_Store" }
             if remaining.isEmpty {
                 try? fm.removeItem(at: legacy)
             }
@@ -132,97 +161,118 @@ final class CaptureLibrary {
     }
 
     /// 최신순 목록을 백그라운드에서 읽어 메인에서 콜백한다.
-    func loadItems(completion: @escaping ([LibraryItem]) -> Void) {
-        ioQueue.async { [weak self] in
-            guard let self else {
-                DispatchQueue.main.async { completion([]) }
-                return
+    func loadItems(completion: @escaping (Result<[LibraryItem], Error>) -> Void) {
+        let directory = directory
+        ioQueue.async {
+            let result = Result { () throws -> [LibraryItem] in
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let keys: Set<URLResourceKey> = [.creationDateKey, .contentModificationDateKey]
+                let urls = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys))
+                return try urls.filter { ["png", "gif", "mp4", "mov", "m4v"].contains($0.pathExtension.lowercased()) }
+                    .map { url in
+                        try self.store.recover(at: url)
+                        let values = try url.resourceValues(forKeys: keys)
+                        return LibraryItem(url: url, date: values.creationDate ?? values.contentModificationDate ?? .distantPast)
+                    }.sorted { $0.date > $1.date }
             }
-            let keys: Set<URLResourceKey> = [.creationDateKey, .contentModificationDateKey]
-            let urls = (try? FileManager.default.contentsOfDirectory(
-                at: self.directory, includingPropertiesForKeys: Array(keys))) ?? []
-            let items = urls
-                .filter { ["png", "gif", "mp4"].contains($0.pathExtension.lowercased()) }
-                .map { url -> LibraryItem in
-                    let values = try? url.resourceValues(forKeys: keys)
-                    let date = values?.creationDate ?? values?.contentModificationDate ?? .distantPast
-                    return LibraryItem(url: url, date: date)
-                }
-                .sorted { $0.date > $1.date }
-            DispatchQueue.main.async { completion(items) }
+            DispatchQueue.main.async { completion(result) }
         }
     }
 
     /// 파일이 덮어써졌을 때 캐시된 썸네일을 버린다. (메인)
     func invalidateThumbnail(for url: URL) {
-        thumbnailCache[url] = nil
+        thumbnailCache.removeObject(forKey: url as NSURL)
     }
 
     /// 휴지통으로 이동(바탕화면 접근)도 백그라운드에서. 완료 후 메인에서 알림.
-    func delete(_ item: LibraryItem) {
-        thumbnailCache[item.url] = nil
-        let url = item.url
-        let sidecar = annotationsURL(for: url)
+    func delete(_ item: LibraryItem, completion: @escaping (Result<Void, Error>) -> Void) {
         ioQueue.async {
-            try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
-            try? FileManager.default.removeItem(at: sidecar)
+            // 휴지통 이동 실패를 종료 때 자동 재시도하지 않는다. 사용자가 다시 요청한다.
+            let result = Result {
+                try self.drainWrites(at: item.url)
+                try self.store.trash(at: item.url)
+            }
             DispatchQueue.main.async {
-                NotificationCenter.default.post(name: .libraryDidChange, object: nil)
+                completion(result)
+                if case .success = result {
+                    self.thumbnailCache.removeObject(forKey: item.url as NSURL)
+                    NotificationCenter.default.post(name: .libraryDidChange, object: nil)
+                }
             }
         }
     }
 
-    /// 원본 PNG를 백그라운드에서 읽어 메인에서 콜백. (미리보기/편집기 로드용)
-    func loadImage(at url: URL, completion: @escaping (NSImage?) -> Void) {
+    /// 이미지와 주석을 같은 큐 작업에서 읽어 서로 다른 편집 상태가 섞이지 않게 한다.
+    func loadDocument(at url: URL, completion: @escaping (Result<(NSImage, Data?), Error>) -> Void) {
         ioQueue.async {
-            let image = NSImage(contentsOf: url)
-            DispatchQueue.main.async { completion(image) }
+            let result = Result { () throws -> (NSImage, Data?) in
+                try self.drainWrites(at: url)
+                let document = try self.store.load(at: url)
+                guard let image = NSImage(data: document.image) else { throw CocoaError(.fileReadCorruptFile) }
+                return (image, document.annotations)
+            }
+            DispatchQueue.main.async { completion(result) }
         }
     }
 
-    /// 편집 결과 PNG를 라이브러리 파일에 덮어쓰기 저장(백그라운드) 후 메인에서 콜백.
-    /// 전체 reload(.libraryDidChange)를 발생시키지 않는다 — 그러면 편집 중인 에디터가
-    /// 새로고침되며 undo 스택이 날아가기 때문. 호출 측이 해당 썸네일만 갱신하도록 한다.
-    func overwrite(pngData: Data, at url: URL, completion: (() -> Void)? = nil) {
-        thumbnailCache[url] = nil
+    func saveEdit(image: CGImage, annotations: Data?, at url: URL,
+                  completion: @escaping (Result<Void, Error>) -> Void) {
         ioQueue.async {
-            try? pngData.write(to: url)
-            DispatchQueue.main.async { completion?() }
+            let result = self.performWrite(at: url) {
+                guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+                try self.store.saveEdit(image: png, annotations: annotations, at: url)
+            }
+            DispatchQueue.main.async {
+                if case .success = result { self.thumbnailCache.removeObject(forKey: url as NSURL) }
+                completion(result)
+            }
         }
     }
 
-    // MARK: 주석 사이드카
-    /// 주석은 이미지를 건드리지 않고 숨은 폴더 `.annotations/<파일명>.json`에 따로 보관한다.
-    /// → 항목을 오가도 편집이 이어지고, 원본 PNG는 크롭 전까지 그대로다.
-    private func annotationsURL(for imageURL: URL) -> URL {
-        directory.appendingPathComponent(".annotations", isDirectory: true)
-            .appendingPathComponent(imageURL.lastPathComponent + ".json")
-    }
-
-    func loadAnnotations(for imageURL: URL, completion: @escaping (Data?) -> Void) {
-        let url = annotationsURL(for: imageURL)
-        ioQueue.async {
-            let data = try? Data(contentsOf: url)
-            DispatchQueue.main.async { completion(data) }
-        }
-    }
-
-    /// nil이면 사이드카를 지운다(주석이 하나도 없어진 경우).
     func saveAnnotations(_ data: Data?, for imageURL: URL) {
-        let url = annotationsURL(for: imageURL)
         ioQueue.async {
-            let fm = FileManager.default
-            if let data {
-                try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try? data.write(to: url, options: .atomic)
-            } else {
-                try? fm.removeItem(at: url)
+            let result = self.performWrite(at: imageURL) {
+                try self.store.saveAnnotations(data, at: imageURL)
             }
+            if case .failure(let error) = result {
+                DispatchQueue.main.async {
+                    OperationErrorPresenter.show(error, action: loc("Could not save annotations", "주석을 저장하지 못했습니다"))
+                }
+            }
+        }
+    }
+
+    func export(data: Data, to url: URL, completion: @escaping (Result<Void, Error>) -> Void) {
+        ioQueue.async {
+            let result = Result {
+                try self.drainWrites(at: url)
+                if url.pathExtension.lowercased() == "png",
+                   FileManager.default.fileExists(atPath: LibraryFileStore.annotationsURL(for: url).path) {
+                    try self.store.saveEdit(image: data, annotations: nil, at: url)
+                } else { try data.write(to: url, options: .atomic) }
+            }
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    func exportFile(from source: URL, to url: URL, completion: @escaping (Result<Void, Error>) -> Void) {
+        ioQueue.async {
+            let result = Result {
+                let staging = url.deletingLastPathComponent().appendingPathComponent(".export-" + UUID().uuidString)
+                defer { try? FileManager.default.removeItem(at: staging) }
+                try FileManager.default.copyItem(at: source, to: staging)
+                if FileManager.default.fileExists(atPath: url.path) {
+                    _ = try FileManager.default.replaceItemAt(url, withItemAt: staging)
+                } else { try FileManager.default.moveItem(at: staging, to: url) }
+            }
+            DispatchQueue.main.async { completion(result) }
         }
     }
 
     func fileDidChange(_ url: URL? = nil) {
-        if let url { thumbnailCache[url] = nil }
+        if let url { thumbnailCache.removeObject(forKey: url as NSURL) }
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .libraryDidChange, object: nil)
         }
@@ -231,20 +281,27 @@ final class CaptureLibrary {
     /// 효율적인 썸네일 (CGImageSource 다운샘플 + 캐시). 디스크 읽기는 백그라운드,
     /// 캐시 갱신/콜백은 메인에서.
     func thumbnail(for url: URL, maxPixel: CGFloat = 240, completion: @escaping (NSImage?) -> Void) {
-        if let cached = thumbnailCache[url] { completion(cached); return }
+        if let cached = thumbnailCache.object(forKey: url as NSURL) { completion(cached); return }
+        if ["mp4", "mov", "m4v"].contains(url.pathExtension.lowercased()) {
+            Task {
+                let image = await Self.makeVideoThumbnail(url: url, maxPixel: maxPixel)
+                await MainActor.run {
+                    if let image { self.thumbnailCache.setObject(image, forKey: url as NSURL, cost: Int(image.size.width * image.size.height * 4)) }
+                    completion(image)
+                }
+            }
+            return
+        }
         ioQueue.async { [weak self] in
             let image = Self.makeThumbnail(url: url, maxPixel: maxPixel)
             DispatchQueue.main.async {
-                if let image { self?.thumbnailCache[url] = image }
+                if let image { self?.thumbnailCache.setObject(image, forKey: url as NSURL, cost: Int(image.size.width * image.size.height * 4)) }
                 completion(image)
             }
         }
     }
 
     private static func makeThumbnail(url: URL, maxPixel: CGFloat) -> NSImage? {
-        if url.pathExtension.lowercased() == "mp4" {
-            return makeVideoThumbnail(url: url, maxPixel: maxPixel)
-        }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
@@ -255,15 +312,14 @@ final class CaptureLibrary {
         return NSImage(cgImage: cgThumb, size: NSSize(width: cgThumb.width, height: cgThumb.height))
     }
 
-    private static func makeVideoThumbnail(url: URL, maxPixel: CGFloat) -> NSImage? {
+    private static func makeVideoThumbnail(url: URL, maxPixel: CGFloat) async -> NSImage? {
         let asset = AVURLAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: maxPixel, height: maxPixel)
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
-        guard let cgImage = try? generator.copyCGImage(at: CMTime(seconds: 0.1, preferredTimescale: 600),
-                                                       actualTime: nil) else { return nil }
-        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        guard let frame = try? await generator.image(at: .zero) else { return nil }
+        return NSImage(cgImage: frame.image, size: NSSize(width: frame.image.width, height: frame.image.height))
     }
 }

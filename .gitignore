@@ -22,3 +22,7 @@ dist/
 
 # 서명 인증서 백업(절대 커밋 금지)
 *.p12
+
+# 로컬 검증 로그 / Python 테스트 캐시
+build-check.log
+__pycache__/

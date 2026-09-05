@@ -5,6 +5,8 @@ import AppKit
 final class CaptureCoordinator {
     static let shared = CaptureCoordinator()
 
+    var isSuspended = false
+
     private var didRequestPermissionThisLaunch = false
     private var pendingStart: (() -> Void)?
     private var pollTimer: Timer?
@@ -22,6 +24,7 @@ final class CaptureCoordinator {
     }
 
     private func attemptStart(_ action: @escaping () -> Void) {
+        guard !isSuspended else { return }
         if ScreenCapturePermission.isGranted {
             stopPolling()
             pendingStart = nil
@@ -63,6 +66,7 @@ final class CaptureCoordinator {
     }
 
     private func pollPermission() {
+        guard !isSuspended else { stopPolling(); pendingStart = nil; return }
         if ScreenCapturePermission.isGranted {
             let action = pendingStart
             stopPolling()

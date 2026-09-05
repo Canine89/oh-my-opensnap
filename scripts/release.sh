@@ -30,6 +30,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
+source "$ROOT/scripts/release-validation.sh"
 
 SCHEME="oh-my-opensnap"
 PROJECT="oh-my-opensnap.xcodeproj"
@@ -52,9 +53,21 @@ for a in "$@"; do
     --publish) PUBLISH=1 ;;
     --skip-notary) SKIP_NOTARY=1 ;;
     --skip-appcast) SKIP_APPCAST=1 ;;
-    *) VERSION_ARG="$a" ;;
+    --*) echo "✗ 알 수 없는 옵션: $a" >&2; exit 1 ;;
+    *) [ -z "$VERSION_ARG" ] || { echo "✗ 버전은 하나만 지정하세요." >&2; exit 1; }; VERSION_ARG="$a" ;;
   esac
 done
+
+validate_release_options "$VERSION_ARG" "$PUBLISH" "$SKIP_NOTARY"
+if [ "$PUBLISH" = 1 ]; then
+  require_clean_release_tree
+  [ "$(git branch --show-current)" = main ] || { echo "✗ appcast 게시 브랜치는 main이어야 합니다." >&2; exit 1; }
+fi
+# 테스트 실패를 서명·공증·게시 전에 차단한다.
+"$ROOT/scripts/check.sh" > "$ROOT/build-check.log" 2>&1 || {
+  cat "$ROOT/build-check.log" >&2
+  exit 1
+}
 
 # --- 1) 버전 올림 (요청 버전이 현재와 다를 때만 → 재실행 시 중복 올림 방지) ---
 if [ -n "$VERSION_ARG" ]; then
@@ -94,10 +107,10 @@ MINOS="$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$APP/Conten
 #  - 공증에는 하드닝 런타임(--options runtime) + 보안 타임스탬프(--timestamp)가 필수.
 #  - Sparkle 의 중첩 코드(XPC/Updater/Autoupdate/framework)를 안쪽→바깥(app) 순서로 서명한다.
 #    (codesign --deep 는 중첩 XPC 봉인을 망가뜨릴 수 있어 쓰지 않는다.)
-DEV_ID="Developer ID Application"
+DEV_ID="${OMOS_SIGN_IDENTITY:-Developer ID Application}"
 NOTARY_PROFILE="${OMOS_NOTARY_PROFILE:-oh-my-opensnap}"   # xcrun notarytool store-credentials 프로필명
 echo "▸ Developer ID 서명 ($DEV_ID)"
-if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "$DEV_ID"; then
+if ! security find-identity -v -p codesigning 2>/dev/null | grep -Fq "$DEV_ID"; then
   echo "✗ '$DEV_ID' 인증서가 키체인에 없습니다."
   echo "  Apple Developer Program($99) 멤버십 활성 후, Xcode → Settings → Accounts →"
   echo "  Manage Certificates → '+' → 'Developer ID Application' 로 발급하세요."
@@ -124,6 +137,8 @@ echo "▸ 패키징 (DMG)"
 mkdir -p "$DIST"
 # 사람이 받는 DMG (드래그-투-Applications)
 STAGING="$(mktemp -d)"
+RELEASE_TMP="$(mktemp -d)"
+trap 'rm -rf "$STAGING" "$RELEASE_TMP"' EXIT
 cp -R "$APP" "$STAGING/"
 ln -s /Applications "$STAGING/Applications"
 DMG="$DIST/oh-my-opensnap-$VERSION.dmg"
@@ -133,17 +148,22 @@ rm -rf "$STAGING"
 
 if [ "$SKIP_NOTARY" = "0" ]; then
   echo "▸ 공증 제출 (notarytool, 보통 1~5분 소요)"
-  if ! xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait; then
+  NOTARY_RESULT="$DIST/notarization-$VERSION.json"
+  if ! xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait --output-format json > "$NOTARY_RESULT"; then
     echo "✗ 공증 실패. 원인 보기:"
     echo "    xcrun notarytool history --keychain-profile \"$NOTARY_PROFILE\""
     echo "    xcrun notarytool log <submission-id> --keychain-profile \"$NOTARY_PROFILE\""
     exit 1
   fi
+  SUBMISSION_ID="$(require_accepted_notarization "$NOTARY_RESULT")"
+  xcrun notarytool info "$SUBMISSION_ID" --keychain-profile "$NOTARY_PROFILE" --output-format json > "$RELEASE_TMP/notary-info.json"
+  require_accepted_notarization "$RELEASE_TMP/notary-info.json" >/dev/null
+  xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" --output-format json > "$RELEASE_TMP/notary-history.json"
+  require_notarization_history "$RELEASE_TMP/notary-history.json" "$SUBMISSION_ID"
   echo "▸ 스테이플 (DMG + .app) — 공증 티켓을 cdhash 로 첨부 → 오프라인에서도 무경고 실행"
   xcrun stapler staple "$DMG"
   xcrun stapler staple "$APP"
-  xcrun stapler validate "$APP" >/dev/null && echo "  스테이플 확인 ✓"
-  spctl -a -vv "$APP" 2>&1 | grep -iE "accepted|origin" || true
+  verify_notarized_artifacts "$APP" "$DMG"
 else
   echo "▸ 공증 건너뜀(--skip-notary): Developer ID 서명만 (다운로드 시 Gatekeeper 경고 남음)"
 fi
@@ -185,19 +205,23 @@ if [ "$SKIP_APPCAST" = "1" ]; then
     echo "▸ project.yml(버전)$([ -f "$CASK" ] && echo ' + Cask') 커밋/푸시 (appcast/updates 제외)"
     git add project.yml
     [ -f "$CASK" ] && git add "$CASK"
-    git commit -q -m "release: v$VERSION (DMG 공증 배포, appcast 보류)" || true
+    if ! git diff --cached --quiet; then
+      git commit -q -m "release: v$VERSION (DMG 공증 배포, appcast 보류)"
+    fi
     git push
     echo "▸ GitHub Release '$TAG' 업로드 (DMG)"
     if gh release view "$TAG" >/dev/null 2>&1; then
       gh release upload "$TAG" "$DMG" --clobber
     else
-      gh release create "$TAG" "$DMG" \
-        --title "oh-my-opensnap $VERSION" \
-        --notes "$NOTES_MD
+      cat > "$RELEASE_TMP/release-notes.md" <<NOTES
+$NOTES_MD
 
 ---
 설치: [INSTALL.md](https://github.com/$REPO/blob/main/INSTALL.md) 참고.
-⚠️ 이 릴리스는 아직 자동 업데이트(appcast)에 반영되지 않았습니다 — 신규/수동 다운로드용입니다."
+⚠️ 이 릴리스는 아직 자동 업데이트(appcast)에 반영되지 않았습니다 — 신규/수동 다운로드용입니다.
+NOTES
+      gh release create "$TAG" "$DMG" \
+        --title "oh-my-opensnap $VERSION" --notes-file "$RELEASE_TMP/release-notes.md"
     fi
     echo "✅ 게시 완료(DMG 전용): $TAG"
     echo "ℹ️ 자동 업데이트 푸시(기존 사용자용)는 EdDSA 키가 있는 Mac에서: ./scripts/release.sh $VERSION --publish"
@@ -212,6 +236,10 @@ SIGN_UPDATE="$(find "$DD/SourcePackages" "$HOME/Library/Developer/Xcode/DerivedD
 [ -x "$SIGN_UPDATE" ] || { echo "✗ sign_update 도구를 못 찾음 (Sparkle 패키지 해석 필요)"; exit 1; }
 # 예: sparkle:edSignature="..." length="12345"
 SIG_ATTRS="$("$SIGN_UPDATE" "$ZIP")"
+UPDATE_SIGNATURE="$(printf '%s' "$SIG_ATTRS" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')"
+UPDATE_PUBLIC_KEY="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")"
+swift "$ROOT/scripts/verify-update.swift" "$ZIP" "$UPDATE_SIGNATURE" "$UPDATE_PUBLIC_KEY"
+
 mkdir -p "$UPDATES"
 UPDATE_ZIP="$UPDATES/oh-my-opensnap-$VERSION.zip"
 cp "$ZIP" "$UPDATE_ZIP"
@@ -270,16 +298,17 @@ if [ "$PUBLISH" = "1" ]; then
   echo "▸ appcast.xml + project.yml(버전) + updates ZIP + Cask 커밋/푸시"
   git add appcast.xml project.yml "$UPDATE_ZIP"
   [ -f "$CASK" ] && git add "$CASK"
-  git commit -q -m "release: v$VERSION (appcast 갱신)" || true
+  if ! git diff --cached --quiet; then
+    git commit -q -m "release: v$VERSION (appcast 갱신)"
+  fi
   git push
   echo "▸ 공개 업데이트 ZIP 다운로드 확인"
   curl --fail --location --retry 12 --retry-delay 5 --retry-all-errors \
-    --output /tmp/oh-my-opensnap-update-check.zip "$ZIP_URL" >/dev/null
-  ACTUAL_SIZE="$(stat -f%z /tmp/oh-my-opensnap-update-check.zip)"
-  EXPECTED_SIZE="$(stat -f%z "$ZIP")"
-  rm -f /tmp/oh-my-opensnap-update-check.zip
-  if [ "$ACTUAL_SIZE" != "$EXPECTED_SIZE" ]; then
-    echo "✗ 공개 ZIP 크기 불일치: expected=$EXPECTED_SIZE actual=$ACTUAL_SIZE"
+    --output "$RELEASE_TMP/update-check.zip" "$ZIP_URL" >/dev/null
+  ACTUAL_SHA="$(shasum -a 256 "$RELEASE_TMP/update-check.zip" | awk '{print $1}')"
+  EXPECTED_SHA="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
+  if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+    echo "✗ 공개 ZIP SHA-256 불일치" >&2
     exit 1
   fi
   # 2) 릴리스 생성/자산 업로드
@@ -287,12 +316,14 @@ if [ "$PUBLISH" = "1" ]; then
   if gh release view "$TAG" >/dev/null 2>&1; then
     gh release upload "$TAG" "$DMG" "$ZIP" --clobber
   else
-    gh release create "$TAG" "$DMG" "$ZIP" \
-      --title "oh-my-opensnap $VERSION" \
-      --notes "$NOTES_MD
+    cat > "$RELEASE_TMP/release-notes.md" <<NOTES
+$NOTES_MD
 
 ---
-설치: [INSTALL.md](https://github.com/$REPO/blob/main/INSTALL.md) 참고. 이미 설치한 사용자는 앱이 자동으로 업데이트합니다."
+설치: [INSTALL.md](https://github.com/$REPO/blob/main/INSTALL.md) 참고. 이미 설치한 사용자는 앱이 자동으로 업데이트합니다.
+NOTES
+    gh release create "$TAG" "$DMG" "$ZIP" \
+      --title "oh-my-opensnap $VERSION" --notes-file "$RELEASE_TMP/release-notes.md"
   fi
   echo "✅ 게시 완료: $TAG"
 else

@@ -2,6 +2,7 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBar: MenuBarController?
+    private var preparingToTerminate = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
@@ -52,6 +53,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var debugChoiceHUD: CaptureChoiceHUD?
     #endif
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !preparingToTerminate else { return .terminateLater }
+        preparingToTerminate = true
+        CaptureCoordinator.shared.isSuspended = true
+        OverlayController.shared.cancelForTermination()
+        LibraryWindowController.shared.flushPendingEdits()
+        Task { @MainActor in
+            do {
+                await OverlayController.shared.finishPendingCaptures()
+                try await VideoRecordingController.shared.finishForTermination()
+                await CaptureOutput.flush()
+                await VideoExportService.flush()
+                // 인코딩 완료 중 추가된 편집 저장까지 다시 예약한 뒤 큐를 비운다.
+                LibraryWindowController.shared.flushPendingEdits()
+                try await CaptureLibrary.shared.flush()
+                sender.reply(toApplicationShouldTerminate: true)
+            } catch {
+                preparingToTerminate = false
+                CaptureCoordinator.shared.isSuspended = false
+                sender.reply(toApplicationShouldTerminate: false)
+                OperationErrorPresenter.show(error, action: loc("Could not finish saving. The app remains open.",
+                                                               "저장을 완료하지 못해 앱을 열어 두었습니다."))
+            }
+        }
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         HotkeyManager.shared.stop()
     }
@@ -69,9 +97,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let editItem = NSMenuItem()
         mainMenu.addItem(editItem)
         let editMenu = NSMenu(title: loc("Edit", "편집"))
-        editMenu.addItem(withTitle: loc("Undo", "되돌리기"), action: Selector(("undo:")), keyEquivalent: "z")
-        editMenu.addItem(withTitle: loc("Redo", "다시 실행"), action: Selector(("redo:")), keyEquivalent: "Z")   // 대문자 = ⇧⌘Z
-        editMenu.addItem(withTitle: loc("Copy", "복사"), action: Selector(("copy:")), keyEquivalent: "c")
+        editMenu.addItem(withTitle: loc("Undo", "되돌리기"), action: #selector(EditorImageView.undo(_:)), keyEquivalent: "z")
+        editMenu.addItem(withTitle: loc("Redo", "다시 실행"), action: #selector(EditorImageView.redo(_:)), keyEquivalent: "Z")   // 대문자 = ⇧⌘Z
+        editMenu.addItem(withTitle: loc("Copy", "복사"), action: #selector(EditorImageView.copy(_:)), keyEquivalent: "c")
         editItem.submenu = editMenu
 
         // 라이브러리·설정 창을 ⌘W로 닫고 ⌘M으로 최소화할 수 있도록 표준 Window 메뉴를 둔다.

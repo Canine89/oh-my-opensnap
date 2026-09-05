@@ -1,23 +1,17 @@
 import AVFoundation
 import ScreenCaptureKit
 
-final class AreaVideoRecorder: NSObject, SCStreamOutput {
+@MainActor
+final class AreaVideoRecorder: NSObject, Recording, SCStreamOutput, SCStreamDelegate {
     private let display: SCDisplay
     private let sourceRect: CGRect
     private let outputURL: URL
     private let scale: CGFloat
     private let excluding: [SCWindow]
-    private let sampleQueue = DispatchQueue(label: "com.goldenrabbit.ohmyopensnap.video-recorder")
-
+    nonisolated private let frames: VideoFrameWriter
     private var stream: SCStream?
-    private var writer: AVAssetWriter?
-    private var input: AVAssetWriterInput?
-    private var didStartSession = false
-    private var isStopping = false
-    private var isPaused = false
-    private var pauseBeganAt: CMTime?
-    private var pausedDuration: CMTime = .zero
-    private var shouldClosePauseGap = false
+    private var streamError: Error?
+    var onFailure: ((Error) -> Void)?
 
     init(display: SCDisplay, sourceRect: CGRect, outputURL: URL, scale: CGFloat, excluding: [SCWindow]) {
         self.display = display
@@ -25,160 +19,58 @@ final class AreaVideoRecorder: NSObject, SCStreamOutput {
         self.outputURL = outputURL
         self.scale = scale
         self.excluding = excluding
+        frames = VideoFrameWriter(outputURL: outputURL)
         super.init()
     }
 
     func start() async throws {
-        try? FileManager.default.removeItem(at: outputURL)
-
-        let pixelWidth = max(2, Int((sourceRect.width * scale).rounded()))
-        let pixelHeight = max(2, Int((sourceRect.height * scale).rounded()))
-
-        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: pixelWidth,
-            AVVideoHeightKey: pixelHeight
-        ])
-        input.expectsMediaDataInRealTime = true
-
-        guard writer.canAdd(input) else { throw NSError(domain: "AreaVideoRecorder", code: 1) }
-        writer.add(input)
-        guard writer.startWriting() else {
-            throw writer.error ?? NSError(domain: "AreaVideoRecorder", code: 2)
-        }
-
-        let filter = SCContentFilter(display: display, excludingWindows: excluding)
+        // H.264가 요구하는 짝수 크기로 맞춘다.
+        let width = max(2, Int((sourceRect.width * scale).rounded()) / 2 * 2)
+        let height = max(2, Int((sourceRect.height * scale).rounded()) / 2 * 2)
+        try await frames.start(width: width, height: height)
         let config = SCStreamConfiguration()
         config.sourceRect = sourceRect
-        config.width = pixelWidth
-        config.height = pixelHeight
+        config.width = width
+        config.height = height
         config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.queueDepth = 8
         config.showsCursor = true
-
-        let stream = SCStream(filter: filter, configuration: config, delegate: nil)
-        try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: sampleQueue)
-        try await stream.startCapture()
-
-        self.writer = writer
-        self.input = input
-        self.stream = stream
+        let stream = SCStream(filter: SCContentFilter(display: display, excludingWindows: excluding),
+                              configuration: config, delegate: self)
+        do {
+            try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: frames.queue)
+            self.stream = stream
+            try await stream.startCapture()
+        } catch {
+            self.stream = nil
+            await frames.cancel()
+            throw error
+        }
     }
 
-    func stop() async -> URL {
-        isStopping = true
-        let stream = stream
-        self.stream = nil
-
+    func stop() async throws -> URL {
         if let stream {
-            await withCheckedContinuation { continuation in
-                stream.stopCapture { _ in continuation.resume() }
-            }
+            self.stream = nil
+            do { try await stream.stopCapture() }
+            catch { if streamError == nil { streamError = error } }
         }
-
-        let finisher: AssetWriterFinisher?
-        if let writer, let input {
-            finisher = AssetWriterFinisher(writer: writer, input: input)
-        } else {
-            finisher = nil
-        }
-        self.writer = nil
-        self.input = nil
-
-        await withCheckedContinuation { continuation in
-            sampleQueue.async {
-                guard let finisher else {
-                    continuation.resume()
-                    return
-                }
-                finisher.finish {
-                    continuation.resume()
-                }
-            }
-        }
-
+        try await frames.finish(streamError: streamError)
         return outputURL
     }
 
-    func setPaused(_ paused: Bool) {
-        sampleQueue.async { [weak self] in
-            guard let self, !self.isStopping, self.isPaused != paused else { return }
-            self.isPaused = paused
-            if paused {
-                self.pauseBeganAt = nil
-            } else {
-                self.shouldClosePauseGap = true
-            }
-        }
+    func setPaused(_ paused: Bool) { frames.setPaused(paused) }
+
+    nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+                            of type: SCStreamOutputType) {
+        if type == .screen { frames.append(sampleBuffer) }
     }
 
-    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .screen,
-              !isStopping,
-              sampleBuffer.isValid,
-              isCompleteFrame(sampleBuffer),
-              let writer,
-              let input,
-              input.isReadyForMoreMediaData else { return }
-
-        let presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        if isPaused {
-            if pauseBeganAt == nil { pauseBeganAt = presentationTime }
-            return
+    nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
+        Task { @MainActor in
+            guard self.stream != nil else { return }
+            self.streamError = error
+            self.onFailure?(error)
         }
-        if shouldClosePauseGap {
-            if let pauseBeganAt {
-                pausedDuration = CMTimeAdd(pausedDuration, CMTimeSubtract(presentationTime, pauseBeganAt))
-            }
-            pauseBeganAt = nil
-            shouldClosePauseGap = false
-        }
-
-        let adjustedPresentationTime = CMTimeSubtract(presentationTime, pausedDuration)
-        if !didStartSession {
-            writer.startSession(atSourceTime: adjustedPresentationTime)
-            didStartSession = true
-        }
-        input.append(retimedSampleBuffer(sampleBuffer, presentationTime: adjustedPresentationTime) ?? sampleBuffer)
-    }
-
-    private func isCompleteFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
-        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
-              let rawStatus = attachments.first?[.status] as? Int,
-              let status = SCFrameStatus(rawValue: rawStatus) else {
-            return true
-        }
-        return status == .complete
-    }
-
-    private func retimedSampleBuffer(_ sampleBuffer: CMSampleBuffer, presentationTime: CMTime) -> CMSampleBuffer? {
-        var timing = CMSampleTimingInfo(duration: CMSampleBufferGetDuration(sampleBuffer),
-                                        presentationTimeStamp: presentationTime,
-                                        decodeTimeStamp: CMSampleBufferGetDecodeTimeStamp(sampleBuffer))
-        var adjusted: CMSampleBuffer?
-        let status = CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault,
-                                                           sampleBuffer: sampleBuffer,
-                                                           sampleTimingEntryCount: 1,
-                                                           sampleTimingArray: &timing,
-                                                           sampleBufferOut: &adjusted)
-        guard status == noErr else { return nil }
-        return adjusted
-    }
-}
-
-private final class AssetWriterFinisher: @unchecked Sendable {
-    private let writer: AVAssetWriter
-    private let input: AVAssetWriterInput
-
-    init(writer: AVAssetWriter, input: AVAssetWriterInput) {
-        self.writer = writer
-        self.input = input
-    }
-
-    func finish(completion: @escaping () -> Void) {
-        input.markAsFinished()
-        writer.finishWriting(completionHandler: completion)
     }
 }

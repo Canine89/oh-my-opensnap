@@ -78,6 +78,19 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     }
 
     /// 캡처 직후 호출: 창을 (숨겨져 있었다면 다시) 띄우고, 방금 저장된 최신 항목을 선택해 보여준다.
+    private var requestedSelection: URL?
+    private var previewGeneration = 0
+
+    func showWindow(selecting url: URL) {
+        requestedSelection = url
+        selectLatestPending = false
+        showWindow()
+    }
+
+    func flushPendingEdits() {
+        editorView.flushPendingAnnotationChanges()
+    }
+
     func showWindowSelectingLatest() {
         selectLatestPending = true
         showWindow()
@@ -723,8 +736,12 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     // MARK: 데이터
     @objc private func reload() {
         // 바탕화면 목록 읽기는 백그라운드에서 (TCC 동의창이 메인을 막지 않도록).
-        CaptureLibrary.shared.loadItems { [weak self] items in
-            self?.applyItems(items)
+        CaptureLibrary.shared.loadItems { [weak self] result in
+            switch result {
+            case .success(let items): self?.applyItems(items)
+            case .failure(let error):
+                OperationErrorPresenter.show(error, action: loc("Could not load the library", "라이브러리를 불러오지 못했습니다"))
+            }
         }
     }
 
@@ -733,6 +750,11 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         collectionView.reloadData()
         window?.subtitle = items.isEmpty ? "" : loc("\(items.count) items", "\(items.count)개 항목")
 
+        if let url = requestedSelection, let indexPath = indexPath(for: url) {
+            requestedSelection = nil
+            select(indexPath)
+            return
+        }
         // 캡처 직후: 이전 선택을 무시하고 방금 저장된 최신(첫) 항목을 선택.
         if selectLatestPending, let first = firstIndexPath {
             selectLatestPending = false
@@ -804,6 +826,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     }
 
     private func showPreview(_ item: LibraryItem) {
+        // 목록 알림만으로 같은 이미지의 편집/되돌리기 상태를 초기화하지 않는다.
+        if selectedItem?.url == item.url, item.kind == .image, editorView.image != nil { return }
+        previewGeneration += 1
         editorView.flushPendingAnnotationChanges()     // 이전 항목의 마지막 편집을 먼저 저장
         selectedItem = item
         emptyState.isHidden = true
@@ -843,13 +868,16 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     }
 
     private func showImagePreview(_ item: LibraryItem) {
-        // 원본 PNG 읽기는 백그라운드. 그 사이 선택이 바뀌면 결과를 버린다.
-        CaptureLibrary.shared.loadImage(at: item.url) { [weak self] image in
-            guard let self, self.selectedItem?.url == item.url else { return }
-            self.editorView.image = image   // setter가 맞춤/first responder 처리
-            CaptureLibrary.shared.loadAnnotations(for: item.url) { [weak self] data in
-                guard let self, self.selectedItem?.url == item.url, let data else { return }
-                self.editorView.restoreAnnotations(from: data)
+        let generation = previewGeneration
+        editorView.image = nil
+        CaptureLibrary.shared.loadDocument(at: item.url) { [weak self] result in
+            guard let self, self.previewGeneration == generation, self.selectedItem?.url == item.url else { return }
+            switch result {
+            case .success(let (image, annotations)):
+                self.editorView.image = image
+                if let annotations { self.editorView.restoreAnnotations(from: annotations) }
+            case .failure(let error):
+                OperationErrorPresenter.show(error, action: loc("Could not open the image", "이미지를 열지 못했습니다"))
             }
         }
     }
@@ -1014,10 +1042,13 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private func persistCurrentEdit() {
         guard let item = selectedItem,
               item.url.pathExtension.lowercased() == "png",
-              let cg = editorView.renderedCGImage(),
-              let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { return }
-        CaptureLibrary.shared.overwrite(pngData: png, at: item.url) { [weak self] in
-            self?.refreshThumbnail(for: item.url)
+              let cg = editorView.baseCGImage() else { return }
+        CaptureLibrary.shared.saveEdit(image: cg, annotations: editorView.annotationsData(), at: item.url) { [weak self] result in
+            switch result {
+            case .success: self?.refreshThumbnail(for: item.url)
+            case .failure(let error):
+                OperationErrorPresenter.show(error, action: loc("Could not save the edit", "편집 내용을 저장하지 못했습니다"))
+            }
         }
     }
 
@@ -1040,17 +1071,28 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         panel.nameFieldStringValue = item.url.lastPathComponent
         panel.allowedContentTypes = allowedContentTypes(for: item)
         if panel.runModal() == .OK, let dest = panel.url {
-            switch item.kind {
-            case .video:
-                try? FileManager.default.copyItem(at: item.url, to: dest)
-            case .animatedImage:
-                try? FileManager.default.copyItem(at: item.url, to: dest)
-            case .image:
-                guard let cg = editorView.renderedCGImage() else { return }
-                let rep = NSBitmapImageRep(cgImage: cg)
-                if let png = rep.representation(using: .png, properties: [:]) {
-                    try? png.write(to: dest)
+            let completion: (Result<Void, Error>) -> Void = { [weak self] result in
+                switch result {
+                case .success: self?.showToast(loc("Saved", "저장됨"))
+                case .failure(let error):
+                    OperationErrorPresenter.show(error, action: loc("Could not export the file", "파일을 내보내지 못했습니다"))
                 }
+            }
+            switch item.kind {
+            case .video, .animatedImage:
+                CaptureLibrary.shared.exportFile(from: item.url, to: dest, completion: completion)
+            case .image:
+                editorView.flushPendingAnnotationChanges()
+                if dest.resolvingSymlinksInPath().standardizedFileURL == item.url.resolvingSymlinksInPath().standardizedFileURL {
+                    editorView.commitFlattenedImage()
+                    return
+                }
+                guard let cg = editorView.renderedCGImage(),
+                      let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else {
+                    completion(.failure(CocoaError(.fileWriteUnknown)))
+                    return
+                }
+                CaptureLibrary.shared.export(data: png, to: dest, completion: completion)
             }
         }
     }
@@ -1074,9 +1116,16 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
     @objc private func deleteSelected() {
         guard let item = selectedItem else { return }
-        selectedItem = nil
-        CaptureLibrary.shared.delete(item)   // libraryDidChange → reload()
-        showToast(loc("Moved to Trash", "휴지통으로 이동함"))
+        editorView.flushPendingAnnotationChanges()
+        CaptureLibrary.shared.delete(item) { [weak self] result in
+            switch result {
+            case .success:
+                if self?.selectedItem?.url == item.url { self?.selectedItem = nil }
+                self?.showToast(loc("Moved to Trash", "휴지통으로 이동함"))
+            case .failure(let error):
+                OperationErrorPresenter.show(error, action: loc("Could not move to Trash", "휴지통으로 이동하지 못했습니다"))
+            }
+        }
     }
 
     #if DEBUG
@@ -1106,6 +1155,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     }
 
     func windowWillClose(_ notification: Notification) {
+        editorView.flushPendingAnnotationChanges()
         NotificationCenter.default.removeObserver(self, name: .libraryDidChange, object: nil)
         if let keyMonitor {
             NSEvent.removeMonitor(keyMonitor)
@@ -1145,122 +1195,6 @@ final class ThumbnailCollectionView: NSCollectionView {
 /// 확대/축소 가능한 스크롤뷰.
 /// - ⌘+스크롤: 마우스 위치 기준 확대/축소
 /// - ⌘+ / ⌘- / ⌘0: 확대 / 축소 / 창에 맞춤
-final class ZoomableScrollView: NSScrollView {
-    override var acceptsFirstResponder: Bool { true }
-
-    /// '맞춤' 상태인지. 수동 줌을 하면 해제되고, 그동안은 창 크기에 따라 다시 맞춘다.
-    private(set) var isFitMode = true
-
-    func configure() {
-        contentView = CenteringClipView()      // 이미지가 뷰보다 작으면 가운데 정렬
-        allowsMagnification = true
-        minMagnification = 0.05
-        maxMagnification = 16
-        hasVerticalScroller = true
-        hasHorizontalScroller = true
-        autohidesScrollers = true
-    }
-
-    override func scrollWheel(with event: NSEvent) {
-        guard event.modifierFlags.contains(.command) else {
-            super.scrollWheel(with: event)
-            return
-        }
-        let dy = event.scrollingDeltaY
-        guard dy != 0, let document = documentView else { return }   // 0 델타(관성 꼬리)는 무시
-        isFitMode = false
-        // 배율을 먼저 [min,max]로 클램프해 둔다(시스템 클램프 후 앵커가 튀는 것 방지).
-        let newMag = max(minMagnification, min(magnification * exp(dy * 0.01), maxMagnification))
-        setMagnification(newMag, centeredAt: zoomAnchor(for: newMag, document: document, event: event))
-    }
-
-    /// 확대 후 이미지가 뷰보다 작으면 '중앙' 기준(센터링과 충돌해 떨리는 것 방지),
-    /// 뷰보다 크면 '커서' 기준으로 줌한다.
-    private func zoomAnchor(for mag: CGFloat, document: NSView, event: NSEvent) -> CGPoint {
-        let scaledW = document.bounds.width * mag
-        let scaledH = document.bounds.height * mag
-        if scaledW <= contentView.frame.width && scaledH <= contentView.frame.height {
-            return CGPoint(x: contentView.bounds.midX, y: contentView.bounds.midY)
-        }
-        return contentView.convert(event.locationInWindow, from: nil)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        guard event.modifierFlags.contains(.command) else {
-            super.keyDown(with: event)
-            return
-        }
-        switch event.charactersIgnoringModifiers {
-        case "=", "+": zoomBy(1.25)
-        case "-", "_": zoomBy(0.8)
-        case "0":      zoomToFit()
-        default:       super.keyDown(with: event)
-        }
-    }
-
-    func zoomBy(_ factor: CGFloat) {
-        isFitMode = false
-        let center = CGPoint(x: contentView.bounds.midX, y: contentView.bounds.midY)
-        setMagnification(magnification * factor, centeredAt: center)
-    }
-
-    /// 창 크기는 그대로 두고, 이미지가 미리보기 영역을 채우도록 배율을 맞춘다.
-    /// 큰 캡처는 축소하고 작은 캡처는 확대해 → 캡처 크기와 무관하게 일관된 크기로 보인다.
-    func zoomToFit() {
-        isFitMode = true
-        guard let document = documentView, document.bounds.width > 0, document.bounds.height > 0 else { return }
-        // 가용 영역은 클립뷰의 '프레임'(화면 point) — 배율과 무관해 반복 호출에도 결과가 안정적이다.
-        // (bounds.size 는 현재 배율로 스케일된 값이라, 그걸 쓰면 호출할 때마다 값이 진동한다.)
-        // 가장자리에 여백을 둬서 크롭 꼭지점 핸들을 잡기 편하게 한다.
-        let inset: CGFloat = 36
-        let available = CGSize(width: max(1, contentView.frame.width - inset * 2),
-                               height: max(1, contentView.frame.height - inset * 2))
-        let fit = min(available.width / document.bounds.width,
-                      available.height / document.bounds.height)
-        magnification = max(minMagnification, min(fit, maxMagnification))
-    }
-
-    /// 창 크기가 바뀌었을 때 '맞춤' 상태면 다시 맞춘다.
-    func refitIfNeeded() {
-        if isFitMode { zoomToFit() }
-    }
-}
-
-/// documentView가 클립뷰보다 작을 때 가운데로 정렬한다.
-final class CenteringClipView: NSClipView {
-    /// 이미지 바깥 여백을 클릭했을 때(=문서뷰 밖, 클립뷰 안), 크롭 중이면 그 클릭을
-    /// 문서뷰(에디터)로 넘긴다. 에디터는 좌표를 가장자리로 clamp 해 가까운 크롭 핸들을 잡는다.
-    /// → 핸들이 뷰 경계에 걸려 "눌렀는데 안 잡히던" 문제를 해결.
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let hit = super.hitTest(point)
-        if hit === self, let editor = documentView as? EditorImageView, editor.wantsMarginClicks {
-            return editor
-        }
-        return hit
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        if let editor = documentView as? EditorImageView {
-            editor.cancelSelectionAndToolFromMarginClick()
-        }
-        super.mouseDown(with: event)
-    }
-
-    override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
-        var rect = super.constrainBoundsRect(proposedBounds)
-        guard let documentView else { return rect }
-        let docFrame = documentView.frame
-        if rect.size.width >= docFrame.size.width {
-            rect.origin.x = floor((docFrame.size.width - rect.size.width) / 2.0)
-        }
-        if rect.size.height >= docFrame.size.height {
-            rect.origin.y = floor((docFrame.size.height - rect.size.height) / 2.0)
-        }
-        return rect
-    }
-}
-
-/// 섹션 머리글 (오늘 / 어제 / …). 사이드바 재질 위에 얹히므로 배경 없이 글자만.
 final class ThumbnailSectionHeader: NSView, NSCollectionViewElement {
     private let label = NSTextField(labelWithString: "")
 

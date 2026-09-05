@@ -2,107 +2,97 @@ import AVFoundation
 import ImageIO
 import UniformTypeIdentifiers
 
+@MainActor
 enum VideoExportService {
+    private static var tasks: [UUID: Task<Void, Never>] = [:]
+
     static func trimmedMP4(source: URL, timeRange: CMTimeRange, completion: @escaping (Result<URL, Error>) -> Void) {
-        let destination = uniqueSiblingURL(source: source, suffix: "trim", extension: "mp4")
-        try? FileManager.default.removeItem(at: destination)
-
-        let asset = AVURLAsset(url: source)
-        guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
-            completion(.failure(ExportError.exportSessionFailed))
-            return
-        }
-
-        exporter.outputURL = destination
-        exporter.outputFileType = .mp4
-        exporter.timeRange = clamped(timeRange: timeRange, duration: asset.duration)
-        exporter.shouldOptimizeForNetworkUse = true
-        exporter.exportAsynchronously {
-            DispatchQueue.main.async {
-                switch exporter.status {
-                case .completed:
-                    completion(.success(destination))
-                case .failed, .cancelled:
-                    completion(.failure(exporter.error ?? ExportError.writerFailed))
-                default:
-                    completion(.failure(ExportError.writerFailed))
-                }
-            }
-        }
+        launch(operation: { try await exportMP4(source: source, timeRange: timeRange) }, completion: completion)
     }
 
     static func gif(source: URL, timeRange: CMTimeRange, frameCount: Int, completion: @escaping (Result<URL, Error>) -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                let destination = uniqueSiblingURL(source: source, suffix: "gif-\(frameCount)", extension: "gif")
-                try? FileManager.default.removeItem(at: destination)
+        launch(operation: { try await exportGIF(source: source, timeRange: timeRange, frameCount: frameCount) }, completion: completion)
+    }
 
-                let asset = AVURLAsset(url: source)
-                let range = clamped(timeRange: timeRange, duration: asset.duration)
-                let duration = max(range.duration.seconds, 0.1)
-                let startSeconds = max(range.start.seconds, 0)
-                let generator = AVAssetImageGenerator(asset: asset)
-                generator.appliesPreferredTrackTransform = true
-                generator.requestedTimeToleranceBefore = .zero
-                generator.requestedTimeToleranceAfter = .zero
+    static func flush() async {
+        for task in Array(tasks.values) { await task.value }
+    }
 
-                guard let destinationRef = CGImageDestinationCreateWithURL(destination as CFURL,
-                                                                           UTType.gif.identifier as CFString,
-                                                                           frameCount,
-                                                                           nil) else {
-                    throw ExportError.gifDestinationFailed
-                }
-
-                CGImageDestinationSetProperties(destinationRef, [
-                    kCGImagePropertyGIFDictionary: [
-                        kCGImagePropertyGIFLoopCount: 0
-                    ]
-                ] as CFDictionary)
-
-                let delay = duration / Double(max(1, frameCount))
-                for index in 0..<frameCount {
-                    let offset = duration * Double(index) / Double(max(1, frameCount - 1))
-                    let seconds = min(startSeconds + duration, startSeconds + offset)
-                    let cgImage = try generator.copyCGImage(at: CMTime(seconds: seconds, preferredTimescale: 600),
-                                                            actualTime: nil)
-                    CGImageDestinationAddImage(destinationRef, cgImage, [
-                        kCGImagePropertyGIFDictionary: [
-                            kCGImagePropertyGIFDelayTime: delay
-                        ]
-                    ] as CFDictionary)
-                }
-
-                guard CGImageDestinationFinalize(destinationRef) else {
-                    throw ExportError.gifFinalizeFailed
-                }
-                DispatchQueue.main.async { completion(.success(destination)) }
-            } catch {
-                DispatchQueue.main.async { completion(.failure(error)) }
-            }
+    private static func launch(operation: @escaping @Sendable () async throws -> URL,
+                               completion: @escaping (Result<URL, Error>) -> Void) {
+        let id = UUID()
+        tasks[id] = Task {
+            defer { tasks[id] = nil }
+            do { completion(.success(try await operation())) }
+            catch { completion(.failure(error)) }
         }
     }
 
-    private static func clamped(timeRange: CMTimeRange, duration: CMTime) -> CMTimeRange {
-        let total = max(duration.seconds.isFinite ? duration.seconds : 0, 0)
-        let start = min(max(timeRange.start.seconds, 0), total)
-        let end = min(max(timeRange.end.seconds, start), total)
+    nonisolated static func exportMP4(source: URL, timeRange: CMTimeRange) async throws -> URL {
+        let asset = AVURLAsset(url: source)
+        let duration = try await asset.load(.duration)
+        guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
+            throw ExportError.exportSessionFailed
+        }
+        exporter.timeRange = try clamped(timeRange: timeRange, duration: duration)
+        exporter.shouldOptimizeForNetworkUse = true
+        let destination = destinationURL(source: source, suffix: "trim", extension: "mp4")
+        let staging = stagingURL(for: destination)
+        defer { try? FileManager.default.removeItem(at: staging) }
+        try await exporter.export(to: staging, as: .mp4)
+        try FileManager.default.moveItem(at: staging, to: destination)
+        return destination
+    }
+
+    nonisolated static func exportGIF(source: URL, timeRange: CMTimeRange, frameCount: Int) async throws -> URL {
+        guard frameCount > 0, frameCount <= 300 else { throw ExportError.invalidRange }
+        let asset = AVURLAsset(url: source)
+        let range = try clamped(timeRange: timeRange, duration: try await asset.load(.duration))
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        let destination = destinationURL(source: source, suffix: "gif-\(frameCount)", extension: "gif")
+        let staging = stagingURL(for: destination)
+        defer { try? FileManager.default.removeItem(at: staging) }
+        guard let output = CGImageDestinationCreateWithURL(staging as CFURL, UTType.gif.identifier as CFString, frameCount, nil) else {
+            throw ExportError.gifDestinationFailed
+        }
+        CGImageDestinationSetProperties(output, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        let delay = range.duration.seconds / Double(frameCount)
+        for index in 0..<frameCount {
+            try Task.checkCancellation()
+            // 영상 끝은 배타적이다. 마지막 프레임도 end보다 앞에서 요청한다.
+            let time = CMTimeAdd(range.start, CMTimeMultiplyByFloat64(range.duration, multiplier: Double(index) / Double(frameCount)))
+            let frame = try await generator.image(at: time)
+            CGImageDestinationAddImage(output, frame.image, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: delay]] as CFDictionary)
+        }
+        guard CGImageDestinationFinalize(output) else { throw ExportError.gifFinalizeFailed }
+        try FileManager.default.moveItem(at: staging, to: destination)
+        return destination
+    }
+
+    nonisolated private static func clamped(timeRange: CMTimeRange, duration: CMTime) throws -> CMTimeRange {
+        guard duration.seconds.isFinite, duration.seconds > 0,
+              timeRange.start.seconds.isFinite, timeRange.end.seconds.isFinite else { throw ExportError.invalidRange }
+        let start = min(max(timeRange.start.seconds, 0), duration.seconds)
+        let end = min(max(timeRange.end.seconds, start), duration.seconds)
+        guard end > start else { throw ExportError.invalidRange }
         return CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600),
                            end: CMTime(seconds: end, preferredTimescale: 600))
     }
 
-    private static func uniqueSiblingURL(source: URL, suffix: String, extension pathExtension: String) -> URL {
-        let directory = source.deletingLastPathComponent()
-        let base = source.deletingPathExtension().lastPathComponent
-        var url = directory.appendingPathComponent("\(base)-\(suffix).\(pathExtension)")
-        var index = 2
-        while FileManager.default.fileExists(atPath: url.path) {
-            url = directory.appendingPathComponent("\(base)-\(suffix)-\(index).\(pathExtension)")
-            index += 1
-        }
-        return url
+    nonisolated private static func destinationURL(source: URL, suffix: String, extension ext: String) -> URL {
+        source.deletingLastPathComponent().appendingPathComponent(
+            "\(source.deletingPathExtension().lastPathComponent)-\(suffix)-\(UUID().uuidString).\(ext)")
+    }
+
+    nonisolated private static func stagingURL(for destination: URL) -> URL {
+        destination.deletingLastPathComponent().appendingPathComponent(".export-" + UUID().uuidString + "." + destination.pathExtension)
     }
 
     enum ExportError: LocalizedError {
+        case invalidRange
         case exportSessionFailed
         case writerFailed
         case gifDestinationFailed
@@ -110,6 +100,7 @@ enum VideoExportService {
 
         var errorDescription: String? {
             switch self {
+            case .invalidRange: return loc("Select a non-empty video range.", "길이가 있는 영상 구간을 선택하세요.")
             case .exportSessionFailed: return loc("Could not create the video export session.", "영상 내보내기 세션을 만들 수 없습니다.")
             case .writerFailed: return loc("An error occurred while saving the video.", "영상 저장 중 오류가 발생했습니다.")
             case .gifDestinationFailed: return loc("Could not create the GIF file.", "GIF 파일을 만들 수 없습니다.")

@@ -27,6 +27,9 @@ final class OverlayController {
     private var hitTester: WindowHitTester?
     private var refreshTimer: Timer?
     private var active = false
+    private var setupTask: Task<Void, Never>?
+    private var pendingCaptures: [UUID: Task<Void, Never>] = [:]
+    private var generation = 0
     private var cursorHidden = false
 
     // 안전장치: first-responder 라우팅이 실패해도 Esc로 항상 빠져나올 수 있게 하고,
@@ -41,20 +44,24 @@ final class OverlayController {
         // 캡처 모드에선 라이브러리 창이 화면(스틸 캡처)에 찍히지 않도록 자동으로 가린다.
         LibraryWindowController.shared.hideForCapture()
         NSApp.activate(ignoringOtherApps: true)
-        Task { await setup(mode: mode) }
+        generation += 1
+        let current = generation
+        setupTask = Task { await setup(mode: mode, generation: current) }
     }
 
-    private func setup(mode: Mode) async {
+    private func setup(mode: Mode, generation current: Int) async {
         let content: SCShareableContent
         do {
             content = try await SCShareableContent.current
         } catch {
+            guard generation == current else { return }
             NSLog("SCShareableContent failed: \(error)")
             active = false
             LibraryWindowController.shared.restoreAfterCapture()
             return
         }
 
+        guard active, generation == current, !CaptureCoordinator.shared.isSuspended else { return }
         let tester = WindowHitTester(content: content)
         hitTester = tester
 
@@ -69,10 +76,12 @@ final class OverlayController {
         // → 우리 프로세스의 창(라이브러리·HUD·설정)은 전부 제외 목록에 넣는다.
         if Settings.shared.freezeScreenDuringCapture {
             let own = Self.ownWindows(in: content)
-            snapshots = await Self.captureSnapshots(targets.map { (display: $0.display, scale: $0.scale) },
-                                                    excluding: own)
+            let captured = await Self.captureSnapshots(targets.map { (display: $0.display, scale: $0.scale) }, excluding: own)
+            guard active, generation == current, !CaptureCoordinator.shared.isSuspended else { return }
+            snapshots = captured
         }
 
+        guard active, generation == current, !CaptureCoordinator.shared.isSuspended else { return }
         for target in targets {
             let screen = target.screen
             let scDisplay = target.display
@@ -188,7 +197,9 @@ final class OverlayController {
 
         // 오버레이가 화면에 올라온 뒤 SCWindow로 매핑한다.
         // 루페 스트림은 커서가 있는 디스플레이에서만 켠다(아래 primeCursor → activateLoupe).
-        overlayWindows = await Self.resolveOverlayWindows(windows)
+        let resolved = await Self.resolveOverlayWindows(windows)
+        guard active, generation == current else { return }
+        overlayWindows = resolved
 
         if let keyWindow = windows.first {
             // 전역 단축키로 떴을 때 앱이 활성/key가 못 돼 ESC가 안 먹는 경우가 있어,
@@ -324,7 +335,7 @@ final class OverlayController {
         let excluded = overlayWindows
         teardown()
 
-        Task {
+        performCapture {
             do {
                 try await VideoRecordingController.shared.start(display: display,
                                                                displayID: displayID,
@@ -332,7 +343,7 @@ final class OverlayController {
                                                                scale: scale,
                                                                excluding: excluded)
             } catch {
-                NSLog("Video recording start failed: \(error)")
+                OperationErrorPresenter.show(error, action: loc("Could not start recording", "녹화를 시작하지 못했습니다"))
                 await MainActor.run { LibraryWindowController.shared.restoreAfterCapture() }
             }
         }
@@ -474,7 +485,7 @@ final class OverlayController {
             return
         }
 
-        Task {
+        performCapture {
             do {
                 let image = try await StillImageCapturer.capture(display: display,
                                                                  scale: scale,
@@ -496,7 +507,7 @@ final class OverlayController {
                             display: SCDisplay,
                             displayID: CGDirectDisplayID,
                             excluding excluded: [SCWindow]) {
-        Task {
+        performCapture {
             do {
                 try await VideoRecordingController.shared.start(display: display,
                                                                displayID: displayID,
@@ -504,7 +515,7 @@ final class OverlayController {
                                                                scale: scale,
                                                                excluding: excluded)
             } catch {
-                NSLog("Video recording start failed: \(error)")
+                OperationErrorPresenter.show(error, action: loc("Could not start recording", "녹화를 시작하지 못했습니다"))
                 await MainActor.run { LibraryWindowController.shared.restoreAfterCapture() }
             }
         }
@@ -518,7 +529,7 @@ final class OverlayController {
             return
         }
 
-        Task {
+        performCapture {
             do {
                 let result = try await StillImageCapturer.captureWindow(selection.window)
                 await MainActor.run {
@@ -562,6 +573,24 @@ final class OverlayController {
         let snapshot = snapshots[selection.displayID]
         teardown()
         captureWindowSelection(selection, snapshot: snapshot)
+    }
+
+    func cancelForTermination() {
+        generation += 1
+        cancel()
+    }
+
+    func finishPendingCaptures() async {
+        await setupTask?.value
+        for task in Array(pendingCaptures.values) { await task.value }
+    }
+
+    private func performCapture(_ operation: @escaping @MainActor () async -> Void) {
+        let id = UUID()
+        pendingCaptures[id] = Task {
+            defer { pendingCaptures[id] = nil }
+            await operation()
+        }
     }
 
     private func cancel() {

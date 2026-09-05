@@ -12,23 +12,38 @@ enum CaptureOutput {
                                  height: CGFloat(cgImage.height) / scale)
         let image = NSImage(cgImage: cgImage, size: logicalSize)
 
-        if Settings.shared.playSound {
-            NSSound(named: NSSound.Name("Pop"))?.play()
-        }
-        ThumbnailHUD.show(image)
+        let playSound = Settings.shared.playSound
+        let capturedAt = Date()
 
         // PNG 인코딩은 메인 밖에서 — 큰 Retina 캡처에서 짧은 멈춤을 피한다.
         let openLibrary = Settings.shared.openLibraryAfterCapture
         encodeQueue.async {
             let pngData = pngDataPreservingAlpha(from: cgImage, logicalSize: logicalSize)
             DispatchQueue.main.async {
+                guard let pngData else {
+                    OperationErrorPresenter.show(CocoaError(.fileWriteUnknown), action: loc("Could not encode the capture", "캡처 이미지를 변환하지 못했습니다"))
+                    return
+                }
                 copyToClipboard(pngData: pngData)
-                if let pngData {
-                    CaptureLibrary.shared.save(pngData: pngData, date: Date())
-                    if openLibrary {
-                        LibraryWindowController.shared.showWindowSelectingLatest()
+                if playSound { NSSound(named: NSSound.Name("Pop"))?.play() }
+                ThumbnailHUD.show(image)
+                CaptureLibrary.shared.save(pngData: pngData, date: capturedAt) { result in
+                    switch result {
+                    case .success(let url):
+                        if openLibrary { LibraryWindowController.shared.showWindow(selecting: url) }
+                    case .failure(let error):
+                        OperationErrorPresenter.show(error, action: loc("Copied, but could not save the capture", "복사했지만 캡처 파일을 저장하지 못했습니다"))
                     }
                 }
+            }
+        }
+    }
+
+    /// 앞선 인코딩의 메인 큐 전달(저장 예약 포함)까지 기다린다.
+    static func flush() async {
+        await withCheckedContinuation { continuation in
+            encodeQueue.async {
+                DispatchQueue.main.async { continuation.resume() }
             }
         }
     }
@@ -46,7 +61,7 @@ enum CaptureOutput {
         }
     }
 
-    private static func pngDataPreservingAlpha(from cgImage: CGImage, logicalSize: NSSize) -> Data? {
+    nonisolated private static func pngDataPreservingAlpha(from cgImage: CGImage, logicalSize: NSSize) -> Data? {
         guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
               let context = CGContext(data: nil,
                                       width: cgImage.width,

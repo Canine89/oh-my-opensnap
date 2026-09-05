@@ -5,6 +5,7 @@ import CoreVideo
 /// 라이브 확대경(루페)용 프레임 공급자.
 /// 루페는 커서 주변 수십 픽셀만 쓰므로 풀 Retina·60fps 대신 축소·저fps로 스트림한다.
 /// 오버레이 윈도우는 `start(display:excluding:)`의 제외 목록으로 캡처에서 빠진다(자기참조 차단).
+@MainActor
 final class DisplayStreamProvider: NSObject, SCStreamOutput {
     let displayID: CGDirectDisplayID
     /// 화면 point → 스트림 버퍼 픽셀 스케일. 루페 샘플링 좌표에 쓴다.
@@ -12,8 +13,7 @@ final class DisplayStreamProvider: NSObject, SCStreamOutput {
     private let targetScale: CGFloat
 
     private var stream: SCStream?
-    private let lock = NSLock()
-    private var latest: CVPixelBuffer?
+    nonisolated private let frames = DisplayFrameCache()
     private let sampleQueue: DispatchQueue
     private(set) var isRunning = false
     /// start() await 중 stop()이 오면 완료 후 바로 폐기하기 위한 세대 카운터.
@@ -48,16 +48,19 @@ final class DisplayStreamProvider: NSObject, SCStreamOutput {
         bufferScale = targetScale
 
         let stream = SCStream(filter: filter, configuration: config, delegate: nil)
+        frames.activate(stream)
         do {
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: sampleQueue)
             try await stream.startCapture()
             guard generation == startGeneration else {
-                stream.stopCapture(completionHandler: { _ in })
+                try? await stream.stopCapture()
                 return
             }
             self.stream = stream
             isRunning = true
         } catch {
+            guard generation == startGeneration else { return }
+            frames.clear()
             NSLog("DisplayStreamProvider start failed for \(displayID): \(error)")
             isRunning = false
         }
@@ -68,20 +71,47 @@ final class DisplayStreamProvider: NSObject, SCStreamOutput {
         stream?.stopCapture(completionHandler: { _ in })
         stream = nil
         isRunning = false
-        lock.lock(); latest = nil; lock.unlock()
+        frames.clear()
     }
 
     func latestBuffer() -> CVPixelBuffer? {
-        lock.lock(); defer { lock.unlock() }
-        return latest
+        frames.latest()
     }
 
     // MARK: SCStreamOutput
-    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+    nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, sampleBuffer.isValid,
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        lock.lock()
-        latest = pixelBuffer
-        lock.unlock()
+        frames.store(pixelBuffer, from: stream)
+    }
+}
+
+/// 스트림 교체/중지 후 도착한 이전 콜백은 버린다. 모든 필드는 lock으로 보호한다.
+final class DisplayFrameCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var source: ObjectIdentifier?
+    private var buffer: CVPixelBuffer?
+
+    func activate(_ stream: AnyObject) {
+        lock.lock(); defer { lock.unlock() }
+        source = ObjectIdentifier(stream)
+        buffer = nil
+    }
+
+    func clear() {
+        lock.lock(); defer { lock.unlock() }
+        source = nil
+        buffer = nil
+    }
+
+    func store(_ buffer: CVPixelBuffer, from stream: AnyObject) {
+        lock.lock(); defer { lock.unlock() }
+        guard source == ObjectIdentifier(stream) else { return }
+        self.buffer = buffer
+    }
+
+    func latest() -> CVPixelBuffer? {
+        lock.lock(); defer { lock.unlock() }
+        return buffer
     }
 }

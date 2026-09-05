@@ -98,8 +98,10 @@ final class ThumbnailHUD {
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             guard let self else { return }
-            self.panel.orderOut(nil)
-            ThumbnailHUD.liveHUDs.removeAll { $0 === self }
+            Task { @MainActor in
+                self.panel.orderOut(nil)
+                ThumbnailHUD.liveHUDs.removeAll { $0 === self }
+            }
         })
     }
 }

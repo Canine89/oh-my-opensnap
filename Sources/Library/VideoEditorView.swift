@@ -26,6 +26,7 @@ final class VideoEditorView: NSView {
     private let exportButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private let resetButton = NSButton(title: loc("Reset Range", "구간 초기화"), target: nil, action: nil)
 
+    private var loadTask: Task<Void, Never>?
     private var representedURL: URL?
     private var duration: Double = 0
     private var isBusy = false
@@ -42,18 +43,32 @@ final class VideoEditorView: NSView {
     }
 
     func load(url: URL) {
-        removeTimeObserver()
+        stop()
         representedURL = url
-        duration = max(0, Self.videoDuration(url: url))
-        timelineView.configure(duration: duration)
-        playerView.player = AVPlayer(url: url)
-        installTimeObserver()
-        resetRange()
-        updatePlayButton()
-        playerView.player?.play()
+        setBusy(true, message: loc("Loading video…", "영상 불러오는 중…"))
+        loadTask = Task { [weak self] in
+            do {
+                let time = try await AVURLAsset(url: url).load(.duration)
+                guard let self, !Task.isCancelled, self.representedURL == url else { return }
+                self.duration = time.seconds.isFinite ? max(0, time.seconds) : 0
+                self.timelineView.configure(duration: self.duration)
+                self.playerView.player = AVPlayer(url: url)
+                self.installTimeObserver()
+                self.resetRange()
+                self.setBusy(false, message: "")
+                self.updatePlayButton()
+                self.playerView.player?.play()
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.setBusy(false, message: "")
+                self.onToast?(error.localizedDescription)
+            }
+        }
     }
 
     func stop() {
+        loadTask?.cancel()
+        loadTask = nil
         removeTimeObserver()
         playerView.player?.pause()
         playerView.player = nil
@@ -231,7 +246,7 @@ final class VideoEditorView: NSView {
     }
 
     @objc private func exportTrimmedMP4() {
-        guard let url = representedURL else { return }
+        guard let url = representedURL, !isBusy else { return }
         let range = selectedRange()
         guard range.duration.seconds > 0.05, range.duration.seconds < max(duration - 0.05, 0) else {
             onToast?(loc("Set the start and end points first", "시작점과 끝점을 먼저 지정하세요"))
@@ -252,7 +267,7 @@ final class VideoEditorView: NSView {
     }
 
     private func exportGIF(frameCount: Int) {
-        guard let url = representedURL else { return }
+        guard let url = representedURL, !isBusy else { return }
         setBusy(true, message: loc("Exporting GIF (\(frameCount) frames)...", "GIF \(frameCount)프레임 내보내는 중..."))
         VideoExportService.gif(source: url, timeRange: selectedRange(), frameCount: frameCount) { [weak self] result in
             self?.handleExport(result, successMessage: loc("GIF saved (\(frameCount) frames)", "GIF \(frameCount)프레임 저장됨"))
@@ -344,11 +359,7 @@ final class VideoEditorView: NSView {
         return String(format: "%02d:%02d.%d", minutes, secs, tenths)
     }
 
-    private static func videoDuration(url: URL) -> Double {
-        let asset = AVURLAsset(url: url)
-        let seconds = asset.duration.seconds
-        return seconds.isFinite ? seconds : 0
-    }
+
 }
 
 private final class TrimTimelineView: NSView {

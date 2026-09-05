@@ -134,3 +134,5 @@ brew install --cask oh-my-opensnap
 캡처본은 기본적으로 **`~/Library/Application Support/oh-my-opensnap`** 에 PNG로 보관됩니다(설정 → 저장에서 폴더 변경 가능). 예전 버전에서 쓰던 바탕화면 `oh-my-opensnap` 폴더가 있으면 그 위치를 그대로 유지합니다.
 
 지원 및 개인정보: [지원](SUPPORT.md) · [개인정보 처리방침](PRIVACY.md) · 변경 이력: [CHANGELOG.md](CHANGELOG.md)
+
+개발·회귀 테스트·배포 절차: [DEVELOPMENT.md](DEVELOPMENT.md)

@@ -123,11 +123,12 @@ final class EditorImageView: NSView {
     /// 주석 목록이 바뀔 때마다(추가·삭제·이동·스타일·되돌리기) 한 런루프에 한 번 알린다 → 사이드카 저장.
     var onAnnotationsChanged: (() -> Void)?
 
-    var canUndo: Bool { !undoStack.isEmpty }
-    var canRedo: Bool { !redoStack.isEmpty }
+    var canUndo: Bool { history.canUndo }
+    var canRedo: Bool { history.canRedo }
 
     /// 예약된 주석 변경 알림이 있으면 지금 보낸다(항목을 바꾸기 직전에 호출해 마지막 편집을 잃지 않게).
     func flushPendingAnnotationChanges() {
+        if activeTextField != nil { commitActiveTextField() }
         guard annotationsChangeScheduled else { return }
         annotationsChangeScheduled = false
         onAnnotationsChanged?()
@@ -263,8 +264,7 @@ final class EditorImageView: NSView {
     private var annotationsChangeScheduled = false
     private var suppressAnnotationsChanged = false
     private var nextNumber = 1
-    private var undoStack: [Snapshot] = []
-    private var redoStack: [Snapshot] = []
+    private var history = EditHistory<Snapshot>()
 
     private func scheduleAnnotationsChanged() {
         guard !suppressAnnotationsChanged, !annotationsChangeScheduled else { return }
@@ -333,8 +333,7 @@ final class EditorImageView: NSView {
         annotationsChangeScheduled = false     // 이전 이미지의 예약 알림은 flush로 이미 처리됐거나 무효
         selectedAnnotationIndex = nil
         nextNumber = 1
-        undoStack.removeAll()
-        redoStack.removeAll()
+        history.reset()
         cropRect = (tool == .crop) ? CGRect(origin: .zero, size: backingImage?.size ?? .zero) : nil
         if let size = backingImage?.size { setFrameSize(size) }
         onImageChanged?()
@@ -388,27 +387,20 @@ final class EditorImageView: NSView {
     }
 
     private func pushUndo() {
-        undoStack.append(currentSnapshot())
-        if undoStack.count > 50 { undoStack.removeFirst() }
-        redoStack.removeAll()                  // 새 편집이 생기면 다시 실행 경로는 사라진다
+        history.record(currentSnapshot())
     }
 
-    /// 명시한 크롭 범위로 되돌아가는 스냅샷을 쌓는다(크롭 핸들 드래그 직전 상태 보존용).
     private func pushCropSnapshot(_ rect: CGRect) {
-        undoStack.append(currentSnapshot(cropRect: rect))
-        if undoStack.count > 50 { undoStack.removeFirst() }
-        redoStack.removeAll()
+        history.record(currentSnapshot(cropRect: rect))
     }
 
     func undo() {
-        guard let snapshot = undoStack.popLast() else { return }
-        redoStack.append(currentSnapshot())
+        guard let snapshot = history.undo(current: currentSnapshot()) else { return }
         restore(snapshot)
     }
 
     func redo() {
-        guard let snapshot = redoStack.popLast() else { return }
-        undoStack.append(currentSnapshot())
+        guard let snapshot = history.redo(current: currentSnapshot()) else { return }
         restore(snapshot)
     }
 
@@ -638,7 +630,11 @@ final class EditorImageView: NSView {
         case 53:
             selectedAnnotationIndex = nil
             tool = .none                 // Esc → 선택/크롭 취소
-        case 123, 124, 125, 126 where selectedAnnotationIndex != nil && activeTextField == nil:
+        case 123, 124, 125, 126:
+            guard selectedAnnotationIndex != nil, activeTextField == nil else {
+                super.keyDown(with: event)
+                return
+            }
             // ← → ↓ ↑ : 선택 주석을 1px(⇧ 10px) 이동
             let step: CGFloat = event.modifierFlags.contains(.shift) ? 10 : 1
             let dx: CGFloat = event.keyCode == 123 ? -step : (event.keyCode == 124 ? step : 0)
@@ -1019,6 +1015,19 @@ final class EditorImageView: NSView {
         pasteboard.setData(png, forType: .png)
         pasteboard.setData(png, forType: NSPasteboard.PasteboardType("com.apple.pboard.type.PNGf"))
         onDidCopy?()
+    }
+
+    /// 원본 위치에 합성본을 저장할 때도 되돌릴 수 있는 하나의 편집으로 처리한다.
+    func commitFlattenedImage() {
+        guard let cg = renderedCGImage() else { return }
+        pushUndo()
+        replaceImage(NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height)), annotations: [], nextNumber: 1)
+        onEditCommitted?()
+    }
+
+    /// 보관용 원본. 주석은 별도 저장하므로 여기서는 합성하지 않는다.
+    func baseCGImage() -> CGImage? {
+        backingImage?.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 
     // MARK: 렌더 (이미지 + 주석 합성, 픽셀 정확)
