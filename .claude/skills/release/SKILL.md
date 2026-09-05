@@ -26,10 +26,9 @@ Developer ID 서명 → notarytool 공증·스테이플 → DMG+ZIP → EdDSA �
 
 ## 1. 사전 점검 (스크립트가 안 해 주는 것)
 
-1. **소스가 빌드되는가** — 두 스킴 모두 Debug 빌드가 통과해야 한다.
+1. **소스가 빌드되는가** — 회귀 테스트와 Sparkle 배포 타깃의 Release 빌드가 통과해야 한다.
    ```bash
-   xcodebuild -project oh-my-opensnap.xcodeproj -scheme oh-my-opensnap -configuration Debug -derivedDataPath build/dd build 2>&1 | grep -E 'error:|BUILD'
-   xcodebuild -project oh-my-opensnap.xcodeproj -scheme oh-my-opensnap-mas -configuration Debug -derivedDataPath build/dd build CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E 'error:|BUILD'
+   ./scripts/check.sh
    ```
    새 `.swift` 파일을 추가했다면 먼저 `xcodegen generate`.
 2. **`CHANGELOG.md`에 `## <버전>` 섹션이 있는가** — 스크립트가 이 섹션을 읽어 Sparkle 업데이트 창(HTML)과 GitHub 릴리스 노트(markdown) 양쪽에 그대로 쓴다. 없으면 이번 변경을 사용자 관점 불릿으로 써서 **파일 맨 위(`## <이전버전>` 바로 앞)**에 추가한다. 문체는 기존 섹션과 같게(기능이 아니라 "사용자가 보는 변화").

@@ -8,7 +8,6 @@ final class AreaVideoRecorder: NSObject, Recording, SCStreamOutput, SCStreamDele
     private let outputURL: URL
     private let scale: CGFloat
     private let excluding: [SCWindow]
-    private let libraryAccess: SecurityScopedAccess?
     nonisolated private let frames: VideoFrameWriter
     private var stream: SCStream?
     private var streamError: Error?
@@ -20,7 +19,6 @@ final class AreaVideoRecorder: NSObject, Recording, SCStreamOutput, SCStreamDele
         self.outputURL = outputURL
         self.scale = scale
         self.excluding = excluding
-        libraryAccess = Settings.shared.retainLibraryAccess(for: outputURL)
         frames = VideoFrameWriter(outputURL: outputURL)
         super.init()
     }

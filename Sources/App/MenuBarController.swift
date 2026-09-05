@@ -61,14 +61,12 @@ final class MenuBarController: NSObject {
         addItem(to: menu, title: loc("Library…", "라이브러리…"), action: #selector(openLibrary), key: "l")
         menu.addItem(.separator())
         addItem(to: menu, title: loc("Settings…", "설정…"), action: #selector(openPreferences), key: ",")
-        #if !MAS
-        // Sparkle 업데이트 확인 (타깃은 UpdaterController) — MAS 판은 App Store가 업데이트를 맡는다.
+        // Sparkle 업데이트 확인 (타깃은 UpdaterController).
         let updateItem = NSMenuItem(title: loc("Check for Updates…", "업데이트 확인…"),
                                     action: #selector(UpdaterController.checkForUpdates(_:)),
                                     keyEquivalent: "")
         updateItem.target = UpdaterController.shared
         menu.addItem(updateItem)
-        #endif
         addItem(to: menu, title: loc("Welcome Guide…", "시작 안내…"), action: #selector(showWelcome))
         menu.addItem(.separator())
         addItem(to: menu, title: loc("Quit \(Brand.name)", "\(Brand.name) 종료"), action: #selector(quit), key: "q")

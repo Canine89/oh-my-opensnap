@@ -12,9 +12,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     private var launchAtLoginCheck: NSButton?
     private var permissionBanner: NSView?
     private var screenStatus: PermissionStatusRow?
-    #if !MAS
     private var accessibilityStatus: PermissionStatusRow?
-    #endif
     private var permissionTimer: Timer?
     private var recordingMonitor: Any?
     private var isRecording = false
@@ -215,12 +213,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         buttons.spacing = 8
 
         let hint = AppAppearance.secondaryText(loc("New installs default to Application Support. If an older Desktop folder already exists, it is kept. Changing the folder does not move existing captures.", "새 설치의 기본 위치는 Application Support입니다. 예전 버전의 바탕화면 폴더가 이미 있으면 그대로 유지됩니다. 폴더를 바꿔도 기존 캡처는 옮겨지지 않습니다."))
-        var content: [NSView] = [title, path, buttons, hint]
-        if Settings.shared.libraryFolderNeedsRenewal {
-            let warning = AppAppearance.secondaryText(loc("Access to your previous folder has expired. Choose it again to restore access to existing captures. New captures currently use the app’s default folder.",
-                                                          "이전 폴더의 접근 권한을 복구하지 못했습니다. 폴더를 다시 선택하면 기존 캡처에 접근할 수 있습니다. 새 캡처는 현재 앱의 기본 폴더에 저장됩니다."))
-            content.append(warning)
-        }
+        let content: [NSView] = [title, path, buttons, hint]
         let container = pane(content, spacing: 10)
         path.widthAnchor.constraint(equalToConstant: 476).isActive = true
         return container
@@ -232,16 +225,10 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
             title: loc("Screen Recording", "화면 녹화"),
             detail: loc("Required for capturing. macOS grants it only with your consent; the app can only guide you to System Settings.", "캡처에 반드시 필요한 권한입니다. macOS가 사용자 동의로만 부여하며, 앱은 시스템 설정으로 안내할 수만 있습니다."))
         screen.addButton(loc("Open System Settings", "시스템 설정 열기"), target: self, action: #selector(openScreenCaptureSettings))
-        #if !MAS
         screen.addButton(loc("Open Settings & Relaunch", "설정 열고 재시작"), target: self, action: #selector(openSettingsAndRelaunch))
-        #endif
         screen.footnote = loc("After enabling the permission, a relaunch is sometimes needed. If capture is still blocked while the toggle is on, turn it off and on again, then relaunch.", "권한을 켠 뒤에는 앱을 다시 실행해야 반영되는 경우가 있습니다. 이미 켜져 있는데도 캡처가 막히면 토글을 껐다 켠 뒤 재시작하세요.")
         screenStatus = screen
 
-        // MAS 판은 접근성 권한을 요청하지 않는다(심사 리젝 회피). 화면 녹화 권한만 노출한다.
-        #if MAS
-        return pane([screen], spacing: 12)
-        #else
         let accessibility = PermissionStatusRow(
             title: loc("Window layout detection (optional)", "창 구조 인식 (선택 사항)"),
             detail: loc("When allowed, the accessibility structure that apps expose is used to precisely tell toolbars and tabs apart from content. Screen pixels, keystrokes, and document contents are never read.", "허용하면 브라우저·터미널 등 각 앱이 공개한 접근성 구조로 툴바/탭 영역과 본문을 정확히 구분합니다. 화면 픽셀·키 입력·문서 내용은 읽지 않습니다."))
@@ -250,7 +237,6 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         accessibilityStatus = accessibility
 
         return pane([screen, accessibility], spacing: 12)
-        #endif
     }
 
     // MARK: 정보
@@ -274,12 +260,10 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         header.spacing = 14
 
         var actions: [NSView] = []
-        #if !MAS
         let update = NSButton(title: loc("Check for Updates…", "업데이트 확인…"), target: UpdaterController.shared,
                               action: #selector(UpdaterController.checkForUpdates(_:)))
         update.bezelStyle = .rounded
         actions.append(update)
-        #endif
         let welcome = NSButton(title: loc("Show Welcome Guide", "시작 안내 다시 보기"), target: self, action: #selector(showWelcome))
         welcome.bezelStyle = .rounded
         actions.append(welcome)
@@ -427,27 +411,22 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         permissionBanner?.isHidden = screenGranted
         screenStatus?.set(granted: screenGranted,
                           text: screenGranted ? loc("Granted", "허용됨") : loc("Required — allow it in System Settings before capturing", "필요함 — 캡처 전에 시스템 설정에서 허용하세요"))
-        #if !MAS
         let axGranted = AccessibilityPermission.isGranted
         accessibilityStatus?.set(granted: axGranted,
                                  text: axGranted ? loc("Granted — per-app window structure tells headers from content", "허용됨 — 앱별 창 구조로 헤더와 본문을 구분합니다")
                                                  : loc("Not granted — per-app defaults are used instead", "미허용 — 앱별 기본 추정값을 사용합니다"),
                                  optional: true)
-        #endif
     }
 
     @objc private func openScreenCaptureSettings() {
         ScreenCapturePermission.openSystemSettings()
     }
 
-    #if !MAS
     @objc private func openSettingsAndRelaunch() {
         ScreenCapturePermission.openSystemSettings()
         AppRelauncher.relaunch()
     }
-    #endif
 
-    #if !MAS
     @objc private func requestAccessibilityPermission() {
         _ = AccessibilityPermission.request()
         refreshPermissionStatus()
@@ -456,7 +435,6 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
     @objc private func openAccessibilitySettings() {
         AccessibilityPermission.openSystemSettings()
     }
-    #endif
 
     private func showLaunchAtLoginError(_ error: Error) {
         let alert = NSAlert()

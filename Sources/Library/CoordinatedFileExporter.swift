@@ -9,8 +9,6 @@ enum CoordinatedFileExporter {
 
     static func copy(from source: URL, to destination: URL) throws {
         if source.resolvingSymlinksInPath() == destination.resolvingSymlinksInPath() { return }
-        let access = SecurityScopedAccess(url: source)
-        defer { withExtendedLifetime(access) {} }
         var coordinationError: NSError?
         var operationError: Error?
         NSFileCoordinator().coordinate(readingItemAt: source, options: [], error: &coordinationError) { coordinatedSource in
@@ -22,8 +20,6 @@ enum CoordinatedFileExporter {
     }
 
     static func replace(_ destination: URL, write: (URL) throws -> Void) throws {
-        let access = SecurityScopedAccess(url: destination)
-        defer { withExtendedLifetime(access) {} }
         var coordinationError: NSError?
         var operationError: Error?
         NSFileCoordinator().coordinate(writingItemAt: destination, options: .forReplacing, error: &coordinationError) { coordinated in
@@ -43,15 +39,4 @@ enum CoordinatedFileExporter {
         }
         if let error = operationError ?? coordinationError { throw error }
     }
-}
-
-/// 비동기 작업이 완료될 때까지 사용자가 선택한 URL의 접근 권한을 유지한다.
-final class SecurityScopedAccess: @unchecked Sendable {
-    let url: URL
-    private let didStart: Bool
-    init(url: URL) {
-        self.url = url
-        didStart = url.startAccessingSecurityScopedResource()
-    }
-    deinit { if didStart { url.stopAccessingSecurityScopedResource() } }
 }

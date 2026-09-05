@@ -7,7 +7,7 @@ brew install xcodegen
 ./scripts/check.sh
 ```
 
-검증 명령은 프로젝트 생성, 배포 스크립트 테스트, 셸 문법 검사, Swift 회귀 테스트, 일반 배포용·Mac App Store용 Release 빌드를 순서대로 실행합니다. 코드서명 인증서나 화면 녹화 권한은 필요하지 않습니다. Swift 컴파일 경고는 빌드 실패로 처리합니다.
+검증 명령은 프로젝트 생성, 배포 스크립트 테스트, 셸 문법 검사, Swift 회귀 테스트, Sparkle 배포용 Release 빌드를 순서대로 실행합니다. 코드서명 인증서나 화면 녹화 권한은 필요하지 않습니다. Swift 컴파일 경고는 빌드 실패로 처리합니다.
 
 파생 데이터 경로를 바꾸려면 `OMOS_CHECK_DERIVED_DATA`를 지정합니다. 기본 경로는 `build/check`입니다. GitHub Actions도 같은 명령을 사용하며, 게시나 인증서 접근 권한은 없습니다.
 
@@ -30,21 +30,20 @@ brew install xcodegen
 
 ## 배포
 
+배포 경로는 Developer ID 서명·공증된 앱과 Sparkle 자동 업데이트로 통일합니다. 최초 설치용 DMG와 업데이트용 ZIP을 GitHub Releases에 올리고, Homebrew Cask는 같은 DMG를 사용합니다. 모든 정식 배포에서 ZIP의 EdDSA 서명과 `appcast.xml` 갱신을 함께 수행합니다.
+
 ```bash
 ./scripts/release.sh 1.0.90
 ./scripts/release.sh 1.0.90 --publish
-./scripts/mas-release.sh 1.0.90
-./scripts/mas-release.sh 1.0.90 --upload
 ```
 
-버전은 예시입니다. 두 배포 스크립트 모두 검증 명령이 성공해야 패키징으로 진행합니다. 게시·업로드 전에는 소스 변경을 커밋하고 작업 트리를 정리합니다.
+버전은 예시입니다. `scripts/release.sh`는 검증 명령이 성공해야 패키징으로 진행합니다. 게시 전에는 소스 변경을 커밋하고 작업 트리를 정리합니다.
 
-일반 배포는 중첩 코드부터 Developer ID 서명 → 앱의 hardened runtime 서명 → DMG 생성·서명 → Apple 공증 → 앱·DMG 스테이플 순서입니다. 제출 결과, 제출 상세와 이력의 `Accepted`, 앱·DMG의 스테이플과 Gatekeeper `Notarized Developer ID`를 모두 확인합니다. 하나라도 실패하면 배포를 중단합니다. 성공·실패한 제출 결과 JSON은 `dist`에 남깁니다. 자동 업데이트 ZIP은 앱에 내장된 공개키로 다시 검증하며, 공개 다운로드 파일은 크기 대신 SHA-256으로 비교합니다.
+배포는 중첩 코드부터 Developer ID 서명 → 앱의 hardened runtime 서명 → DMG 생성·서명 → Apple 공증 → 앱·DMG 스테이플 순서입니다. 제출 결과, 제출 상세와 이력의 `Accepted`, 앱·DMG의 스테이플과 Gatekeeper `Notarized Developer ID`를 모두 확인합니다. 하나라도 실패하면 배포를 중단합니다. 성공·실패한 제출 결과 JSON은 `dist`에 남깁니다. 자동 업데이트 ZIP은 앱에 내장된 공개키로 다시 검증하며, 공개 다운로드 파일은 크기 대신 SHA-256으로 비교합니다.
 
 - `OMOS_NOTARY_PROFILE`: 공증 키체인 프로필. 기본값 `oh-my-opensnap`.
 - `OMOS_SIGN_IDENTITY`: Developer ID Application 인증서 이름 또는 식별자. 기본값 `Developer ID Application`.
 - `--skip-notary`: 로컬 확인용. `--publish`와 함께 사용할 수 없습니다.
-- Mac App Store API 업로드는 `OMOS_ASC_API_KEY`, `OMOS_ASC_API_ISSUER`가 필요합니다. Xcode에 로그인된 계정을 사용하려면 `--upload-xcode`를 지정합니다.
 
 공증 도구를 모의 실행하는 테스트는 실패 시 배포 차단을 확인하는 용도입니다. 실제 Apple 공증이나 다운로드 후 Gatekeeper 검사를 대체하지 않습니다.
 
@@ -57,5 +56,3 @@ brew install xcodegen
 3. 외장 저장 장치 연결 해제·재연결 및 저장 폴더 권한 변경.
 4. 녹화 시작 직후 중지·종료, 일시정지·재개, 장시간 녹화와 디스크 부족.
 5. 다운로드한 DMG·자동 업데이트 ZIP으로 신규 설치 및 기존 설치본 업데이트.
-
-스토어판의 샌드박스 실행 검증, 개인정보 API 선언과 심사 자료는 [app-store/VALIDATION.md](app-store/VALIDATION.md)를 참고하세요.

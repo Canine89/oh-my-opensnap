@@ -20,5 +20,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: XcodeGen 준비
         run: command -v xcodegen || brew install xcodegen
-      - name: 두 배포 타깃 빌드 및 회귀 테스트
+      - name: Sparkle 배포 타깃 빌드 및 회귀 테스트
         run: ./scripts/check.sh

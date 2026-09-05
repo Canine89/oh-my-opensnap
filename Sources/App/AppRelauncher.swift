@@ -1,7 +1,6 @@
 import AppKit
 
 /// 권한 변경 뒤 "앱을 다시 실행하세요"를 사용자에게 시키지 않고 앱이 스스로 재시작한다.
-#if !MAS
 enum AppRelauncher {
     @MainActor
     static func relaunch() {
@@ -13,4 +12,3 @@ enum AppRelauncher {
         NSApp.terminate(nil)
     }
 }
-#endif

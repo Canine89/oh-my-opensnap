@@ -7,8 +7,6 @@ xcuserdata/
 # XcodeGen 생성물 (project.yml 에서 재생성)
 oh-my-opensnap.xcodeproj/
 Config/Info.plist
-Config/Info-MAS.plist
-Config/OhMyOpenSnap-MAS.entitlements
 
 # 배포 산출물
 dist/
@@ -27,5 +25,5 @@ dist/
 build-check.log
 __pycache__/
 
-# App Store Connect 개인키
+# 개인키 백업(절대 커밋 금지)
 *.p8

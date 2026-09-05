@@ -4,7 +4,7 @@
 1. **이 저장소(oh-my-opensnap)를 작업할 때의 운영 매뉴얼.**
 2. **다른 macOS 앱을 새로 만들 때 그대로 가져갈 검증된 청사진(blueprint).** 아래의 스택 선택과 릴리스 절차는 실제로 v1.0.65까지 운영하며 다듬은 것이다. 새 앱에서 흔들리지 말고 이 기본형에서 출발하라.
 
-> 새 macOS 앱을 **처음부터 스캐폴딩**할 때는 로컬 스킬 `macos-app-blueprint`(`.claude/skills/macos-app-blueprint/`)를, **배포/자동 업데이트 파이프라인**을 붙일 때는 전역 스킬 `mac-app-release`를 함께 쓴다. **Mac App Store 제출**은 전역 스킬 `mas-submission`(`~/.claude/skills/mas-submission/`)을 쓴다 — 1.0.87 실제 제출로 검증된 절차와 ASC API 자동화 쿡북이 들어 있다. 이 문서는 "무엇을/왜" 골랐는지의 기준선이다.
+> 새 macOS 앱을 **처음부터 스캐폴딩**할 때는 로컬 스킬 `macos-app-blueprint`(`.claude/skills/macos-app-blueprint/`)를, **배포/자동 업데이트 파이프라인**을 붙일 때는 전역 스킬 `mac-app-release`를 함께 쓴다. 이 문서는 "무엇을/왜" 골랐는지의 기준선이다.
 >
 > 이 저장소의 실제 배포는 **Developer ID Application + Apple 공증**이다. 전역 `mac-app-release` 스킬 템플릿의 “자체서명(공증 없음)” 경로는 멤버십이 없을 때의 대안이며, TCC 권한이 필요한 앱에서는 **고정된 코드 서명 신원**이 핵심이다(ad-hoc 금지).
 
@@ -29,9 +29,9 @@ macOS 26(Tahoe)+ **메뉴 막대 상주 화면 캡처 도구**. 영역을 픽셀
 | 부트스트랩 | **스토리보드 없이 코드로** — `Sources/App/main.swift`에서 `NSApplication` + `AppDelegate` 직접 구성 | 메뉴바 앱은 메인 윈도우가 없다. 코드 부트스트랩이 흐름이 명확하고 진단이 쉽다. |
 | 앱 종류 | **`.accessory` 활성화 정책 + `LSUIElement: true`** | Dock 아이콘 없이 메뉴 막대에만 상주. 마지막 윈도우가 닫혀도 종료 안 함. |
 | 프로젝트 생성 | **XcodeGen (`project.yml`)** | `project.yml`이 **유일한 진실의 원천(source of truth)**. `.xcodeproj`와 `Config/Info.plist`는 생성물이라 `.gitignore` 처리됨. |
-| 의존성 | **SPM** (XcodeGen `packages:`) | 외부 의존성은 **Sparkle 2.5.0 단 하나.** 의존성은 최소로. |
+| 의존성 | **SPM** (XcodeGen `packages:`) | 외부 의존성은 **Sparkle 2.9.6 단 하나.** 의존성은 최소로. |
 | 캡처 엔진 | **ScreenCaptureKit + CoreGraphics** (`Sources/CaptureCore/`) | 정지 이미지/디스플레이 스트림/영역 영상 모두 Apple 1st-party API. |
-| 전역 단축키 | **Carbon `RegisterEventHotKey`** (`Sources/Hotkey/`) | 접근성 권한 불필요 + 샌드박스 호환. `CGEventTap`은 접근성 권한을 요구하니 피한다. |
+| 전역 단축키 | **Carbon `RegisterEventHotKey`** (`Sources/Hotkey/`) | 접근성 권한 불필요. `CGEventTap`은 접근성 권한을 요구하니 피한다. |
 | 권한 | **TCC 화면 녹화** — `CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess` + 시스템 설정 딥링크 | 권한은 entitlement가 아니라 사용자 동의로만. 코드로는 프리플라이트 확인·시스템 프롬프트 유도·설정 딥링크까지만 가능. **숨은 앱 설정을 강요하지 말고 표준 시스템 권한 UX를 쓴다.** |
 | 자동 업데이트 | **Sparkle** (`SPUStandardUpdaterController(startingUpdater: true)`) + **EdDSA 서명** | ZIP 무결성은 EdDSA로 보장. Gatekeeper는 공증된 앱으로 통과. |
 | 코드 서명 | **Developer ID Application** (Team ID 고정) + **hardened runtime** | 아래 §5 참고 — 업데이트해도 TCC 권한이 유지되는 핵심. ad-hoc 금지. |
@@ -96,7 +96,7 @@ UI 검토용 스냅샷(Debug 전용): `build/dd/Build/Products/Debug/oh-my-opens
    - ZIP: `ditto -c -k --keepParent` (Sparkle 업데이트용, 공증·스테이플된 앱)
 6. **EdDSA 서명 + appcast** — DerivedData에서 Sparkle `sign_update`를 찾아 ZIP 서명 → `appcast.xml` 생성. ZIP은 `updates/`에 버전별로 복사하고 `raw.githubusercontent.com/.../updates/...zip`로 서빙.
 7. **릴리스 노트** — `CHANGELOG.md`의 `## <버전>` 섹션을 읽어 Sparkle 업데이트 창(HTML)과 GitHub 릴리스 노트(markdown) 양쪽에 사용. → **릴리스 전에 `CHANGELOG.md`에 `## <새버전>` 섹션을 먼저 추가하라.**
-8. **게시(`--publish`)** — `appcast.xml` + `project.yml` + `updates/*.zip`(+ Cask)을 `release: vX.Y.Z` 커밋으로 푸시 → 공개 ZIP 다운로드 크기 일치 검증 → `gh release create/upload`로 DMG+ZIP 업로드.
+8. **게시(`--publish`)** — `appcast.xml` + `project.yml` + `updates/*.zip`(+ Cask)을 `release: vX.Y.Z` 커밋으로 푸시 → 공개 ZIP 다운로드 SHA-256 일치 검증 → `gh release create/upload`로 DMG+ZIP 업로드.
 
 ### 1회 전역 설정 (이 Mac에서 한 번, 분실 시 치명적)
 - **Developer ID Application 인증서** + Apple Developer Program 멤버십.

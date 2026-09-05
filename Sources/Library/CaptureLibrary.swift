@@ -34,9 +34,7 @@ final class CaptureLibrary: @unchecked Sendable {
         let dir = directory
         ioQueue.async { [weak self] in
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            #if !MAS
             self?.migrateLegacyIfNeeded()
-            #endif
         }
     }
 
@@ -80,14 +78,11 @@ final class CaptureLibrary: @unchecked Sendable {
     /// 알림만 메인으로 되돌린다.
     func save(pngData: Data, date: Date, completion: @escaping (Result<URL, Error>) -> Void) {
         let directory = directory
-        let access = Settings.shared.retainLibraryAccess(for: directory)
         ioQueue.async {
-            defer { withExtendedLifetime(access) {} }
             let url = self.uniqueURL(for: date, directory: directory)
             let result = self.performWrite(at: url, recovery: { destination in
                 try self.store.saveRecovered(image: pngData, annotations: nil, at: destination)
             }) {
-                defer { withExtendedLifetime(access) {} }
                 try self.store.saveNew(pngData, at: url)
             }
             DispatchQueue.main.async {
@@ -126,10 +121,8 @@ final class CaptureLibrary: @unchecked Sendable {
     }
 
     func recoverPendingWrites(to directory: URL) async -> LibraryWriteBuffer.RecoveryReport {
-        let access = SecurityScopedAccess(url: directory)
         return await withCheckedContinuation { continuation in
             ioQueue.async {
-                defer { withExtendedLifetime(access) {} }
                 continuation.resume(returning: self.writeBuffer.recover(to: directory))
             }
         }
@@ -184,9 +177,7 @@ final class CaptureLibrary: @unchecked Sendable {
     /// 최신순 목록을 백그라운드에서 읽어 메인에서 콜백한다.
     func loadItems(completion: @escaping (Result<[LibraryItem], Error>) -> Void) {
         let directory = directory
-        let access = Settings.shared.retainLibraryAccess(for: directory)
         ioQueue.async {
-            defer { withExtendedLifetime(access) {} }
             let result = Result { try LibraryCatalog.load(directory: directory, store: self.store) }
             DispatchQueue.main.async { completion(result) }
         }
@@ -199,9 +190,7 @@ final class CaptureLibrary: @unchecked Sendable {
 
     /// 휴지통으로 이동(바탕화면 접근)도 백그라운드에서. 완료 후 메인에서 알림.
     func delete(_ item: LibraryItem, completion: @escaping (Result<Void, Error>) -> Void) {
-        let access = Settings.shared.retainLibraryAccess(for: item.url)
         ioQueue.async {
-            defer { withExtendedLifetime(access) {} }
             // 휴지통 이동 실패를 종료 때 자동 재시도하지 않는다. 사용자가 다시 요청한다.
             let result = Result {
                 try self.drainWrites(at: item.url)
@@ -219,9 +208,7 @@ final class CaptureLibrary: @unchecked Sendable {
 
     /// 이미지와 주석을 같은 큐 작업에서 읽어 서로 다른 편집 상태가 섞이지 않게 한다.
     func loadDocument(at url: URL, completion: @escaping (Result<(NSImage, Data?), Error>) -> Void) {
-        let access = Settings.shared.retainLibraryAccess(for: url)
         ioQueue.async {
-            defer { withExtendedLifetime(access) {} }
             let result = Result { () throws -> (NSImage, Data?) in
                 try self.drainWrites(at: url)
                 let document = try self.store.load(at: url)
@@ -234,11 +221,8 @@ final class CaptureLibrary: @unchecked Sendable {
 
     func saveEdit(image: CGImage, annotations: Data?, at url: URL,
                   completion: @escaping (Result<Void, Error>) -> Void) {
-        let access = Settings.shared.retainLibraryAccess(for: url)
         ioQueue.async {
-            defer { withExtendedLifetime(access) {} }
             let result = self.performWrite(at: url, recovery: self.recovery(image: image, annotations: annotations)) {
-                defer { withExtendedLifetime(access) {} }
                 guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
                     throw CocoaError(.fileWriteUnknown)
                 }
@@ -252,11 +236,8 @@ final class CaptureLibrary: @unchecked Sendable {
     }
 
     func saveAnnotations(_ data: Data?, for imageURL: URL, image: CGImage) {
-        let access = Settings.shared.retainLibraryAccess(for: imageURL)
         ioQueue.async {
-            defer { withExtendedLifetime(access) {} }
             let result = self.performWrite(at: imageURL, recovery: self.recovery(image: image, annotations: data)) {
-                defer { withExtendedLifetime(access) {} }
                 try self.store.saveAnnotations(data, at: imageURL)
             }
             if case .failure(let error) = result {
@@ -268,9 +249,7 @@ final class CaptureLibrary: @unchecked Sendable {
     }
 
     func export(data: Data, to url: URL, completion: @escaping (Result<Void, Error>) -> Void) {
-        let access = SecurityScopedAccess(url: url)
         ioQueue.async {
-            defer { withExtendedLifetime(access) {} }
             let result = Result {
                 try self.drainWrites(at: url)
                 if url.pathExtension.lowercased() == "png",
@@ -283,10 +262,7 @@ final class CaptureLibrary: @unchecked Sendable {
     }
 
     func exportFile(from source: URL, to url: URL, completion: @escaping (Result<Void, Error>) -> Void) {
-        let sourceAccess = SecurityScopedAccess(url: source)
-        let destinationAccess = SecurityScopedAccess(url: url)
         ioQueue.async {
-            defer { withExtendedLifetime((sourceAccess, destinationAccess)) {} }
             let result = Result { try CoordinatedFileExporter.copy(from: source, to: url) }
             DispatchQueue.main.async { completion(result) }
         }

@@ -39,6 +39,13 @@ fi
     def test_unsigned_publication_is_rejected(self):
         self.assertNotEqual(self.run_function("validate_release_options", "1.0.90", "1", "1").returncode, 0)
 
+    def test_publication_cannot_skip_sparkle_feed(self):
+        result = subprocess.run(
+            ["bash", str(VALIDATOR.parent / "release.sh"), "1.0.91", "--skip-appcast", "--publish"],
+            capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("알 수 없는 옵션", result.stderr)
+
     def test_invalid_version_is_rejected(self):
         self.assertNotEqual(self.run_function("validate_release_options", "--oops", "0", "0").returncode, 0)
 
