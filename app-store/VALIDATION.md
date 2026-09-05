@@ -50,7 +50,9 @@ python3 scripts/verify-mas-package.py build/mas-export/Oh-my-opensnap.pkg
 - 1만 개 파일의 라이브러리 메타데이터 읽기·정렬: 이 Mac에서 약 0.32초. 이미지 1만 장을 동시에 디코딩한 측정은 아니다.
 - 1.0.91 (92) 제출용 PKG: Apple Distribution 및 Mac Installer 서명, 스토어 프로비저닝 프로필, 샌드박스, 개인정보 매니페스트 포함 검증 통과. Intel·Apple Silicon 공용 바이너리.
 - 한국어·영어 라이브러리 화면: 별도 샌드박스의 예제 데이터로 실제 창을 캡처. 각 2880×1800 PNG.
-- TestFlight 업로드·다른 Mac의 실제 사용 검증: 아직 완료되지 않았다.
+- App Store Connect 업로드: 2026-09-05, Xcode 계정으로 1.0.91 (92) 업로드 성공. Apple의 패키지 처리 시작 응답 확인.
+- 일반 조건 Swift 테스트 23개, MAS 조건 Swift 테스트 24개, Python 제출·서명 검증 11개 및 두 배포 타깃 Release 빌드 통과.
+- Apple의 후속 처리 완료, TestFlight 테스터별 배포·다른 Mac의 실제 사용 검증, 정식 심사 제출·공개 출시는 아직 확인·완료하지 않았다.
 
 ## App Store Connect 인증
 
