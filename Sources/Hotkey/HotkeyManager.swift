@@ -47,7 +47,9 @@ final class HotkeyManager {
         InstallEventHandler(GetApplicationEventTarget(), { _, _, userData -> OSStatus in
             guard let userData else { return OSStatus(eventNotHandledErr) }
             let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
-            DispatchQueue.main.async { manager.onTrigger?() }
+            // Carbon 앱 이벤트 핸들러는 메인 스레드에서 호출된다. 다음 런루프로
+            // 미루지 않아야 메뉴 강조가 바뀌기 전에 화면 확보를 요청할 수 있다.
+            MainActor.assumeIsolated { manager.onTrigger?() }
             return noErr
         }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &eventHandler)
         installed = true

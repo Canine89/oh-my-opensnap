@@ -6,6 +6,21 @@ import CoreGraphics
 enum StillImageCapturer {
     enum CaptureError: Error { case noImage }
 
+    /// SCShareableContent 조회 없이 현재 합성 화면을 즉시 요청한다.
+    /// 커서가 강조를 가리지 않도록 커서 픽셀은 제외한다.
+    static func requestSnapshot(in rect: CGRect, scale: CGFloat) -> DisplaySnapshotRequest {
+        let config = SCScreenshotConfiguration()
+        config.width = max(2, Int((rect.width * scale).rounded()))
+        config.height = max(2, Int((rect.height * scale).rounded()))
+        config.showsCursor = false
+        config.dynamicRange = .sdr
+        return DisplaySnapshotRequest(scale: scale) { completion in
+            SCScreenshotManager.captureScreenshot(rect: rect, configuration: config) { output, error in
+                completion(output?.sdrImage, error)
+            }
+        }
+    }
+
     /// 디스플레이의 일부(또는 전체)를 캡처한다.
     /// `sourceRect`(디스플레이 좌상단 기준 point)가 있으면 그 영역만 요청하고,
     /// 실패하거나 결과가 기대와 다르면 전체 캡처 후 crop으로 폴백한다.

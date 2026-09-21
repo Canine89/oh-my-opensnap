@@ -45,10 +45,23 @@ final class OverlayController {
         // 여기서 활성화하면 Excel 등의 드롭다운이 닫힌 뒤의 화면이 저장된다.
         generation += 1
         let current = generation
-        setupTask = Task { await setup(mode: mode, generation: current) }
+        let freezeScreen = Settings.shared.freezeScreenDuringCapture
+        var requests: [CGDirectDisplayID: DisplaySnapshotRequest] = [:]
+        if freezeScreen {
+            // 외부 앱만 보이는 디스플레이는 창 목록을 조회하기 전에 바로 요청한다.
+            // 우리 창이 보이면 제외 필터가 필요하므로 기존 필터 캡처를 사용한다.
+            let ownFrames = NSApp.windows.filter { $0.isVisible && $0.alphaValue > 0 }.map(\.frame)
+            for screen in NSScreen.screens where !ownFrames.contains(where: { $0.intersects(screen.frame) }) {
+                requests[screen.displayID] = StillImageCapturer.requestSnapshot(
+                    in: CGDisplayBounds(screen.displayID), scale: screen.backingScaleFactor)
+            }
+        }
+        setupTask = Task { await setup(mode: mode, generation: current,
+                                       freezeScreen: freezeScreen, requests: requests) }
     }
 
-    private func setup(mode: Mode, generation current: Int) async {
+    private func setup(mode: Mode, generation current: Int, freezeScreen: Bool,
+                       requests: [CGDirectDisplayID: DisplaySnapshotRequest]) async {
         let content: SCShareableContent
         do {
             content = try await SCShareableContent.current
@@ -73,9 +86,19 @@ final class OverlayController {
         // 오버레이가 올라오기 전에 정지 화면을 먼저 찍는다. 이 순서라야 오버레이 자신이 스냅샷에 찍히지 않는다.
         // 라이브러리를 먼저 숨기지 않아도 캡처에 찍히지 않도록
         // 우리 프로세스의 창(라이브러리·HUD·설정)은 전부 제외 목록에 넣는다.
-        if Settings.shared.freezeScreenDuringCapture {
+        if freezeScreen {
             let own = Self.ownWindows(in: content)
-            let captured = await Self.captureSnapshots(targets.map { (display: $0.display, scale: $0.scale) }, excluding: own)
+            var captured: [CGDirectDisplayID: DisplaySnapshot] = [:]
+            for (displayID, request) in requests {
+                do {
+                    captured[displayID] = try await request.value()
+                } catch {
+                    NSLog("Immediate snapshot failed for display \(displayID): \(error)")
+                }
+            }
+            let remaining = targets.filter { captured[$0.display.displayID] == nil }
+            let filtered = await Self.captureSnapshots(remaining.map { (display: $0.display, scale: $0.scale) }, excluding: own)
+            captured.merge(filtered) { first, _ in first }
             guard active, generation == current, !CaptureCoordinator.shared.isSuspended else { return }
             snapshots = captured
         }

@@ -39,6 +39,8 @@ targets:
       - path: Sources/Library/VideoExportService.swift
       - path: Sources/CaptureCore/RecordingSession.swift
       - path: Sources/CaptureCore/DisplayStreamProvider.swift
+      - path: Sources/CaptureCore/DisplaySnapshot.swift
+      - path: Sources/CaptureCore/DisplaySnapshotRequest.swift
       - path: Sources/CaptureCore/VideoWriterFinalizer.swift
       - path: Sources/CaptureCore/VideoFrameWriter.swift
       - path: Sources/App/Brand.swift
