@@ -16,7 +16,19 @@ enum StillImageCapturer {
         config.dynamicRange = .sdr
         return DisplaySnapshotRequest(scale: scale) { completion in
             SCScreenshotManager.captureScreenshot(rect: rect, configuration: config) { output, error in
-                completion(output?.sdrImage, error)
+                guard let image = output?.sdrImage, error == nil else {
+                    completion(nil, error ?? CaptureError.noImage)
+                    return
+                }
+                // 캡처 요청 시점은 그대로 두고, 비싼 픽셀 준비만 작업 큐로 보낸다.
+                // 메인 스레드의 확대경 그리기에서 매번 디코딩하지 않게 한다.
+                DispatchQueue.global(qos: .userInitiated).async {
+                    guard let raster = DisplaySnapshot.rasterizedImage(image) else {
+                        completion(nil, CaptureError.noImage)
+                        return
+                    }
+                    completion(raster, nil)
+                }
             }
         }
     }

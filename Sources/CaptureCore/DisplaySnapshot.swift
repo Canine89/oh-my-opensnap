@@ -10,6 +10,23 @@ struct DisplaySnapshot {
     /// point → pixel 스케일 (Retina에서 2.0)
     let scale: CGFloat
 
+    /// 캡처 API가 반환한 지연 렌더링 이미지를 한 번만 BGRA 픽셀로 펼친다.
+    /// 확대경 crop/헤더 분석/배경 레이어가 같은 비트맵을 재사용하게 한다.
+    /// 전체 화면 변환이므로 호출자는 메인 스레드 밖에서 실행해야 한다.
+    static func rasterizedImage(_ image: CGImage) -> CGImage? {
+        let colorSpace = image.colorSpace?.model == .rgb
+            ? image.colorSpace! : CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue
+            | CGBitmapInfo.byteOrder32Little.rawValue
+        guard let context = CGContext(data: nil, width: image.width, height: image.height,
+                                      bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: colorSpace, bitmapInfo: bitmapInfo) else { return nil }
+        context.interpolationQuality = .none
+        context.setBlendMode(.copy)
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return context.makeImage()
+    }
+
     /// 오버레이 뷰 좌표(디스플레이 좌상단 기준 point)를 픽셀로 바꿔 잘라낸다.
     func crop(viewRect: CGRect) -> CGImage? {
         guard viewRect.width > 2, viewRect.height > 2 else { return nil }

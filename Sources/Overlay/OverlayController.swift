@@ -264,7 +264,8 @@ final class OverlayController {
                     do {
                         let image = try await StillImageCapturer.capture(display: target.display, scale: target.scale,
                                                                          excluding: excluding)
-                        return (target.display.displayID, DisplaySnapshot(image: image, scale: target.scale))
+                        guard let raster = DisplaySnapshot.rasterizedImage(image) else { return nil }
+                        return (target.display.displayID, DisplaySnapshot(image: raster, scale: target.scale))
                     } catch {
                         NSLog("Freeze snapshot failed for display \(target.display.displayID): \(error)")
                         return nil

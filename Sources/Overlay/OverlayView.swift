@@ -188,6 +188,10 @@ final class OverlayView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        let oldCursor = cursor
+        let oldWindowID = hoveredWindow?.windowID
+        let oldWindowRect = hoveredWindowRect
+        let oldFullRect = hoveredFullWindowRect
         cursor = convert(event.locationInWindow, from: nil)
         cursorInside = true
         onBecomeActiveDisplay?()
@@ -197,7 +201,29 @@ final class OverlayView: NSView {
             return
         }
         if !suppressed { updateHoveredWindow() }
-        needsDisplay = true
+        if oldWindowID != hoveredWindow?.windowID || oldWindowRect != hoveredWindowRect
+            || oldFullRect != hoveredFullWindowRect {
+            needsDisplay = true
+        } else if !suppressed {
+            // 같은 창 위에서는 정적인 배경 대신 조준점이 바뀐 부분만 갱신한다.
+            invalidateCursor(at: oldCursor)
+            invalidateCursor(at: cursor)
+        }
+    }
+
+    private func invalidateCursor(at point: CGPoint) {
+        // 선의 밑선과 중앙 링까지 포함한다. 띠를 union으로 합치면
+        // 다시 화면 전체가 되므로 각각 무효화해 AppKit의 복합 클립을 쓴다.
+        switch phase {
+        case .idle, .selecting:
+            setNeedsDisplay(CGRect(x: point.x - 6, y: bounds.minY, width: 12, height: bounds.height))
+            setNeedsDisplay(CGRect(x: bounds.minX, y: point.y - 6, width: bounds.width, height: 12))
+            setNeedsDisplay(loupeDamageFrame(at: point))
+        case .resizing:
+            setNeedsDisplay(loupeDamageFrame(at: point))
+        case .adjusting, .moving:
+            break
+        }
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -237,6 +263,8 @@ final class OverlayView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        let oldCursor = cursor
+        let oldSelection = selection
         let point = convert(event.locationInWindow, from: nil)
         cursor = point
         let square = event.modifierFlags.contains(.shift)
@@ -266,7 +294,19 @@ final class OverlayView: NSView {
         case .idle, .adjusting:
             break
         }
-        needsDisplay = true
+        if let oldSelection, let selection {
+            for rect in SelectionDamage.rectangles(from: oldSelection, to: selection) {
+                setNeedsDisplay(rect.insetBy(dx: -2, dy: -2))
+            }
+            invalidateBorder(oldSelection)
+            invalidateBorder(selection)
+            setNeedsDisplay(dimensionLabelFrame(for: oldSelection).insetBy(dx: -2, dy: -2))
+            setNeedsDisplay(dimensionLabelFrame(for: selection).insetBy(dx: -2, dy: -2))
+            invalidateCursor(at: oldCursor)
+            invalidateCursor(at: cursor)
+        } else {
+            needsDisplay = true
+        }
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -805,21 +845,32 @@ final class OverlayView: NSView {
         NSColor.white.setStroke(); ring.lineWidth = 1; ring.stroke()
     }
 
-    /// 확대경: 앱의 HUD 표면과 같은 12pt 모서리·얇은 테두리, 중심 픽셀은 브랜드 레드,
-    /// 아래에 색상·좌표 판독 알약(치수 라벨·구역 이름표와 같은 스타일).
-    private func drawLoupe(_ ctx: CGContext) {
+    private func loupeFrame(at point: CGPoint) -> CGRect {
         let textHeight: CGFloat = 32
         let gap: CGFloat = 24
 
-        var origin = CGPoint(x: cursor.x + gap, y: cursor.y + gap)
-        if origin.x + loupeSize > bounds.width { origin.x = cursor.x - gap - loupeSize }
-        if origin.y + loupeSize + textHeight > bounds.height { origin.y = cursor.y - gap - loupeSize - textHeight }
+        var origin = CGPoint(x: point.x + gap, y: point.y + gap)
+        if origin.x + loupeSize > bounds.width { origin.x = point.x - gap - loupeSize }
+        if origin.y + loupeSize + textHeight > bounds.height { origin.y = point.y - gap - loupeSize - textHeight }
         origin.x = max(8, min(origin.x, bounds.width - loupeSize - 8))
         origin.y = max(8, min(origin.y, bounds.height - loupeSize - textHeight - 8))
 
-        let frame = CGRect(origin: origin, size: CGSize(width: loupeSize, height: loupeSize))
-        loupeDirtyFrame = CGRect(x: frame.minX - 4, y: frame.minY - 4,
-                                 width: loupeSize + 8, height: loupeSize + textHeight + 8)
+        return CGRect(origin: origin, size: CGSize(width: loupeSize, height: loupeSize))
+    }
+
+    private func loupeDamageFrame(at point: CGPoint) -> CGRect {
+        let frame = loupeFrame(at: point)
+        // 좌표 자릿수가 늘어 확대경보다 넓어지는 색상/좌표 라벨도 지운다.
+        return CGRect(x: frame.minX - 4, y: frame.minY - 4,
+                      width: max(loupeSize, 320) + 8, height: loupeSize + 40)
+    }
+
+    /// 확대경: 앱의 HUD 표면과 같은 12pt 모서리·얇은 테두리, 중심 픽셀은 브랜드 레드,
+    /// 아래에 색상·좌표 판독 알약(치수 라벨·구역 이름표와 같은 스타일).
+    private func drawLoupe(_ ctx: CGContext) {
+        let frame = loupeFrame(at: cursor)
+        loupeDirtyFrame = loupeDamageFrame(at: cursor)
+        guard needsToDraw(loupeDirtyFrame) else { return }
 
         // 배경
         let bg = NSBezierPath(roundedRect: frame, xRadius: Brand.cornerRadius, yRadius: Brand.cornerRadius)
@@ -915,7 +966,7 @@ final class OverlayView: NSView {
         coordText.draw(at: CGPoint(x: x, y: pill.midY - coordSize.height / 2), withAttributes: coordAttributes)
     }
 
-    private func drawDimensionLabel(for sel: CGRect) {
+    private func dimensionLabelFrame(for sel: CGRect) -> CGRect {
         let widthPx = Int((sel.width * scale).rounded())
         let heightPx = Int((sel.height * scale).rounded())
         let text = "\(widthPx) x \(heightPx)" as NSString
@@ -927,7 +978,14 @@ final class OverlayView: NSView {
                           width: textSize.width + padding * 2,
                           height: textSize.height + padding * 2)
         if pill.minY < 4 { pill.origin.y = sel.maxY + 4 }   // 위 공간 없으면 아래로
+        return pill
+    }
 
+    private func drawDimensionLabel(for sel: CGRect) {
+        let pill = dimensionLabelFrame(for: sel)
+        let text = "\(Int((sel.width * scale).rounded())) x \(Int((sel.height * scale).rounded()))" as NSString
+        let attributes = overlayLabelAttributes(weight: .semibold)
+        let padding: CGFloat = 5
         let pillPath = NSBezierPath(roundedRect: pill, xRadius: Brand.innerCornerRadius, yRadius: Brand.innerCornerRadius)
         NSColor(white: 0, alpha: 0.75).setFill()
         pillPath.fill()
