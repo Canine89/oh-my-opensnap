@@ -90,7 +90,16 @@ final class MenuBarController: NSObject {
         guard let captureItem else { return }
         let code = Settings.shared.hotKeyCode
         let mods = Settings.shared.hotKeyModifiers
-        if let equivalent = HotkeyFormatter.menuKeyEquivalent(keyCode: code, carbonModifiers: mods) {
+        captureItem.toolTip = nil
+        // 등록에 실패한 단축키를 그대로 보여 주면 "눌러도 안 되는" 단축키가 된다 → 사용 불가로 표시.
+        if HotkeyManager.shared.registrationFailed {
+            let shortcut = HotkeyFormatter.displayString(keyCode: code, carbonModifiers: mods)
+            captureItem.title = loc("Capture", "캡처") + "   " + loc("(\(shortcut) unavailable)", "(\(shortcut) 사용 불가)")
+            captureItem.keyEquivalent = ""
+            captureItem.keyEquivalentModifierMask = []
+            captureItem.toolTip = loc("Another app or macOS already uses this shortcut. Choose a different one in Settings.",
+                                      "다른 앱이나 macOS가 이미 이 단축키를 쓰고 있습니다. 설정에서 다른 조합을 고르세요.")
+        } else if let equivalent = HotkeyFormatter.menuKeyEquivalent(keyCode: code, carbonModifiers: mods) {
             captureItem.title = loc("Capture", "캡처")
             captureItem.keyEquivalent = equivalent.key
             captureItem.keyEquivalentModifierMask = equivalent.modifiers
@@ -194,6 +203,7 @@ final class MenuBarController: NSObject {
 
 extension MenuBarController: NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
+        refreshShortcut()   // 앱 시작 시 등록 결과는 메뉴 구성 뒤에 나온다
         refreshVideoState()
     }
 }

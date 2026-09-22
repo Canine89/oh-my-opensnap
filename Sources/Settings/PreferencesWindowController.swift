@@ -21,6 +21,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         if window == nil { buildWindow() }
         refreshLaunchAtLoginState()
         refreshPermissionStatus()
+        refreshShortcutUI()
         startPermissionMonitor()
         NSApp.activate(ignoringOtherApps: true)
         if window?.isVisible == false { window?.center() }
@@ -44,6 +45,8 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
 
         NotificationCenter.default.addObserver(self, selector: #selector(languageChanged),
                                                name: .appLanguageDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(applicationDidResignActive),
+                                               name: NSApplication.didResignActiveNotification, object: nil)
     }
 
     private func buildTabs() {
@@ -170,6 +173,7 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         self.recordButton = recordButton
         let recordHint = AppAppearance.secondaryText(loc("Click, then press a new combination", "클릭한 뒤 새 조합을 누르세요"))
         self.recordHint = recordHint
+        refreshShortcutUI()
         let shortcutRow = NSStackView(views: [shortcutLabel, recordButton, recordHint])
         shortcutRow.orientation = .horizontal
         shortcutRow.alignment = .firstBaseline
@@ -306,39 +310,102 @@ final class PreferencesWindowController: NSObject, NSWindowDelegate {
         isRecording = true
         recordButton?.title = loc("Press keys…", "키 입력…")
         recordButton?.highlight(true)
-        recordHint?.stringValue = loc("Press a new combination · Esc to cancel", "새 조합을 누르세요 · Esc로 취소")
+        setRecordHint(loc("Press a new combination · Esc to cancel", "새 조합을 누르세요 · Esc로 취소"))
         // 녹화 중에는 기존 전역 단축키를 잠시 끈다 — 안 그러면 현재 단축키(예: ⌘⇧2)를
         // 누를 때 녹화 대신 캡처가 실행돼 버린다.
         HotkeyManager.shared.suspend()
         recordingMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
-            guard let self else { return event }
+            // 설정 창의 키 입력만 받는다 — 라이브러리 편집기 등 다른 창의 ⌘C·⌘Z가 전역 단축키가 되면 안 된다.
+            guard let self, self.isRecording, let window = self.window, event.window === window else { return event }
             // Esc → 취소
             if event.keyCode == 53 { self.stopRecording(); return nil }
-            // 적어도 하나의 modifier 필요
-            guard HotkeyFormatter.hasModifier(event.modifierFlags) else {
-                self.recordHint?.stringValue = loc("Include at least one of ⌘ ⌥ ⌃ ⇧", "⌘ ⌥ ⌃ ⇧ 중 하나 이상과 함께 누르세요")
-                return nil
+            let keyCode = UInt32(event.keyCode)
+            let modifiers = HotkeyFormatter.carbonModifiers(from: event.modifierFlags)
+            switch HotkeyFormatter.validate(keyCode: keyCode, carbonModifiers: modifiers,
+                                            character: event.charactersIgnoringModifiers) {
+            case .valid:
+                self.apply(keyCode: keyCode, modifiers: modifiers)
+            case .needsModifier:
+                self.setRecordHint(loc("Include at least one of ⌘ ⌥ ⌃ (⇧ alone isn't enough)",
+                                       "⌘ ⌥ ⌃ 중 하나 이상과 함께 누르세요 (⇧만으로는 안 됩니다)"), warning: true)
+            case .reserved:
+                let shortcut = HotkeyFormatter.displayString(keyCode: keyCode, carbonModifiers: modifiers)
+                self.setRecordHint(loc("\(shortcut) is a system shortcut — choose another",
+                                       "\(shortcut)은(는) 시스템 단축키입니다 — 다른 조합을 누르세요"), warning: true)
             }
-
-            Settings.shared.hotKeyCode = UInt32(event.keyCode)
-            Settings.shared.hotKeyModifiers = HotkeyFormatter.carbonModifiers(from: event.modifierFlags)
-            NotificationCenter.default.post(name: .hotkeyChanged, object: nil)
-            self.stopRecording()   // 새 설정으로 전역 단축키 재등록
             return nil
         }
     }
 
+    /// 새 조합을 저장하고 등록한다. 다른 앱·macOS가 선점해 등록이 실패하면 이전 조합으로 되돌린다.
+    private func apply(keyCode: UInt32, modifiers: UInt32) {
+        let previousCode = Settings.shared.hotKeyCode
+        let previousModifiers = Settings.shared.hotKeyModifiers
+        Settings.shared.hotKeyCode = keyCode
+        Settings.shared.hotKeyModifiers = modifiers
+        endRecordingSession()
+        if HotkeyManager.shared.reload() {
+            NotificationCenter.default.post(name: .hotkeyChanged, object: nil)
+            refreshShortcutUI()
+            return
+        }
+        let rejected = HotkeyFormatter.displayString(keyCode: keyCode, carbonModifiers: modifiers)
+        Settings.shared.hotKeyCode = previousCode
+        Settings.shared.hotKeyModifiers = previousModifiers
+        HotkeyManager.shared.reload()
+        NotificationCenter.default.post(name: .hotkeyChanged, object: nil)
+        refreshShortcutUI()
+        if !HotkeyManager.shared.registrationFailed {
+            setRecordHint(loc("\(rejected) is already used by another app — kept \(currentShortcutString())",
+                              "\(rejected)은(는) 다른 앱이 이미 쓰고 있어 \(currentShortcutString())을(를) 유지합니다"), warning: true)
+        }
+    }
+
     private func stopRecording() {
+        let wasRecording = isRecording
+        endRecordingSession()
+        // 전역 단축키 복구. 녹화 중이 아니었으면 이미 등록돼 있으니 건드리지 않는다.
+        if wasRecording {
+            HotkeyManager.shared.reload()
+            NotificationCenter.default.post(name: .hotkeyChanged, object: nil)
+        }
+        refreshShortcutUI()
+    }
+
+    /// 녹화 상태·로컬 모니터만 정리한다 (전역 단축키 재등록은 호출한 쪽이 한다).
+    private func endRecordingSession() {
         isRecording = false
         recordButton?.highlight(false)
-        recordButton?.title = currentShortcutString()
-        recordHint?.stringValue = loc("Click, then press a new combination", "클릭한 뒤 새 조합을 누르세요")
         if let monitor = recordingMonitor {
             NSEvent.removeMonitor(monitor)
             recordingMonitor = nil
         }
-        // 전역 단축키 복구(녹화 중 변경됐으면 새 값으로 재등록).
-        HotkeyManager.shared.reload()
+    }
+
+    /// 버튼 제목 + 안내 문구. 등록에 실패한 상태면 안내 문구가 이유와 해결 방법을 알려 준다.
+    private func refreshShortcutUI() {
+        guard !isRecording else { return }
+        recordButton?.title = currentShortcutString()
+        if HotkeyManager.shared.registrationFailed {
+            setRecordHint(loc("Unavailable — another app or macOS already uses this shortcut. Click to choose another.",
+                              "사용 불가 — 다른 앱이나 macOS가 이미 쓰는 단축키입니다. 클릭해 다른 조합을 고르세요."), warning: true)
+        } else {
+            setRecordHint(loc("Click, then press a new combination", "클릭한 뒤 새 조합을 누르세요"))
+        }
+    }
+
+    private func setRecordHint(_ text: String, warning: Bool = false) {
+        recordHint?.stringValue = text
+        recordHint?.textColor = warning ? .systemOrange : .secondaryLabelColor
+    }
+
+    // 녹화 중 다른 창·다른 앱으로 넘어가면 녹화를 끝내 전역 단축키를 복구한다.
+    func windowDidResignKey(_ notification: Notification) {
+        if isRecording { stopRecording() }
+    }
+
+    @objc private func applicationDidResignActive() {
+        if isRecording { stopRecording() }
     }
 
     func windowWillClose(_ notification: Notification) {

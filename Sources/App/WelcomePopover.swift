@@ -29,12 +29,15 @@ final class WelcomePopover: NSObject, NSPopoverDelegate {
         // 언어가 바뀌면 (여기 세그먼트로든 설정 창에서든) 열린 채로 내용을 새 언어로 다시 그린다.
         NotificationCenter.default.addObserver(self, selector: #selector(rebuildContent),
                                                name: .appLanguageDidChange, object: nil)
+        // 단축키를 바꾸면 1단계 안내 문구의 단축키도 따라 바뀌어야 한다.
+        NotificationCenter.default.addObserver(self, selector: #selector(rebuildContent),
+                                               name: .hotkeyChanged, object: nil)
     }
 
     func show(relativeTo view: NSView) {
         guard !popover.isShown else { return }
         Self.markShown()
-        refreshPermission()
+        rebuildContent()   // 만든 뒤 바뀐 단축키·언어를 반영
         popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshPermission() }
@@ -193,9 +196,14 @@ final class WelcomePopover: NSObject, NSPopoverDelegate {
     }
 
     @objc private func requestPermission() {
-        if !ScreenCapturePermission.request() {
-            // 이미 한 번 거부된 경우 prompt가 다시 뜨지 않는다 → 설정으로 안내
-            ScreenCapturePermission.openSystemSettings()
+        // 첫 클릭은 macOS 표준 prompt만 띄운다 — prompt와 시스템 설정을 동시에 열면 안내가 겹친다.
+        // prompt는 한 번만 뜨므로 그다음 클릭부터 설정으로 안내한다.
+        if !ScreenCapturePermission.isGranted {
+            if ScreenCapturePermission.didRequestThisLaunch {
+                ScreenCapturePermission.openSystemSettings()
+            } else {
+                ScreenCapturePermission.request()
+            }
         }
         refreshPermission()
     }

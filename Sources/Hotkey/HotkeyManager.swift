@@ -13,6 +13,16 @@ final class HotkeyManager {
     private var eventHandler: EventHandlerRef?
     private var installed = false
 
+    /// 마지막 등록 시도의 실패 코드. nil이면 등록 성공(또는 아직 시도 전).
+    /// 다른 앱·시스템이 같은 조합을 선점하면 `eventHotKeyExistsErr`가 온다.
+    private(set) var lastRegistrationError: OSStatus?
+
+    /// 현재 설정의 단축키가 실제로 등록돼 있는지 (녹화 중 일시 해제 상태는 false).
+    var isRegistered: Bool { hotKeyRef != nil }
+
+    /// 등록을 시도했는데 실패한 상태 — 메뉴·설정 창이 "사용 불가"로 표시한다.
+    var registrationFailed: Bool { lastRegistrationError != nil }
+
     private init() {}
 
     /// 앱 시작 시 1회 호출 — 이벤트 핸들러 설치 + 현재 설정으로 등록.
@@ -21,10 +31,11 @@ final class HotkeyManager {
         registerCurrent()
     }
 
-    /// 설정 변경 후 재등록.
-    func reload() {
+    /// 설정 변경 후 재등록. 등록에 성공하면 true.
+    @discardableResult
+    func reload() -> Bool {
         unregisterHotKey()
-        registerCurrent()
+        return registerCurrent()
     }
 
     /// 단축키 녹화 중 일시 해제 — 등록된 단축키가 녹화 입력을 가로채지 않도록.
@@ -55,12 +66,24 @@ final class HotkeyManager {
         installed = true
     }
 
-    private func registerCurrent() {
+    @discardableResult
+    private func registerCurrent() -> Bool {
         let hotKeyID = EventHotKeyID(signature: fourCharCode("ARZR"), id: 1)
-        RegisterEventHotKey(Settings.shared.hotKeyCode,
-                            Settings.shared.hotKeyModifiers,
-                            hotKeyID,
-                            GetApplicationEventTarget(), 0, &hotKeyRef)
+        var ref: EventHotKeyRef?
+        let status = RegisterEventHotKey(Settings.shared.hotKeyCode,
+                                         Settings.shared.hotKeyModifiers,
+                                         hotKeyID,
+                                         GetApplicationEventTarget(), 0, &ref)
+        // 실패를 삼키면 단축키가 없는데도 UI는 등록된 것처럼 보인다 → 상태를 남겨 표시한다.
+        if status == noErr, let ref {
+            hotKeyRef = ref
+            lastRegistrationError = nil
+            return true
+        }
+        hotKeyRef = nil
+        lastRegistrationError = status == noErr ? OSStatus(eventInternalErr) : status
+        NSLog("[Hotkey] RegisterEventHotKey 실패: %d", status)
+        return false
     }
 
     private func unregisterHotKey() {
