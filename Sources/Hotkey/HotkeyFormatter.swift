@@ -24,10 +24,59 @@ enum HotkeyFormatter {
         return carbon
     }
 
-    /// 적어도 하나의 modifier가 있어야 전역 단축키로 유효.
-    static func hasModifier(_ flags: NSEvent.ModifierFlags) -> Bool {
-        !flags.intersection([.control, .option, .shift, .command]).isEmpty
+    /// 전역 단축키 후보 검사 결과.
+    enum Validation: Equatable {
+        case valid
+        /// ⌘ ⌥ ⌃ 중 하나도 없음 (⇧만으로는 일반 타이핑과 겹친다).
+        case needsModifier
+        /// ⌘Q·⌘C처럼 macOS/모든 앱이 쓰는 조합 — 전역으로 가로채면 시스템 전체가 망가진다.
+        case reserved
     }
+
+    /// 녹화한 조합이 전역 단축키로 쓸 만한지 판정한다 (순수 함수 — 테스트 대상).
+    /// `character`는 현재 키보드 레이아웃 기준 문자(`charactersIgnoringModifiers`).
+    /// 주어지면 문자로, 없으면 ANSI 키코드로 예약 조합을 비교한다.
+    static func validate(keyCode: UInt32, carbonModifiers: UInt32, character: String? = nil) -> Validation {
+        let required = UInt32(cmdKey) | UInt32(optionKey) | UInt32(controlKey)
+        guard carbonModifiers & required != 0 else { return .needsModifier }
+        let mods = carbonModifiers & (required | UInt32(shiftKey))
+        let typed = character?.lowercased()
+        for combo in reservedCombos where combo.modifiers == mods {
+            if let char = combo.character, let typed, !typed.isEmpty {
+                if typed == char { return .reserved }
+            } else if combo.keyCode == Int(keyCode) {
+                return .reserved
+            }
+        }
+        return .valid
+    }
+
+    /// 시스템·표준 편집 단축키. 문자 키는 레이아웃에 따라 위치가 달라 문자도 함께 둔다.
+    private struct ReservedCombo {
+        let modifiers: UInt32
+        let keyCode: Int
+        let character: String?
+    }
+
+    private static let reservedCombos: [ReservedCombo] = {
+        let cmd = UInt32(cmdKey), shift = UInt32(shiftKey), ctrl = UInt32(controlKey), opt = UInt32(optionKey)
+        let letters: [(Int, String)] = [
+            (kVK_ANSI_Q, "q"), (kVK_ANSI_W, "w"), (kVK_ANSI_C, "c"), (kVK_ANSI_V, "v"),
+            (kVK_ANSI_X, "x"), (kVK_ANSI_Z, "z"), (kVK_ANSI_A, "a"), (kVK_ANSI_S, "s"),
+            (kVK_ANSI_H, "h"), (kVK_ANSI_M, "m")
+        ]
+        var combos = letters.map { ReservedCombo(modifiers: cmd, keyCode: $0.0, character: $0.1) }
+        combos += [
+            ReservedCombo(modifiers: cmd | shift, keyCode: kVK_ANSI_Z, character: "z"),   // 다시 실행
+            ReservedCombo(modifiers: cmd | shift, keyCode: kVK_ANSI_Q, character: "q"),   // 로그아웃
+            ReservedCombo(modifiers: cmd, keyCode: kVK_Tab, character: nil),              // 앱 전환
+            ReservedCombo(modifiers: cmd | shift, keyCode: kVK_Tab, character: nil),
+            ReservedCombo(modifiers: cmd, keyCode: kVK_Space, character: nil),            // Spotlight
+            ReservedCombo(modifiers: ctrl, keyCode: kVK_Space, character: nil),           // 입력 소스 전환
+            ReservedCombo(modifiers: cmd | opt, keyCode: kVK_Escape, character: nil)      // 강제 종료
+        ]
+        return combos
+    }()
 
     /// NSMenuItem 표시용 keyEquivalent + Cocoa modifier. (상태 메뉴는 전역 키를 받지 않으므로 표시 전용)
     static func menuKeyEquivalent(keyCode: UInt32, carbonModifiers: UInt32) -> (key: String, modifiers: NSEvent.ModifierFlags)? {

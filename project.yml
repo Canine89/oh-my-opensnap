@@ -48,6 +48,8 @@ targets:
       - path: Sources/App/Brand.swift
       - path: Sources/App/L10n.swift
       - path: Sources/Settings/Settings.swift
+      - path: Sources/Hotkey/HotkeyFormatter.swift
+      - path: Sources/App/AppRelauncher.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.goldenrabbit.ohmyopensnap.tests

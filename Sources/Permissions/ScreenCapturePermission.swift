@@ -9,10 +9,15 @@ enum ScreenCapturePermission {
         CGPreflightScreenCaptureAccess()
     }
 
+    /// 이번 실행에서 이미 시스템 prompt를 요청했는지. 두 번째부터는 prompt가 다시 뜨지 않으므로
+    /// 호출하는 쪽이 설정 딥링크로 안내할지 판단하는 데 쓴다.
+    private(set) static var didRequestThisLaunch = false
+
     /// 시스템 권한 prompt를 띄운다. 최초 호출 시 사용자가 결정하기 전이면 false를 반환할 수 있다.
     @discardableResult
     static func request() -> Bool {
-        CGRequestScreenCaptureAccess()
+        didRequestThisLaunch = true
+        return CGRequestScreenCaptureAccess()
     }
 
     /// 시스템 설정의 "화면 및 시스템 오디오 녹화" 패널을 연다.
