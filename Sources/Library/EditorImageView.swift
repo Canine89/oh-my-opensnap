@@ -176,8 +176,10 @@ final class EditorImageView: NSView {
     }
 
     /// 사이드카에서 주석을 복원한다. 되돌리기 스택에는 넣지 않고, 저장 알림도 내지 않는다.
-    func restoreAnnotations(from data: Data) {
-        guard let document = try? JSONDecoder().decode(AnnotationDocument.self, from: data) else { return }
+    /// 해석하지 못하면 false — 합성 내보내기가 주석(가림) 없이 나가지 않게 호출자가 판단한다.
+    @discardableResult
+    func restoreAnnotations(from data: Data) -> Bool {
+        guard let document = try? JSONDecoder().decode(AnnotationDocument.self, from: data) else { return false }
         var restored: [Annotation] = []
         for r in document.annotations {
             guard r.start.count == 2, r.end.count == 2, r.color.count == 4 else { continue }
@@ -208,6 +210,7 @@ final class EditorImageView: NSView {
         nextNumber = max(1, min(9, document.nextNumber))
         suppressAnnotationsChanged = false
         needsDisplay = true
+        return true
     }
 
     private static func components(of color: NSColor) -> [CGFloat] {
@@ -247,6 +250,10 @@ final class EditorImageView: NSView {
         }
         needsDisplay = true
     }
+
+    /// 원본 캡처의 Retina 배율(픽셀 ÷ 논리 크기). 파일의 DPI에서 읽어 두었다가
+    /// 복사·저장·다른 이름으로 저장 때 같은 DPI로 기록한다(크롭·자르기 후에도 유지).
+    private(set) var imageScale: CGFloat = 1
 
     /// 새 이미지 로드 (편집/undo 전부 초기화).
     var image: NSImage? {
@@ -326,6 +333,10 @@ final class EditorImageView: NSView {
     // MARK: 이미지 로드/교체
     private func load(_ image: NSImage?) {
         cancelActiveTextField()
+        imageScale = image.flatMap { image in
+            image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+                .map { PNGEncoding.scale(pixelWidth: $0.width, logicalWidth: image.size.width) }
+        } ?? 1
         backingImage = pixelSizedImage(image)
         suppressAnnotationsChanged = true
         annotations.removeAll()
@@ -395,11 +406,15 @@ final class EditorImageView: NSView {
     }
 
     func undo() {
+        // 인라인 텍스트 편집을 먼저 끝낸다. 열린 채로 주석 배열만 되돌리면 editingIndex가
+        // 다른 주석을 가리켜, 확정할 때 엉뚱한 주석을 덮어쓴다. (확정한 입력은 이 되돌리기로 취소된다)
+        if activeTextField != nil { commitActiveTextField() }
         guard let snapshot = history.undo(current: currentSnapshot()) else { return }
         restore(snapshot)
     }
 
     func redo() {
+        if activeTextField != nil { commitActiveTextField() }
         guard let snapshot = history.redo(current: currentSnapshot()) else { return }
         restore(snapshot)
     }
@@ -410,13 +425,15 @@ final class EditorImageView: NSView {
         backingImage = snapshot.image
         annotations = snapshot.annotations
         nextNumber = snapshot.nextNumber
-        cropRect = snapshot.cropRect      // 크롭 범위 조정도 되돌린다
         activeHandle = nil
         annotationDrag = nil
         selectedAnnotationIndex = nil
         cropLoupePoint = nil
+        if imageChanged, let size = snapshot.image?.size { setFrameSize(size) }
+        // 크롭 범위 조정도 되돌린다. 크롭 밖에서 찍힌 스냅샷(범위 nil)이면 크롭 모드 진입 때처럼 전체로 다시 잡아
+        // 크롭 도구가 핸들 없이 멈추지 않게 하고, 크롭 모드가 아니면 범위를 남기지 않는다.
+        cropRect = tool == .crop ? (snapshot.cropRect ?? CGRect(origin: .zero, size: backingImage?.size ?? bounds.size)) : nil
         if imageChanged {
-            if let size = snapshot.image?.size { setFrameSize(size) }
             onImageChanged?()             // 이미지 자체가 바뀐 경우만 맞춤/포커스 갱신
             onEditCommitted?()            // 디스크 파일도 되돌림
         }
@@ -603,7 +620,12 @@ final class EditorImageView: NSView {
             return super.performKeyEquivalent(with: event)
         }
         let scroll = enclosingScrollView as? ZoomableScrollView
-        switch event.charactersIgnoringModifiers?.lowercased() {
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        // 인라인 텍스트 입력 중에는 편집 단축키를 텍스트 시스템(필드 편집기)에 맡긴다.
+        if activeTextField != nil, let key, Self.textEditingKeys.contains(key) {
+            return super.performKeyEquivalent(with: event)
+        }
+        switch key {
         case "z": if event.modifierFlags.contains(.shift) { redo() } else { undo() }; return true
         case "c": copyToClipboard(); return true
         case "=", "+": scroll?.zoomBy(1.25); return true
@@ -659,12 +681,29 @@ final class EditorImageView: NSView {
         if let bubble = annotation.calloutBubble {
             annotations[index].calloutBubble = bubble.offsetBy(dx: offset.x, dy: offset.y)
         }
+        resampleMosaic(at: index)
         needsDisplay = true
     }
 
+    /// 텍스트 입력 중 필드 편집기에 맡기는 ⌘ 조합(되돌리기·복사·잘라내기·붙여넣기·전체 선택).
+    static let textEditingKeys: Set<String> = ["z", "c", "x", "v", "a"]
+
     // 표준 Edit 메뉴(⌘Z/⌘C) 라우팅용 responder 액션
-    @objc func undo(_ sender: Any?) { undo() }
-    @objc func redo(_ sender: Any?) { redo() }
+    // 인라인 텍스트 입력 중이면 글자 입력 되돌리기가 먼저다.
+    @objc func undo(_ sender: Any?) {
+        if let manager = activeTextField?.currentEditor()?.undoManager, manager.canUndo {
+            manager.undo()
+            return
+        }
+        undo()
+    }
+    @objc func redo(_ sender: Any?) {
+        if let manager = activeTextField?.currentEditor()?.undoManager, manager.canRedo {
+            manager.redo()
+            return
+        }
+        redo()
+    }
     @objc func copy(_ sender: Any?) { copyToClipboard() }
     @objc func delete(_ sender: Any?) { deleteSelectedAnnotation() }
 
@@ -875,14 +914,17 @@ final class EditorImageView: NSView {
     private func finishAnnotationDrag() -> Bool {
         guard let drag = annotationDrag else { return false }
         annotationDrag = nil
-        // 모자이크 크기를 바꿨으면 새 영역의 픽셀로 다시 샘플링
-        if case .corner = drag.kind, drag.didMove, annotations.indices.contains(drag.index),
-           case .mosaic = annotations[drag.index].kind {
-            let a = annotations[drag.index]
-            annotations[drag.index].mosaicImage = makeMosaicSmall(rect: Self.rect(a.start, a.end))
-        }
+        // 모자이크를 옮기거나 크기를 바꿨으면 새 영역의 픽셀로 다시 샘플링
+        // (그대로 두면 이전 자리의 블록이 새 자리에 보이고 내보내기에도 그렇게 나간다)
+        if drag.didMove { resampleMosaic(at: drag.index) }
         needsDisplay = true
         return true
+    }
+
+    private func resampleMosaic(at index: Int) {
+        guard annotations.indices.contains(index), case .mosaic = annotations[index].kind else { return }
+        let a = annotations[index]
+        annotations[index].mosaicImage = makeMosaicSmall(rect: Self.rect(a.start, a.end))
     }
 
     private func editSelectedAnnotation() {
@@ -1007,9 +1049,7 @@ final class EditorImageView: NSView {
     // MARK: 클립보드
     func copyToClipboard() {
         if activeTextField != nil { commitActiveTextField() }
-        guard let cg = renderedCGImage() else { return }
-        let rep = NSBitmapImageRep(cgImage: cg)
-        guard let png = rep.representation(using: .png, properties: [:]) else { return }
+        guard let png = renderedPNGData() else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setData(png, forType: .png)
@@ -1023,6 +1063,21 @@ final class EditorImageView: NSView {
         pushUndo()
         replaceImage(NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height)), annotations: [], nextNumber: 1)
         onEditCommitted?()
+    }
+
+    /// 주석을 합성한 PNG. 원본 DPI(Retina 배율)를 유지한다 — 복사·다른 이름으로 저장·드래그가 함께 쓴다.
+    func renderedPNGData() -> Data? {
+        renderedCGImage().flatMap { PNGEncoding.data(from: $0, scale: imageScale) }
+    }
+
+    /// 편집기 밖(드래그 내보내기)에서 파일과 사이드카 주석을 합성한다. 주석을 해석하지 못하면 nil —
+    /// 모자이크 등 가림이 빠진 원본이 나가지 않게 한다.
+    static func flattenedPNG(imageData: Data, annotations: Data) -> Data? {
+        guard let image = NSImage(data: imageData) else { return nil }
+        let renderer = EditorImageView(frame: .zero)
+        renderer.image = image
+        guard renderer.restoreAnnotations(from: annotations) else { return nil }
+        return renderer.renderedPNGData()
     }
 
     /// 보관용 원본. 주석은 별도 저장하므로 여기서는 합성하지 않는다.

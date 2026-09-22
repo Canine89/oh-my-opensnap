@@ -81,6 +81,18 @@ final class LibraryFileStoreTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: image), original)
     }
 
+    func testCatalogContinuesPastFailingRecovery() throws {
+        let other = directory.appendingPathComponent("other.png")
+        try original.write(to: other)
+        let journal = LibraryFileStore.recoveryURL(for: image)
+        try FileManager.default.createDirectory(at: journal.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("깨진 복구 기록".utf8).write(to: journal)
+        let items = try LibraryCatalog.load(directory: directory)
+        XCTAssertEqual(Set(items.map(\.url.lastPathComponent)), ["capture.png", "other.png"],
+                       "한 항목의 복구 실패로 목록 전체가 실패하면 안 된다")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: journal.path), "복구 기록은 다음 시도를 위해 남긴다")
+    }
+
     func testSuccessfulEditAndAnnotationRemoval() throws {
         let store = LibraryFileStore()
         try store.saveAnnotations(annotations, at: image)

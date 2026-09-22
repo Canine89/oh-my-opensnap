@@ -14,6 +14,7 @@ final class LibraryWriteBuffer {
     private var pending: [URL: [Entry]] = [:]
     var count: Int { pending.count }
     func contains(_ url: URL) -> Bool { pending[url] != nil }
+    var urls: [URL] { Array(pending.keys) }
 
     func enqueue(at url: URL, recovery: Recovery? = nil, operation: @escaping () throws -> Void) throws {
         pending[url, default: []].append(Entry(operation: operation, recovery: recovery))

@@ -35,9 +35,12 @@ enum LibraryCatalog {
         let urls = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys), options: .skipsHiddenFiles)
         var items: [LibraryItem] = []
         for url in urls where ["png", "gif", "mp4", "mov", "m4v"].contains(url.pathExtension.lowercased()) {
-            if recoveryNames.contains(url.lastPathComponent + ".json.recovery") { try store.recover(at: url) }
-            let values = try url.resourceValues(forKeys: keys)
-            guard values.isRegularFile == true else { continue }
+            if recoveryNames.contains(url.lastPathComponent + ".json.recovery") {
+                // 한 항목의 복구 실패로 목록 전체가 비지 않게 한다. 기록은 남아 열 때 다시 복구를 시도한다.
+                do { try store.recover(at: url) }
+                catch { NSLog("Library recovery failed for %@: %@", url.lastPathComponent, error.localizedDescription) }
+            }
+            guard let values = try? url.resourceValues(forKeys: keys), values.isRegularFile == true else { continue }
             items.append(LibraryItem(url: url, date: values.creationDate ?? values.contentModificationDate ?? .distantPast))
         }
         return items.sorted {
