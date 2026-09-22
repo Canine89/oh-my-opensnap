@@ -48,6 +48,8 @@ final class CaptureChoiceHUD {
     private let onVideo: () -> Void
     private let onCancel: () -> Void
     private var decided = false
+    /// ⏎/R/취소 중 하나로 이미 결정했는지. 결정 후엔 취소로 뒤집지 않는다.
+    var isDecided: Bool { decided }
 
     private let container: HUDSurfaceView
     /// 자동 배치 프레임. 사용자가 끌어 옮기면 그 차이를 `userOffset`으로 기억해 선택 조정 시에도 따라간다.
@@ -163,9 +165,13 @@ final class CaptureChoiceHUD {
     /// 키 모니터가 먼저 이 메서드로 넘긴다. 처리했으면 true.
     @discardableResult
     func handleKey(_ event: NSEvent) -> Bool {
-        guard !decided else { return false }
         let flags = event.modifierFlags.intersection([.command, .option, .control])
         guard flags.isEmpty else { return false }
+        guard !decided else {
+            // 결정 후 실행 직전(페이드 대기)에 누른 Esc/⏎/R은 삼킨다. 흘려보내면 컨트롤러의
+            // Esc 처리가 세션을 정리한 뒤에 예약된 캡처/녹화가 실행된다.
+            return [53, 36, 76].contains(event.keyCode) || event.charactersIgnoringModifiers?.lowercased() == "r"
+        }
         switch event.keyCode {
         case 53: cancel(); return true                    // Esc
         case 36, 76: captureImage(); return true          // Return / 키패드 Enter

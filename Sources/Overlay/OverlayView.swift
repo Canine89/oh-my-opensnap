@@ -34,7 +34,10 @@ final class OverlayView: NSView {
     struct WindowSelection {
         let window: SCWindow
         let rect: CGRect
+        /// 디스플레이 안으로 잘린 창 전체 영역(화면에 보이는 부분). 구역 판별·표시용.
         let fullRect: CGRect
+        /// 디스플레이에 잘리지 않은 창 프레임. 창 단독 캡처 이미지에서 오프셋을 계산할 때 쓴다.
+        let windowFrame: CGRect
         let displayID: CGDirectDisplayID
     }
 
@@ -142,7 +145,6 @@ final class OverlayView: NSView {
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
-    override var wantsDefaultClipping: Bool { false }
 
     /// 오버레이가 막 떠서 아직 창이 활성(key)이 아니어도 첫 클릭을 그대로 받는다.
     /// (이게 없으면 첫 클릭이 '창 활성화용'으로 먹혀, 두 번 클릭해야 선택이 시작된다.)
@@ -189,19 +191,22 @@ final class OverlayView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         let oldCursor = cursor
+        let wasInside = cursorInside
         let oldWindowID = hoveredWindow?.windowID
         let oldWindowRect = hoveredWindowRect
         let oldFullRect = hoveredFullWindowRect
         cursor = convert(event.locationInWindow, from: nil)
         cursorInside = true
         onBecomeActiveDisplay?()
+        // mouseEntered 없이 밖→안으로 바뀌면 안내 문구·크로스헤어가 새로 나타나므로 전체를 다시 그린다.
+        if !wasInside { needsDisplay = true }
         if selectionLocked {
             // 조정 단계에선 크로스헤어 대신 위치별 커서 모양으로 피드백한다.
             updateAdjustCursor(at: cursor)
             return
         }
         if !suppressed { updateHoveredWindow() }
-        if oldWindowID != hoveredWindow?.windowID || oldWindowRect != hoveredWindowRect
+        if !wasInside || oldWindowID != hoveredWindow?.windowID || oldWindowRect != hoveredWindowRect
             || oldFullRect != hoveredFullWindowRect {
             needsDisplay = true
         } else if !suppressed {
@@ -394,6 +399,7 @@ final class OverlayView: NSView {
         return WindowSelection(window: windowSelection.window,
                                rect: selection,
                                fullRect: windowSelection.fullRect,
+                               windowFrame: windowSelection.windowFrame,
                                displayID: displayID)
     }
 
@@ -466,7 +472,8 @@ final class OverlayView: NSView {
         let clipped = rect.intersection(bounds)
         let clippedFull = full.intersection(bounds)
         guard contains(clippedFull, clipped) else { return nil }
-        return WindowSelection(window: window, rect: clipped, fullRect: clippedFull, displayID: displayID)
+        return WindowSelection(window: window, rect: clipped, fullRect: clippedFull,
+                               windowFrame: full, displayID: displayID)
     }
 
     private func contains(_ outer: CGRect, _ inner: CGRect, tolerance: CGFloat = 1.5) -> Bool {
@@ -715,6 +722,10 @@ final class OverlayView: NSView {
     // MARK: 그리기
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        // 조준점 띠·테두리 띠·확대경처럼 여러 사각형으로 무효화된다. dirtyRect는 그 합집합이라
+        // 그대로 지우거나 칠하면 다시 그리지 않는 요소(확대경 등)까지 지워진다 →
+        // 실제로 다시 그릴 사각형으로 먼저 잘라, 아래의 모든 지우기/칠하기가 그 안에서만 일어나게 한다.
+        ctx.clip(to: rectsBeingDrawn(fallback: dirtyRect))
         ctx.clear(dirtyRect)
 
         let showSelection: Bool
@@ -756,6 +767,14 @@ final class OverlayView: NSView {
         case .adjusting, .moving:
             loupeDirtyFrame = .zero
         }
+    }
+
+    private func rectsBeingDrawn(fallback dirtyRect: CGRect) -> [CGRect] {
+        var rects: UnsafePointer<NSRect>?
+        var count = 0
+        getRectsBeingDrawn(&rects, count: &count)
+        guard let rects, count > 0 else { return [dirtyRect] }
+        return Array(UnsafeBufferPointer(start: rects, count: count))
     }
 
     private func drawDimmedOverlay(excluding selectedRect: CGRect?) {
@@ -845,24 +864,40 @@ final class OverlayView: NSView {
         NSColor.white.setStroke(); ring.lineWidth = 1; ring.stroke()
     }
 
-    private func loupeFrame(at point: CGPoint) -> CGRect {
-        let textHeight: CGFloat = 32
-        let gap: CGFloat = 24
+    /// 확대경이 읽는 소스의 배율. 정지 화면은 풀 해상도 그대로, 라이브 스트림은 축소되어 있다.
+    private var sampleScale: CGFloat { frozenImage != nil ? scale : (provider?.bufferScale ?? scale) }
 
-        var origin = CGPoint(x: point.x + gap, y: point.y + gap)
-        if origin.x + loupeSize > bounds.width { origin.x = point.x - gap - loupeSize }
-        if origin.y + loupeSize + textHeight > bounds.height { origin.y = point.y - gap - loupeSize - textHeight }
-        origin.x = max(8, min(origin.x, bounds.width - loupeSize - 8))
-        origin.y = max(8, min(origin.y, bounds.height - loupeSize - textHeight - 8))
-
-        return CGRect(origin: origin, size: CGSize(width: loupeSize, height: loupeSize))
+    private func samplePoint(at point: CGPoint) -> (x: Int, y: Int) {
+        let sampleScale = self.sampleScale
+        return (Int((point.x * sampleScale).rounded()), Int((point.y * sampleScale).rounded()))
     }
 
+    private func coordinatesText(at point: CGPoint) -> String {
+        let sample = samplePoint(at: point)
+        return "\(sample.x), \(sample.y)"
+    }
+
+    /// 판독 알약 높이는 글꼴로만 정해진다. 확대경을 위로 뒤집을지 판단할 때 쓴다.
+    private lazy var readoutHeight: CGFloat =
+        readoutLayout(hex: "#000000", coordinates: "0, 0", below: .zero).pill.height
+
+    /// HEX 글자 폭은 색마다 다르다. 가장 넓은 글자로 채운 값으로 무효화 영역을 잡아 어떤 색이든 덮는다.
+    private lazy var widestHex: String = {
+        let attributes = overlayLabelAttributes(weight: .semibold)
+        func width(_ c: Character) -> CGFloat { (String(c) as NSString).size(withAttributes: attributes).width }
+        let widest = "0123456789ABCDEF".max { width($0) < width($1) } ?? "D"
+        return "#" + String(repeating: widest, count: 6)
+    }()
+
+    private func loupeFrame(at point: CGPoint) -> CGRect {
+        LoupeLayout.loupeFrame(at: point, side: loupeSize, readoutHeight: readoutHeight, in: bounds)
+    }
+
+    /// 확대경 + 판독 알약 전체. 좌표 자릿수·색에 따라 확대경보다 넓어지는 알약까지 실제 배치로 덮는다.
     private func loupeDamageFrame(at point: CGPoint) -> CGRect {
         let frame = loupeFrame(at: point)
-        // 좌표 자릿수가 늘어 확대경보다 넓어지는 색상/좌표 라벨도 지운다.
-        return CGRect(x: frame.minX - 4, y: frame.minY - 4,
-                      width: max(loupeSize, 320) + 8, height: loupeSize + 40)
+        let readout = readoutLayout(hex: widestHex, coordinates: coordinatesText(at: point), below: frame)
+        return LoupeLayout.damageFrame(loupe: frame, readout: readout.pill)
     }
 
     /// 확대경: 앱의 HUD 표면과 같은 12pt 모서리·얇은 테두리, 중심 픽셀은 브랜드 레드,
@@ -878,9 +913,7 @@ final class OverlayView: NSView {
         bg.fill()
 
         // 정지 화면은 풀 해상도 그대로, 라이브 스트림은 축소되어 있으므로 bufferScale로 좌표를 맞춘다.
-        let sampleScale = frozenImage != nil ? scale : (provider?.bufferScale ?? scale)
-        let centerX = Int((cursor.x * sampleScale).rounded())
-        let centerY = Int((cursor.y * sampleScale).rounded())
+        let (centerX, centerY) = samplePoint(at: cursor)
         let sampled: SampledRegion?
         if let frozenImage {
             sampled = PixelSampling.sample(frozenImage, centerX: centerX, centerY: centerY, radius: loupeRadius)
@@ -930,12 +963,22 @@ final class OverlayView: NSView {
 
         // 좌표/HEX 읽기
         let hex = String(format: "#%02X%02X%02X", lastColor.r, lastColor.g, lastColor.b)
-        drawReadout(hex: hex, coordinates: "\(centerX), \(centerY)", below: frame, swatch: lastColor)
+        drawReadout(readoutLayout(hex: hex, coordinates: coordinatesText(at: cursor), below: frame),
+                    swatch: lastColor)
     }
 
-    /// 루페 아래 판독 알약: ● HEX   X, Y
-    private func drawReadout(hex: String, coordinates: String, below frame: CGRect,
-                             swatch: (r: UInt8, g: UInt8, b: UInt8)) {
+    private struct ReadoutLayout {
+        let pill: CGRect
+        let hex: NSString
+        let coordinates: NSString
+        let hexAttributes: [NSAttributedString.Key: Any]
+        let coordinateAttributes: [NSAttributedString.Key: Any]
+        let hexSize: CGSize
+        let coordinateSize: CGSize
+    }
+
+    /// 판독 알약 배치. 그리기와 무효화 영역 계산이 이 한 곳을 쓴다.
+    private func readoutLayout(hex: String, coordinates: String, below frame: CGRect) -> ReadoutLayout {
         let hexText = hex as NSString
         let coordText = coordinates as NSString
         let hexAttributes = overlayLabelAttributes(weight: .semibold)
@@ -943,30 +986,46 @@ final class OverlayView: NSView {
         coordAttributes[.foregroundColor] = NSColor.white.withAlphaComponent(0.7)
         let hexSize = hexText.size(withAttributes: hexAttributes)
         let coordSize = coordText.size(withAttributes: coordAttributes)
+        let size = LoupeLayout.readoutSize(hexText: hexSize, coordinateText: coordSize)
+        return ReadoutLayout(pill: LoupeLayout.readoutFrame(below: frame, size: size),
+                             hex: hexText,
+                             coordinates: coordText,
+                             hexAttributes: hexAttributes,
+                             coordinateAttributes: coordAttributes,
+                             hexSize: hexSize,
+                             coordinateSize: coordSize)
+    }
 
-        let swatchSide: CGFloat = 10
-        let padX: CGFloat = 9, padY: CGFloat = 5, spacing: CGFloat = 8
-        let pillSize = CGSize(width: padX * 2 + swatchSide + 6 + hexSize.width + spacing + coordSize.width,
-                              height: padY * 2 + max(hexSize.height, swatchSide))
-        let pill = CGRect(x: frame.minX, y: frame.maxY + 6, width: pillSize.width, height: pillSize.height)
-
+    /// 루페 아래 판독 알약: ● HEX   X, Y
+    private func drawReadout(_ layout: ReadoutLayout, swatch: (r: UInt8, g: UInt8, b: UInt8)) {
+        let pill = layout.pill
+        let swatchSide = LoupeLayout.swatchSide
         NSColor(white: 0, alpha: 0.78).setFill()
         NSBezierPath(roundedRect: pill, xRadius: Brand.innerCornerRadius, yRadius: Brand.innerCornerRadius).fill()
 
-        var x = pill.minX + padX
+        var x = pill.minX + LoupeLayout.padX
         let swatchRect = CGRect(x: x, y: pill.midY - swatchSide / 2, width: swatchSide, height: swatchSide)
         NSColor(srgbRed: CGFloat(swatch.r) / 255, green: CGFloat(swatch.g) / 255,
                 blue: CGFloat(swatch.b) / 255, alpha: 1).setFill()
         NSBezierPath(ovalIn: swatchRect).fill()
         NSColor.white.withAlphaComponent(0.5).setStroke()
         NSBezierPath(ovalIn: swatchRect).stroke()
-        x += swatchSide + 6
-        hexText.draw(at: CGPoint(x: x, y: pill.midY - hexSize.height / 2), withAttributes: hexAttributes)
-        x += hexSize.width + spacing
-        coordText.draw(at: CGPoint(x: x, y: pill.midY - coordSize.height / 2), withAttributes: coordAttributes)
+        x += swatchSide + LoupeLayout.swatchSpacing
+        layout.hex.draw(at: CGPoint(x: x, y: pill.midY - layout.hexSize.height / 2), withAttributes: layout.hexAttributes)
+        x += layout.hexSize.width + LoupeLayout.textSpacing
+        layout.coordinates.draw(at: CGPoint(x: x, y: pill.midY - layout.coordinateSize.height / 2),
+                                withAttributes: layout.coordinateAttributes)
     }
 
-    private func dimensionLabelFrame(for sel: CGRect) -> CGRect {
+    private struct LabelLayout {
+        let pill: CGRect
+        let text: NSString
+        let attributes: [NSAttributedString.Key: Any]
+        let textOrigin: CGPoint
+    }
+
+    /// 선택 크기 라벨 배치. 그리기와 무효화 영역 계산이 이 한 곳을 쓴다.
+    private func dimensionLabelLayout(for sel: CGRect) -> LabelLayout {
         let widthPx = Int((sel.width * scale).rounded())
         let heightPx = Int((sel.height * scale).rounded())
         let text = "\(widthPx) x \(heightPx)" as NSString
@@ -978,18 +1037,21 @@ final class OverlayView: NSView {
                           width: textSize.width + padding * 2,
                           height: textSize.height + padding * 2)
         if pill.minY < 4 { pill.origin.y = sel.maxY + 4 }   // 위 공간 없으면 아래로
-        return pill
+        return LabelLayout(pill: pill, text: text, attributes: attributes,
+                           textOrigin: CGPoint(x: pill.minX + padding, y: pill.minY + padding))
+    }
+
+    private func dimensionLabelFrame(for sel: CGRect) -> CGRect {
+        dimensionLabelLayout(for: sel).pill
     }
 
     private func drawDimensionLabel(for sel: CGRect) {
-        let pill = dimensionLabelFrame(for: sel)
-        let text = "\(Int((sel.width * scale).rounded())) x \(Int((sel.height * scale).rounded()))" as NSString
-        let attributes = overlayLabelAttributes(weight: .semibold)
-        let padding: CGFloat = 5
-        let pillPath = NSBezierPath(roundedRect: pill, xRadius: Brand.innerCornerRadius, yRadius: Brand.innerCornerRadius)
+        let layout = dimensionLabelLayout(for: sel)
+        let pillPath = NSBezierPath(roundedRect: layout.pill,
+                                    xRadius: Brand.innerCornerRadius, yRadius: Brand.innerCornerRadius)
         NSColor(white: 0, alpha: 0.75).setFill()
         pillPath.fill()
-        text.draw(at: CGPoint(x: pill.minX + padding, y: pill.minY + padding), withAttributes: attributes)
+        layout.text.draw(at: layout.textOrigin, withAttributes: layout.attributes)
     }
 
     // MARK: 안내 요소

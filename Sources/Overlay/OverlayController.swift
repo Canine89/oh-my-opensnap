@@ -24,6 +24,9 @@ final class OverlayController {
     // 우리 오버레이 윈도우들의 SCWindow 매핑. 루페/스틸 캡처에서 이것만 제외해
     // 자기참조(자기 자신이 캡처에 찍힘)를 막는다. OBS 등 외부 녹화엔 그대로 보인다.
     private var overlayWindows: [SCWindow] = []
+    /// `overlayWindows` 매핑이 끝났는지. 그 전에 루페 스트림을 켜면 제외 목록이 비어
+    /// 확대경에 오버레이 자신이 비치므로, 끝날 때까지 스트림 시작을 미룬다.
+    private var overlayWindowsResolved = false
     private var hitTester: WindowHitTester?
     private var refreshTimer: Timer?
     private var active = false
@@ -50,7 +53,11 @@ final class OverlayController {
         if freezeScreen {
             // 외부 앱만 보이는 디스플레이는 창 목록을 조회하기 전에 바로 요청한다.
             // 우리 창이 보이면 제외 필터가 필요하므로 기존 필터 캡처를 사용한다.
-            let ownFrames = NSApp.windows.filter { $0.isVisible && $0.alphaValue > 0 }.map(\.frame)
+            // 메뉴 막대 상태 항목 창(NSStatusBarWindow)은 항상 주 디스플레이 위에 떠 있으므로 빼야
+            // 주 디스플레이에서도 즉시 경로를 탄다. 그 창은 원래 화면의 일부라 찍혀도 된다.
+            let ownFrames = NSApp.windows
+                .filter { $0.isVisible && $0.alphaValue > 0 && !$0.className.contains("NSStatusBarWindow") }
+                .map(\.frame)
             for screen in NSScreen.screens where !ownFrames.contains(where: { $0.intersects(screen.frame) }) {
                 requests[screen.displayID] = StillImageCapturer.requestSnapshot(
                     in: CGDisplayBounds(screen.displayID), scale: screen.backingScaleFactor)
@@ -153,7 +160,7 @@ final class OverlayController {
                                                  overlayWindow: window)
                 }
             }
-            view.onCancel = { [weak self] in self?.cancel() }
+            view.onCancel = { [weak self] in self?.cancelByUser() }
             view.onAdjustingStarted = { [weak self, weak window, weak view] in
                 guard let self else { return }
                 // 선택이 조정(확정 대기) 단계로 들어가면:
@@ -224,6 +231,7 @@ final class OverlayController {
         let resolved = await Self.resolveOverlayWindows(windows)
         guard active, generation == current else { return }
         overlayWindows = resolved
+        overlayWindowsResolved = true
 
         if let keyWindow = windows.first {
             // 전역 단축키로 떴을 때 앱이 활성/key가 못 돼 ESC가 안 먹는 경우가 있어,
@@ -264,8 +272,8 @@ final class OverlayController {
                     do {
                         let image = try await StillImageCapturer.capture(display: target.display, scale: target.scale,
                                                                          excluding: excluding)
-                        guard let raster = DisplaySnapshot.rasterizedImage(image) else { return nil }
-                        return (target.display.displayID, DisplaySnapshot(image: raster, scale: target.scale))
+                        return (target.display.displayID,
+                                DisplaySnapshot(image: DisplaySnapshot.preparedImage(image), scale: target.scale))
                     } catch {
                         NSLog("Freeze snapshot failed for display \(target.display.displayID): \(error)")
                         return nil
@@ -298,8 +306,9 @@ final class OverlayController {
     }
 
     /// 커서가 있는 디스플레이의 루페 스트림만 켠다. 다른 디스플레이 스트림은 끈다.
+    /// 제외 목록이 준비되기 전의 요청은 무시한다 — 준비 직후 primeCursor가 커서 아래 디스플레이로 다시 부른다.
     private func activateLoupe(for displayID: CGDirectDisplayID) {
-        guard active, activeLoupeDisplayID != displayID else { return }
+        guard active, overlayWindowsResolved, activeLoupeDisplayID != displayID else { return }
         activeLoupeDisplayID = displayID
         let excluded = overlayWindows
         for (id, provider) in providers {
@@ -323,7 +332,7 @@ final class OverlayController {
             // 선택 HUD가 떠 있으면 ⏎/R/Esc는 HUD가 먼저 결정한다 — 오버레이를 클릭해
             // HUD가 key를 잃은 뒤에도 키보드만으로 확정할 수 있게.
             if let hud = self?.choiceHUD, hud.handleKey(event) { return nil }
-            if event.keyCode == 53 { self?.cancel(); return nil }   // Esc
+            if event.keyCode == 53 { self?.cancelByUser(); return nil }   // Esc
             if event.keyCode == 36 || event.keyCode == 76,          // Return / 키패드 Enter
                self?.windows.contains(where: { $0.captureView.confirmIfAdjusting() }) == true {
                 // first-responder 라우팅과 무관하게 ⏎ 확정이 항상 동작하게 한다
@@ -413,10 +422,13 @@ final class OverlayController {
             hud.update(anchor: anchor, context: context)
             return
         }
+        // HUD는 결정 후 잠깐 뒤(페이드 대기)에 콜백한다. 그 사이 세션이 정리되었으면
+        // (앱 종료 등) 이미 내려간 오버레이로 캡처/녹화를 시작하지 않는다.
+        let session = generation
         let hud = CaptureChoiceHUD(anchor: anchor,
                                    context: context,
                                    onImage: { [weak self, weak view] in
-                                       guard let self else { return }
+                                       guard let self, self.active, self.generation == session else { return }
                                        self.choiceHUD = nil
                                        let snapshot = self.snapshots[displayID]
                                        if let windowSelection = view?.currentWindowSelection {
@@ -434,7 +446,7 @@ final class OverlayController {
                                                               snapshot: snapshot)
                                    },
                                    onVideo: { [weak self, weak view] in
-                                       guard let self else { return }
+                                       guard let self, self.active, self.generation == session else { return }
                                        self.choiceHUD = nil
                                        guard let rect = view?.currentSelection else { self.cancel(); return }
                                        let excluded = self.overlayWindows
@@ -480,14 +492,18 @@ final class OverlayController {
                                context: CaptureChoiceHUD.Context,
                                imageAction: @escaping () -> Void,
                                videoAction: @escaping () -> Void) {
+        // 결정과 콜백 사이에 종료 등으로 취소되었으면 캡처/녹화를 시작하지 않는다.
+        let session = generation
         let hud = CaptureChoiceHUD(anchor: anchor,
                                    context: context,
                                    onImage: { [weak self] in
-                                       self?.choiceHUD = nil
+                                       guard let self, self.generation == session else { return }
+                                       self.choiceHUD = nil
                                        imageAction()
                                    },
                                    onVideo: { [weak self] in
-                                       self?.choiceHUD = nil
+                                       guard let self, self.generation == session else { return }
+                                       self.choiceHUD = nil
                                        videoAction()
                                    },
                                    onCancel: { [weak self] in
@@ -559,17 +575,13 @@ final class OverlayController {
                 let result = try await StillImageCapturer.captureWindow(selection.window)
                 await MainActor.run {
                     defer { LibraryWindowController.shared.restoreAfterCapture() }
-                    let localRect = CGRect(x: selection.rect.minX - selection.fullRect.minX,
-                                           y: selection.rect.minY - selection.fullRect.minY,
-                                           width: selection.rect.width,
-                                           height: selection.rect.height)
-                    let pxRect = CGRect(x: localRect.minX * result.scale,
-                                        y: localRect.minY * result.scale,
-                                        width: localRect.width * result.scale,
-                                        height: localRect.height * result.scale).integral
-                    let imageBounds = CGRect(x: 0, y: 0, width: result.image.width, height: result.image.height)
-                    let clamped = pxRect.intersection(imageBounds)
-                    guard !clamped.isEmpty, let crop = result.image.cropping(to: clamped) else { return }
+                    // 창 이미지는 화면 밖 부분까지 담으므로 잘리지 않은 창 프레임을 원점으로 삼는다.
+                    guard let pxRect = WindowCrop.pixelRect(selection: selection.rect,
+                                                            windowFrame: selection.windowFrame,
+                                                            scale: result.scale,
+                                                            imageSize: CGSize(width: result.image.width,
+                                                                              height: result.image.height)),
+                          let crop = result.image.cropping(to: pxRect) else { return }
                     CaptureOutput.deliver(cgImage: crop, scale: result.scale)
                 }
             } catch {
@@ -618,6 +630,13 @@ final class OverlayController {
         }
     }
 
+    /// 사용자 취소(Esc·우클릭). 선택 HUD에서 이미 ⏎/R로 결정했다면 캡처가 곧 시작되므로 무시한다 —
+    /// 결정과 실행 사이에 취소가 끼면 오버레이가 사라진 뒤 녹화가 시작되는 등 상태가 어긋난다.
+    private func cancelByUser() {
+        if choiceHUD?.isDecided == true { return }
+        cancel()
+    }
+
     private func cancel() {
         choiceHUD?.dismiss()
         choiceHUD = nil
@@ -639,6 +658,7 @@ final class OverlayController {
         providerDisplays.removeAll()
         activeLoupeDisplayID = nil
         overlayWindows.removeAll()
+        overlayWindowsResolved = false
         hitTester = nil
         let closing = windows
         windows.removeAll()
