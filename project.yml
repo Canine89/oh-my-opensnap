@@ -43,6 +43,8 @@ targets:
       - path: Sources/CaptureCore/DisplaySnapshotRequest.swift
       - path: Sources/CaptureCore/PixelSampling.swift
       - path: Sources/Geometry/SelectionDamage.swift
+      - path: Sources/Geometry/LoupeLayout.swift
+      - path: Sources/Geometry/WindowCrop.swift
       - path: Sources/CaptureCore/VideoWriterFinalizer.swift
       - path: Sources/CaptureCore/VideoFrameWriter.swift
       - path: Sources/App/Brand.swift

@@ -27,6 +27,13 @@ struct DisplaySnapshot {
         return context.makeImage()
     }
 
+    /// 펼치기에 실패해도 캡처된 원본은 유효하므로 버리지 않고 그대로 쓴다.
+    /// (펼치기는 반복 디코딩을 줄이는 최적화일 뿐, 정지 화면·확정 캡처의 전제 조건이 아니다.)
+    static func preparedImage(_ image: CGImage,
+                              rasterize: (CGImage) -> CGImage? = rasterizedImage) -> CGImage {
+        rasterize(image) ?? image
+    }
+
     /// 오버레이 뷰 좌표(디스플레이 좌상단 기준 point)를 픽셀로 바꿔 잘라낸다.
     func crop(viewRect: CGRect) -> CGImage? {
         guard viewRect.width > 2, viewRect.height > 2 else { return nil }

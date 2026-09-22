@@ -50,4 +50,18 @@ final class DisplaySnapshotRasterTests: XCTestCase {
         XCTAssertEqual(corner.centerColor.g, 30)
         XCTAssertEqual(corner.centerColor.b, 32)
     }
+
+    func testPreparedImageFallsBackToOriginalWhenRasterFails() throws {
+        let context = try XCTUnwrap(CGContext(data: nil, width: 6, height: 4,
+                                            bitsPerComponent: 8, bytesPerRow: 0,
+                                            space: CGColorSpaceCreateDeviceRGB(),
+                                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let image = try XCTUnwrap(context.makeImage())
+        // 펼치기에 실패해도 유효한 캡처를 버리지 않는다(정지 화면·확정 캡처가 사라지면 안 된다).
+        XCTAssertTrue(DisplaySnapshot.preparedImage(image, rasterize: { _ in nil }) === image)
+        let prepared = DisplaySnapshot.preparedImage(image)
+        XCTAssertFalse(prepared === image, "성공하면 펼친 비트맵을 쓴다")
+        XCTAssertEqual(prepared.width, 6)
+        XCTAssertEqual(prepared.height, 4)
+    }
 }
