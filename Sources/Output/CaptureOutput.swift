@@ -18,7 +18,7 @@ enum CaptureOutput {
         // PNG 인코딩은 메인 밖에서 — 큰 Retina 캡처에서 짧은 멈춤을 피한다.
         let openLibrary = Settings.shared.openLibraryAfterCapture
         encodeQueue.async {
-            let pngData = pngDataPreservingAlpha(from: cgImage, logicalSize: logicalSize)
+            let pngData = pngDataPreservingAlpha(from: cgImage, scale: scale)
             DispatchQueue.main.async {
                 guard let pngData else {
                     OperationErrorPresenter.show(CocoaError(.fileWriteUnknown), action: loc("Could not encode the capture", "캡처 이미지를 변환하지 못했습니다"))
@@ -27,13 +27,10 @@ enum CaptureOutput {
                 copyToClipboard(pngData: pngData)
                 if playSound { NSSound(named: NSSound.Name("Pop"))?.play() }
                 ThumbnailHUD.show(image)
-                CaptureLibrary.shared.save(pngData: pngData, date: capturedAt) { result in
-                    switch result {
-                    case .success(let url):
-                        if openLibrary { LibraryWindowController.shared.showWindow(selecting: url) }
-                    case .failure(let error):
-                        SaveRecoveryController.shared.show(error)
-                    }
+                CaptureLibrary.shared.save(pngData: pngData, date: capturedAt) { url, error in
+                    let showSaved = { if openLibrary { LibraryWindowController.shared.showWindow(selecting: url) } }
+                    // 저장 실패 뒤 [다시 시도]로 저장되면 정상 저장과 같이 새 캡처를 보여준다.
+                    if let error { SaveRecoveryController.shared.show(error, onSaved: showSaved) } else { showSaved() }
                 }
             }
         }
@@ -61,7 +58,7 @@ enum CaptureOutput {
         }
     }
 
-    nonisolated private static func pngDataPreservingAlpha(from cgImage: CGImage, logicalSize: NSSize) -> Data? {
+    nonisolated private static func pngDataPreservingAlpha(from cgImage: CGImage, scale: CGFloat) -> Data? {
         guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
               let context = CGContext(data: nil,
                                       width: cgImage.width,
@@ -70,18 +67,13 @@ enum CaptureOutput {
                                       bytesPerRow: 0,
                                       space: colorSpace,
                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else {
-            let fallback = NSBitmapImageRep(cgImage: cgImage)
-            fallback.size = logicalSize
-            return fallback.representation(using: .png, properties: [:])
-        }
+        else { return PNGEncoding.data(from: cgImage, scale: scale) }
 
         let rect = CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height)
         context.clear(rect)
         context.draw(cgImage, in: rect)
         guard let normalized = context.makeImage() else { return nil }
-        let rep = NSBitmapImageRep(cgImage: normalized)
-        rep.size = logicalSize
-        return rep.representation(using: .png, properties: [:])
+        // 논리 크기(DPI)를 기록한다 — 라이브러리 편집 저장도 같은 헬퍼로 배율을 유지한다.
+        return PNGEncoding.data(from: normalized, scale: scale)
     }
 }

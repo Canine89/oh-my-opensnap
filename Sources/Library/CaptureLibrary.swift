@@ -75,8 +75,8 @@ final class CaptureLibrary: @unchecked Sendable {
     }
 
     /// 캡처본 저장 후 변경 알림 발송. 디스크 쓰기는 백그라운드에서 수행하고
-    /// 알림만 메인으로 되돌린다.
-    func save(pngData: Data, date: Date, completion: @escaping (Result<URL, Error>) -> Void) {
+    /// 알림만 메인으로 되돌린다. 실패해도 URL을 넘긴다 — 저장 복구의 [다시 시도] 뒤 같은 항목을 보여주기 위해.
+    func save(pngData: Data, date: Date, completion: @escaping (URL, Error?) -> Void) {
         let directory = directory
         ioQueue.async {
             let url = self.uniqueURL(for: date, directory: directory)
@@ -86,10 +86,9 @@ final class CaptureLibrary: @unchecked Sendable {
                 try self.store.saveNew(pngData, at: url)
             }
             DispatchQueue.main.async {
-                completion(result.map { url })
-                if case .success = result {
-                    NotificationCenter.default.post(name: .libraryDidChange, object: nil)
-                }
+                if case .failure(let error) = result { completion(url, error); return }
+                completion(url, nil)
+                NotificationCenter.default.post(name: .libraryDidChange, object: nil)
             }
         }
     }
@@ -106,9 +105,15 @@ final class CaptureLibrary: @unchecked Sendable {
     func flush() async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             ioQueue.async {
+                let urls = self.writeBuffer.urls
                 do {
                     try self.writeBuffer.flush()
-                    DispatchQueue.main.async { continuation.resume() }
+                    // [다시 시도]로 저장된 캡처·편집도 목록과 썸네일에 반영한다.
+                    DispatchQueue.main.async {
+                        urls.forEach { self.thumbnailCache.removeObject(forKey: $0 as NSURL) }
+                        if !urls.isEmpty { NotificationCenter.default.post(name: .libraryDidChange, object: nil) }
+                        continuation.resume()
+                    }
                 } catch { DispatchQueue.main.async { continuation.resume(throwing: error) } }
             }
         }
@@ -137,9 +142,9 @@ final class CaptureLibrary: @unchecked Sendable {
         }
     }
 
-    private func recovery(image: CGImage, annotations: Data?) -> LibraryWriteBuffer.Recovery {
+    private func recovery(image: CGImage, scale: CGFloat, annotations: Data?) -> LibraryWriteBuffer.Recovery {
         { destination in
-            guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+            guard let png = PNGEncoding.data(from: image, scale: scale) else {
                 throw CocoaError(.fileWriteUnknown)
             }
             try self.store.saveRecovered(image: png, annotations: annotations, at: destination)
@@ -219,11 +224,12 @@ final class CaptureLibrary: @unchecked Sendable {
         }
     }
 
-    func saveEdit(image: CGImage, annotations: Data?, at url: URL,
+    /// `scale`은 원본 캡처의 Retina 배율 — DPI로 기록해 편집 후에도 붙여넣기 크기가 유지된다.
+    func saveEdit(image: CGImage, scale: CGFloat, annotations: Data?, at url: URL,
                   completion: @escaping (Result<Void, Error>) -> Void) {
         ioQueue.async {
-            let result = self.performWrite(at: url, recovery: self.recovery(image: image, annotations: annotations)) {
-                guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+            let result = self.performWrite(at: url, recovery: self.recovery(image: image, scale: scale, annotations: annotations)) {
+                guard let png = PNGEncoding.data(from: image, scale: scale) else {
                     throw CocoaError(.fileWriteUnknown)
                 }
                 try self.store.saveEdit(image: png, annotations: annotations, at: url)
@@ -235,9 +241,9 @@ final class CaptureLibrary: @unchecked Sendable {
         }
     }
 
-    func saveAnnotations(_ data: Data?, for imageURL: URL, image: CGImage) {
+    func saveAnnotations(_ data: Data?, for imageURL: URL, image: CGImage, scale: CGFloat) {
         ioQueue.async {
-            let result = self.performWrite(at: imageURL, recovery: self.recovery(image: image, annotations: data)) {
+            let result = self.performWrite(at: imageURL, recovery: self.recovery(image: image, scale: scale, annotations: data)) {
                 try self.store.saveAnnotations(data, at: imageURL)
             }
             if case .failure(let error) = result {
@@ -258,6 +264,39 @@ final class CaptureLibrary: @unchecked Sendable {
                 } else { try CoordinatedFileExporter.write(data, to: url) }
             }
             DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// 드래그처럼 즉시 파일이 필요할 때 동기로 읽는다. 보류 중인 쓰기를 먼저 반영해
+    /// 디스크의 주석이 최신이게 하고, 반영하지 못하면 실패로 돌려 오래된 상태가 나가지 않게 한다.
+    func loadDocumentData(at url: URL) -> Result<(image: Data, annotations: Data?), Error> {
+        ioQueue.sync {
+            Result {
+                try drainWrites(at: url)
+                return try store.load(at: url)
+            }
+        }
+    }
+
+    /// 드래그로 내보낼 합성본을 원본과 같은 파일 이름으로 임시 폴더에 쓴다. (메인, 작은 임시 파일)
+    static func writeDragCopy(_ data: Data, named name: String) -> URL? {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("LibraryDrag", isDirectory: true)
+        // 받는 앱이 이미 읽어 갔을 만큼 지난 이전 드래그 사본은 정리한다.
+        let old = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.creationDateKey])) ?? []
+        for folder in old {
+            let created = (try? folder.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+            if created < Date().addingTimeInterval(-3600) { try? fm.removeItem(at: folder) }
+        }
+        let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        do {
+            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            let url = folder.appendingPathComponent(name)
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            NSLog("Drag copy failed: %@", error.localizedDescription)
+            return nil
         }
     }
 

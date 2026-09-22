@@ -89,9 +89,16 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
     func discardUnsavedPreview() {
         previewGeneration += 1
+        requestedSelection = selectedItem?.url     // 같은 항목을 디스크 상태로 다시 연다
         editorView.image = nil
         selectedItem = nil
         reload()
+    }
+
+    /// 보류 쓰기를 다른 폴더의 복구본으로 옮긴 항목을 보고 있었다면, 디스크 상태로 다시 연다.
+    func reloadPreviewFromDisk(for urls: [URL]) {
+        guard let url = selectedItem?.url, urls.contains(url) else { return }
+        discardUnsavedPreview()
     }
 
     func flushPendingEdits() {
@@ -157,7 +164,10 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
                 return nil
             }
             guard event.modifierFlags.contains(.command) else { return event }
-            switch event.charactersIgnoringModifiers?.lowercased() {
+            let key = event.charactersIgnoringModifiers?.lowercased()
+            // 텍스트 입력 중(필드 편집기가 first responder)에는 되돌리기·복사 등을 텍스트 시스템에 맡긴다.
+            if window.firstResponder is NSText, let key, EditorImageView.textEditingKeys.contains(key) { return event }
+            switch key {
             case "z":
                 if event.modifierFlags.contains(.shift) { self.editorView.redo() } else { self.editorView.undo() }
                 return nil
@@ -323,7 +333,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         // 주석은 사이드카 JSON으로 항목별 보관 — 다른 캡처를 보고 돌아와도 편집이 이어진다.
         editorView.onAnnotationsChanged = { [weak self] in
             guard let self, let item = self.selectedItem, item.kind == .image, let image = self.editorView.baseCGImage() else { return }
-            CaptureLibrary.shared.saveAnnotations(self.editorView.annotationsData(), for: item.url, image: image)
+            CaptureLibrary.shared.saveAnnotations(self.editorView.annotationsData(), for: item.url, image: image,
+                                                  scale: self.editorView.imageScale)
         }
         editorView.onSelectionChanged = { [weak self] annotation in
             guard let self, let annotation else { return }
@@ -938,10 +949,35 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         true
     }
 
-    /// 항목의 실제 파일 URL을 pasteboard에 실어, 드롭한 곳에 파일 자체가 전달되게 한다.
+    /// 항목의 파일 URL을 pasteboard에 실어, 드롭한 곳에 파일 자체가 전달되게 한다.
+    /// 주석(모자이크 가림 포함)은 사이드카에만 있으므로, 주석이 있으면 합성본을 같은 이름의 임시 파일로 넘긴다.
+    /// 합성에 실패하면 가리기 전 원본이 나가지 않도록 드래그하지 않는다.
     func collectionView(_ collectionView: NSCollectionView,
                         pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
-        item(at: indexPath)?.url as NSURL?
+        guard let item = item(at: indexPath) else { return nil }
+        guard item.kind == .image else { return item.url as NSURL }
+        return dragFileURL(for: item) as NSURL?
+    }
+
+    private func dragFileURL(for item: LibraryItem) -> URL? {
+        let png: Data?
+        if selectedItem?.url == item.url, editorView.image != nil {
+            // 보고 있는 항목은 편집기 상태가 가장 최신이다(저장 예약 중인 주석 포함).
+            editorView.flushPendingAnnotationChanges()
+            guard editorView.annotationsData() != nil else { return item.url }
+            png = editorView.renderedPNGData()
+        } else {
+            switch CaptureLibrary.shared.loadDocumentData(at: item.url) {
+            case .success(let document):
+                guard let annotations = document.annotations else { return item.url }
+                png = EditorImageView.flattenedPNG(imageData: document.image, annotations: annotations)
+            case .failure(let error):
+                NSLog("Drag export failed for %@: %@", item.url.lastPathComponent, error.localizedDescription)
+                return nil
+            }
+        }
+        guard let png else { return nil }
+        return CaptureLibrary.writeDragCopy(png, named: item.url.lastPathComponent)
     }
 
     // MARK: 편집 도구 액션
@@ -1050,7 +1086,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         guard let item = selectedItem,
               item.url.pathExtension.lowercased() == "png",
               let cg = editorView.baseCGImage() else { return }
-        CaptureLibrary.shared.saveEdit(image: cg, annotations: editorView.annotationsData(), at: item.url) { [weak self] result in
+        CaptureLibrary.shared.saveEdit(image: cg, scale: editorView.imageScale,
+                                       annotations: editorView.annotationsData(), at: item.url) { [weak self] result in
             switch result {
             case .success: self?.refreshThumbnail(for: item.url)
             case .failure(let error):
@@ -1094,8 +1131,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
                     editorView.commitFlattenedImage()
                     return
                 }
-                guard let cg = editorView.renderedCGImage(),
-                      let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else {
+                guard let png = editorView.renderedPNGData() else {
                     completion(.failure(CocoaError(.fileWriteUnknown)))
                     return
                 }

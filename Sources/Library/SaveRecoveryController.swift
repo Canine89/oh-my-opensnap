@@ -7,11 +7,12 @@ final class SaveRecoveryController {
     private var isPresenting = false
     private init() {}
 
-    func show(_ error: Error) {
-        Task { _ = await resolve(error, terminating: false) }
+    /// `onSaved`는 [다시 시도]로 원래 위치에 저장됐을 때만 호출된다.
+    func show(_ error: Error, onSaved: (() -> Void)? = nil) {
+        Task { _ = await resolve(error, terminating: false, onSaved: onSaved) }
     }
 
-    func resolve(_ initialError: Error, terminating: Bool) async -> Bool {
+    func resolve(_ initialError: Error, terminating: Bool, onSaved: (() -> Void)? = nil) async -> Bool {
         guard !isPresenting else { return false }
         isPresenting = true
         defer { isPresenting = false }
@@ -22,12 +23,15 @@ final class SaveRecoveryController {
             guard count > 0 else { return true }
             switch chooseAction(error: error, count: count, terminating: terminating) {
             case .alertFirstButtonReturn:
-                do { try await CaptureLibrary.shared.flush(); return true }
+                do { try await CaptureLibrary.shared.flush(); onSaved?(); return true }
                 catch let retryError { error = retryError }
             case .alertSecondButtonReturn:
                 guard let directory = chooseRecoveryFolder() else { return false }
                 let report = await CaptureLibrary.shared.recoverPendingWrites(to: directory)
                 if !report.files.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(Array(report.files.values)) }
+                // 복구본으로 옮긴 쓰기는 라이브러리 파일에 반영되지 않는다. 편집기가 그 항목을 보고 있으면
+                // 디스크 상태로 다시 열어, 크롭된 화면의 주석 좌표가 원본 파일과 짝지어 저장되지 않게 한다.
+                if !terminating { LibraryWindowController.shared.reloadPreviewFromDisk(for: Array(report.files.keys)) }
                 if let recoveryError = report.failures.values.first { error = recoveryError }
                 else { return true }
             case .alertThirdButtonReturn:
