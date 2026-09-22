@@ -24,14 +24,13 @@ final class AreaVideoRecorder: NSObject, Recording, SCStreamOutput, SCStreamDele
     }
 
     func start() async throws {
-        // H.264가 요구하는 짝수 크기로 맞춘다.
-        let width = max(2, Int((sourceRect.width * scale).rounded()) / 2 * 2)
-        let height = max(2, Int((sourceRect.height * scale).rounded()) / 2 * 2)
-        try await frames.start(width: width, height: height)
+        // 짝수 크기, 코덱 한계를 넘는 영역은 HEVC(필요하면 축소). 스트림도 같은 크기로 받는다.
+        let format = VideoOutputFormat(pixelWidth: sourceRect.width * scale, pixelHeight: sourceRect.height * scale)
+        try await frames.start(width: format.width, height: format.height, codec: format.codec)
         let config = SCStreamConfiguration()
         config.sourceRect = sourceRect
-        config.width = width
-        config.height = height
+        config.width = format.width
+        config.height = format.height
         config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.queueDepth = 8
@@ -50,6 +49,8 @@ final class AreaVideoRecorder: NSObject, Recording, SCStreamOutput, SCStreamDele
     }
 
     func stop() async throws -> URL {
+        // 영상은 누른 시각까지 이어진다. 스트림 정지를 기다리는 동안 찍힌 프레임은 넣지 않는다.
+        frames.markStopRequested()
         if let stream {
             self.stream = nil
             do { try await stream.stopCapture() }
@@ -66,7 +67,9 @@ final class AreaVideoRecorder: NSObject, Recording, SCStreamOutput, SCStreamDele
         if type == .screen { frames.append(sampleBuffer) }
     }
 
+    /// 공유 중단·디스플레이 분리 등 시스템이 멈춘 경우. 그때까지 녹화된 파일은 정상 저장한다.
     nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
+        frames.markStopRequested()
         Task { @MainActor in
             guard self.stream != nil else { return }
             self.streamError = error

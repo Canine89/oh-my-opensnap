@@ -15,7 +15,7 @@ final class RecordingSession {
     private var identity: UUID?
     private var recorder: Recording?
     private var startTask: Task<Void, Error>?
-    private var stopTask: Task<URL, Error>?
+    private var stopTask: Task<URL?, Error>?
     var isBusy: Bool { state != .idle }
 
     func start(_ recording: Recording) async throws {
@@ -40,8 +40,9 @@ final class RecordingSession {
         guard let recorder, let id = identity else { return nil }
         let start = startTask
         state = .stopping
-        let task = Task {
-            try await start?.value
+        let task = Task { () throws -> URL? in
+            // 시작 실패는 start 호출자가 알린다. 여기서 다시 던지면 오류 창이 두 번 뜬다.
+            do { try await start?.value } catch { return nil }
             return try await recorder.stop()
         }
         stopTask = task
