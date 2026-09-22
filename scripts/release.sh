@@ -135,6 +135,12 @@ if [ "$PUBLISH" = 1 ]; then
     require_clean_release_tree "$VERSION_ARG"
   fi
   [ "$(git branch --show-current)" = main ] || { echo "✗ appcast 게시 브랜치는 main이어야 합니다." >&2; exit 1; }
+  # 소스 커밋을 먼저 올린다 — GitHub Release 태그가 원격 main HEAD(= 이 버전의 소스)에 만들어지도록.
+  # 릴리스 커밋(appcast/Cask)은 아직 없으므로 사용자에게 공개되는 업데이트는 바뀌지 않는다.
+  if [ "$RESUME" != 1 ]; then
+    echo "▸ 소스 커밋 푸시"
+    git push origin HEAD:main
+  fi
 fi
 
 # --- 재개: 커밋된 ZIP + 이전 실행의 DMG 로 GitHub Release·푸시·검증만 ---

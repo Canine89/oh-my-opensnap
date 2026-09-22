@@ -96,7 +96,8 @@ UI 검토용 스냅샷(Debug 전용): `build/dd/Build/Products/Debug/oh-my-opens
    - ZIP: `ditto -c -k --keepParent` (Sparkle 업데이트용, 공증·스테이플된 앱)
 6. **EdDSA 서명 + appcast** — DerivedData에서 Sparkle `sign_update`를 찾아 ZIP 서명 → `appcast.xml` 생성. ZIP은 `updates/`에 버전별로 복사하고 `raw.githubusercontent.com/.../updates/...zip`로 서빙.
 7. **릴리스 노트** — `CHANGELOG.md`의 `## <버전>` 섹션을 읽어 Sparkle 업데이트 창(HTML)과 GitHub 릴리스 노트(markdown) 양쪽에 사용. → **릴리스 전에 `CHANGELOG.md`에 `## <새버전>` 섹션을 먼저 추가하라.**
-8. **게시(`--publish`)** — `appcast.xml` + `project.yml` + `updates/*.zip`(+ Cask)을 `release: vX.Y.Z` 커밋으로 푸시 → 공개 ZIP 다운로드 SHA-256 일치 검증 → `gh release create/upload`로 DMG+ZIP 업로드.
+8. **게시(`--publish`)** — 소스 커밋 먼저 푸시 → `appcast.xml` + `project.yml` + `updates/*.zip`(+ Cask)을 `release: vX.Y.Z` 커밋(로컬) → `gh release create/upload`로 DMG+ZIP 업로드 → 릴리스 커밋 푸시 → 공개 ZIP 다운로드 SHA-256 일치 검증. (Cask·appcast가 아직 없는 DMG를 가리키지 않게 Release를 먼저 만든다.)
+   - 같은 버전의 `updates/*.zip`이 이미 커밋돼 있으면 **재빌드하지 않고** `--publish`는 업로드·푸시·검증만 재개한다(같은 이름에 다른 바이트 → CDN 캐시/EdDSA 불일치 방지). 현재보다 낮은 버전은 거부.
 
 ### 1회 전역 설정 (이 Mac에서 한 번, 분실 시 치명적)
 - **Developer ID Application 인증서** + Apple Developer Program 멤버십.

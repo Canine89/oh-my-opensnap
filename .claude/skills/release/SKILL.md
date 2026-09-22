@@ -56,7 +56,7 @@ Developer ID 서명 → notarytool 공증·스테이플 → DMG+ZIP → EdDSA �
 사용자에게는 "빌드→서명→공증→업로드, 3~5분" 정도로 한 줄 알리고 턴을 끝낸다. 도중에 로그를 볼 일이 있으면 `tail -5 build/release-<버전>.log` (서명 단계의 "replacing existing signature" 줄은 정상).
 
 변형:
-- `./scripts/release.sh <버전>` — 게시 없이 DMG+ZIP+appcast만 생성(로컬 검증). 이후 같은 버전으로 `--publish`를 다시 돌리면 버전은 중복 증가하지 않는다.
+- `./scripts/release.sh <버전>` — 게시 없이 DMG+ZIP+appcast만 생성(로컬 검증). 이후 같은 버전으로 `--publish`를 돌리면 리허설 산출물은 허용되고 새로 만들어진다(버전 중복 증가 없음).
 - `./scripts/release.sh` (인자 없음) — 현재 버전으로 로컬 테스트 DMG만.
 - `--skip-notary` — 로컬 확인용. **공개 배포에는 절대 쓰지 않는다** (Gatekeeper 경고).
 - 공증 프로필명이 기본(`oh-my-opensnap`)과 다르면 `OMOS_NOTARY_PROFILE=<이름>`.
@@ -81,8 +81,8 @@ gh release view v<버전> --json tagName,assets --jq '.tagName, (.assets[] | "\(
 | 증상 | 원인/조치 |
 |---|---|
 | `status: Invalid` | 공증 거부. `xcrun notarytool log <submission-id> --keychain-profile oh-my-opensnap`로 사유 확인(대개 서명 누락/하드닝 런타임/entitlement). 고친 뒤 **같은 버전으로 재실행** — 버전은 중복 증가하지 않는다. |
-| 공증은 됐는데 `gh release` 실패 | `gh auth status` 확인 후 같은 버전으로 재실행. 이미 릴리스가 있으면 스크립트가 upload로 처리한다. |
-| 공개 ZIP 크기 불일치 | raw.githubusercontent 캐시 지연. 1~2분 후 재실행. |
+| 공증은 됐는데 `gh release` 실패 | 릴리스 커밋은 로컬에만 있고 아직 푸시 전이다. `gh auth status` 확인 후 같은 버전으로 `--publish` 재실행 → 스크립트가 커밋된 ZIP + `dist/` DMG로 업로드·푸시·검증만 재개한다(재빌드 안 함). |
+| 공개 ZIP SHA-256 불일치 | raw.githubusercontent 캐시 지연. 1~2분 후 같은 버전으로 `--publish` 재실행(재개 모드, 재빌드 안 함). |
 | `Developer ID Application` 인증서 없음 / 프로필 없음 | 이 Mac의 1회 설정 누락. `CLAUDE.md` §4 "1회 전역 설정" 안내 후 중단. 대체 경로(ad-hoc/자체서명)로 우회하지 않는다 — TCC 권한이 풀린다. |
 | 빌드 실패 | 릴리스 문제가 아니다. §1로 돌아가 Debug 빌드부터. |
 
