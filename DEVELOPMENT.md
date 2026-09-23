@@ -43,6 +43,7 @@ brew install xcodegen
 
 - `OMOS_NOTARY_PROFILE`: 공증 키체인 프로필. 기본값 `oh-my-opensnap`.
 - `OMOS_SIGN_IDENTITY`: Developer ID Application 인증서 이름 또는 식별자. 기본값 `Developer ID Application`.
+- `OMOS_SPARKLE_ACCOUNT`: Sparkle EdDSA 개인키의 키체인 계정. 기본값 `oh-my-opensnap`. 빌드 전과 서명 직전에 앱 `SUPublicEDKey`와 짝인지 확인한다.
 - `--skip-notary`: 로컬 확인용. `--publish`와 함께 사용할 수 없습니다.
 
 공증 도구를 모의 실행하는 테스트는 실패 시 배포 차단을 확인하는 용도입니다. 실제 Apple 공증이나 다운로드 후 Gatekeeper 검사를 대체하지 않습니다.

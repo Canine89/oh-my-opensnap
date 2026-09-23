@@ -102,7 +102,7 @@ UI 검토용 스냅샷(Debug 전용): `build/dd/Build/Products/Debug/oh-my-opens
 ### 1회 전역 설정 (이 Mac에서 한 번, 분실 시 치명적)
 - **Developer ID Application 인증서** + Apple Developer Program 멤버십.
 - **notarytool 키체인 프로필**: `xcrun notarytool store-credentials "oh-my-opensnap" --apple-id … --team-id M7NU9F8CZN --password <앱별암호>`
-- **Sparkle EdDSA 키쌍**: `generate_keys`로 생성, `generate_keys -x`로 백업. 공개키는 `Info.plist`의 `SUPublicEDKey`.
+- **Sparkle EdDSA 키쌍**: 전용 키체인 계정 `oh-my-opensnap`에 둔다(`generate_keys --account oh-my-opensnap -f <백업>`로 가져오기, `-x`로 백업). 기본 `ed25519` 계정에는 1.0.81 이하의 옛 키가 남아 있어 쓰면 안 된다. 공개키는 `Info.plist`의 `SUPublicEDKey`이며 `release.sh`가 서명 전에 짝을 확인한다.
 - 🔐 **EdDSA 개인키·앱별 암호는 절대 git에 커밋 금지**. 분실하면 기존 사용자에게 업데이트를 못 보낸다.
 
 ---

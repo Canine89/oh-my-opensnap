@@ -170,6 +170,29 @@ if [ "$RESUME" = 1 ]; then
   exit 0
 fi
 
+# Sparkle 서명키 확인 — 기본 'ed25519' 계정은 다른 앱과 공유돼 옛 키(1.0.81 이하)가 남아 있다.
+# 전용 계정의 키가 앱 SUPublicEDKey 와 짝이 아니면 기존 설치본이 업데이트를 거부하므로,
+# 빌드·공증에 시간을 쓰기 전에 막는다(도구가 아직 없으면 서명 직전에 다시 확인한다).
+SPARKLE_ACCOUNT_ARGS=(--account "${OMOS_SPARKLE_ACCOUNT:-oh-my-opensnap}")
+require_sparkle_key() {
+  local generate_keys="$1" expected="$2" actual
+  actual="$("$generate_keys" "${SPARKLE_ACCOUNT_ARGS[@]}" -p 2>/dev/null | tail -1 || true)"
+  if [ "$expected" != "$actual" ]; then
+    echo "✗ Sparkle 서명키 불일치 — 이 키로 서명하면 기존 설치본이 업데이트를 거부합니다." >&2
+    echo "  앱 SUPublicEDKey : $expected" >&2
+    echo "  키체인 공개키     : ${actual:-없음} (계정 ${SPARKLE_ACCOUNT_ARGS[1]})" >&2
+    echo "  → 배포하던 Mac에서 'generate_keys -x <파일>' 로 내보낸 뒤" >&2
+    echo "    'generate_keys --account ${SPARKLE_ACCOUNT_ARGS[1]} -f <파일>' 로 가져오세요 (OMOS_SPARKLE_ACCOUNT 로 계정 변경 가능)." >&2
+    exit 1
+  fi
+}
+if [ -n "$VERSION_ARG" ]; then
+  PRE_GENERATE_KEYS="$(find "$DD/SourcePackages" -name generate_keys -path '*sparkle*' -type f 2>/dev/null | head -1)"
+  if [ -x "$PRE_GENERATE_KEYS" ]; then
+    require_sparkle_key "$PRE_GENERATE_KEYS" "$(grep 'SUPublicEDKey:' project.yml | awk '{print $2}')"
+  fi
+fi
+
 # 테스트 실패를 서명·공증·게시 전에 차단한다.
 "$ROOT/scripts/check.sh" > "$ROOT/build-check.log" 2>&1 || {
   cat "$ROOT/build-check.log" >&2
@@ -295,10 +318,11 @@ fi
 echo "▸ EdDSA 서명 + appcast.xml 생성"
 SIGN_UPDATE="$(find "$DD/SourcePackages" "$HOME/Library/Developer/Xcode/DerivedData" -name sign_update -path '*sparkle*' -type f 2>/dev/null | head -1)"
 [ -x "$SIGN_UPDATE" ] || { echo "✗ sign_update 도구를 못 찾음 (Sparkle 패키지 해석 필요)"; exit 1; }
-# 예: sparkle:edSignature="..." length="12345"
-SIG_ATTRS="$("$SIGN_UPDATE" "$ZIP")"
-UPDATE_SIGNATURE="$(printf '%s' "$SIG_ATTRS" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')"
 UPDATE_PUBLIC_KEY="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")"
+require_sparkle_key "$(dirname "$SIGN_UPDATE")/generate_keys" "$UPDATE_PUBLIC_KEY"
+# 예: sparkle:edSignature="..." length="12345"
+SIG_ATTRS="$("$SIGN_UPDATE" "${SPARKLE_ACCOUNT_ARGS[@]}" "$ZIP")"
+UPDATE_SIGNATURE="$(printf '%s' "$SIG_ATTRS" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')"
 swift "$ROOT/scripts/verify-update.swift" "$ZIP" "$UPDATE_SIGNATURE" "$UPDATE_PUBLIC_KEY"
 
 mkdir -p "$UPDATES"
