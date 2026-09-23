@@ -6,19 +6,28 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.94</title>
-      <pubDate>Mon, 21 Sep 2026 07:56:59 +0000</pubDate>
-      <sparkle:version>95</sparkle:version>
-      <sparkle:shortVersionString>1.0.94</sparkle:shortVersionString>
+      <title>1.0.95</title>
+      <pubDate>Wed, 23 Sep 2026 00:16:18 +0000</pubDate>
+      <sparkle:version>96</sparkle:version>
+      <sparkle:shortVersionString>1.0.95</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.94</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.95</h2>
 <ul>
-<li>캡처 모드에서 같은 창 위로 마우스를 움직일 때 전체 화면 대신 십자선·확대경이 바뀐 부분만 다시 그리도록 개선</li>
-<li>영역 드래그·크기 조절·이동 시 디밍이 달라진 영역과 테두리·라벨만 갱신해 고해상도 화면의 렌더링 부담 감소</li>
-<li>캡처 시점은 유지하면서 정지 화면의 픽셀 준비를 백그라운드에서 한 번 수행하고, 확대경·배경·저장에 재사용</li>
-<li>이미지 색상·방향·경계 픽셀 보존 및 선택 영역 갱신 범위 회귀 테스트 추가</li>
+<li>영역 녹화가 마지막 화면 변화 시점에서 잘리던 문제 수정 — 중지를 누른 시각까지 영상이 이어지고, 움직임 없는 화면도 녹화 길이대로 저장</li>
+<li>일시정지한 시간이 멈춘 화면으로 영상에 남던 문제 수정</li>
+<li>5K급 큰 영역은 HEVC로 녹화해 호환성 문제 없이 저장, 공유 중단·디스플레이 분리로 녹화가 멈춰도 그때까지의 영상은 정상 저장</li>
+<li>보관함 썸네일을 다른 앱으로 끌어 놓을 때 주석·모자이크가 반영된 이미지를 전달 (가리기 전 원본이 나가지 않음)</li>
+<li>크롭·복사·다른 이름으로 저장 후에도 Retina 해상도 정보를 유지해 다른 앱에 붙여도 원래 크기로 표시</li>
+<li>텍스트 입력 중 ⌘Z·⌘C가 다른 주석을 바꾸거나 이미지 전체를 복사하던 문제, 크롭 중 되돌리기 후 크롭 도구가 멈추던 문제, 옮긴 모자이크가 이전 위치 픽셀을 보이던 문제 수정</li>
+<li>저장 실패 복구(다시 시도·다른 폴더에 저장) 뒤 목록과 편집기가 디스크와 어긋나던 문제 수정</li>
+<li>단축키가 다른 앱과 충돌해 등록되지 않으면 메뉴와 설정에 "사용 불가"로 표시하고, 새 조합이 실패하면 이전 조합을 유지</li>
+<li>단축키 기록은 설정 창에서만 받고 ⌘C·⌘Q 같은 시스템 조합과 ⇧만 쓴 조합은 거부</li>
+<li>"설정 열고 재시작"이 앱을 두 번 띄우던 문제 수정, 시작 안내가 바뀐 단축키를 바로 반영하고 권한 요청 창이 겹쳐 뜨지 않게 정리</li>
+<li>화면 밖으로 걸친 창을 스냅 캡처할 때 엉뚱한 부분이 저장되던 문제 수정</li>
+<li>이미지/영상을 고른 직후 Esc를 눌러도 캡처가 진행되던 경쟁 상태, 확대경에 오버레이 자신이 비치던 문제 수정</li>
+<li>캡처 모드 부분 다시 그리기에서 확대경이 사라지거나 라벨 잔상이 남던 문제 수정, 메인 디스플레이에서도 열린 드롭다운을 빠르게 확보</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.94.zip" type="application/octet-stream" sparkle:edSignature="2Old2JDHRtXokB3EJCd5CaSNIooWSgxE6wTP5aRrvtJw2eY1X4m8gzHPpv2/uZq+bNZzW4V7afBUHYNGZFh6Ag==" length="4350971" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.95.zip" type="application/octet-stream" sparkle:edSignature="yjR2fl4NcokCnPXzRbsS+ecKX8lOZUEgXYk7NbwxOHyCenHgzT41EHdd/6hXU86i6ZFTj6/Sg/AbWjkVytdQAQ==" length="4369852" />
     </item>
   </channel>
 </rss>
