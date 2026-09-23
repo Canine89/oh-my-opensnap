@@ -172,6 +172,11 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
                 if event.modifierFlags.contains(.shift) { self.editorView.redo() } else { self.editorView.undo() }
                 return nil
             case "c": self.editorView.copyToClipboard(); return nil
+            case "v":
+                // ⌘V: 편집기에 포커스가 있고 클립보드에 이미지가 있으면 오브제로 얹는다. 아니면 기존 흐름 그대로.
+                guard !event.modifierFlags.contains(.shift), window.firstResponder === self.editorView,
+                      self.selectedItem?.kind == .image, self.editorView.pasteImage() else { return event }
+                return nil
             case "=", "+": self.previewScroll.zoomBy(1.25); return nil
             case "-", "_": self.previewScroll.zoomBy(0.8); return nil
             case "0": self.previewScroll.zoomToFit(); return nil
@@ -274,6 +279,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         // 썸네일을 다른 앱(Finder/메일/슬랙 등)으로 끌어다 놓으면 실제 파일이 첨부되도록
         // 앱 바깥 드래그를 복사 동작으로 허용한다.
         collectionView.setDraggingSourceOperationMask(.copy, forLocal: false)
+        // 앱 안(편집기)으로 끌어 놓으면 이미지 얹기 — 같은 파일(주석이 있으면 합성본)을 복사로 넘긴다.
+        collectionView.setDraggingSourceOperationMask(.copy, forLocal: true)
         // 썸네일 우클릭 → 컨텍스트 메뉴
         collectionView.menuProvider = { [weak self] indexPath in
             guard let self, self.item(at: indexPath) != nil else { return nil }
@@ -333,12 +340,13 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         // 주석은 사이드카 JSON으로 항목별 보관 — 다른 캡처를 보고 돌아와도 편집이 이어진다.
         editorView.onAnnotationsChanged = { [weak self] in
             guard let self, let item = self.selectedItem, item.kind == .image, let image = self.editorView.baseCGImage() else { return }
-            CaptureLibrary.shared.saveAnnotations(self.editorView.annotationsData(), for: item.url, image: image,
-                                                  scale: self.editorView.imageScale)
+            CaptureLibrary.shared.saveAnnotations(self.editorView.annotationsData(), assets: self.editorView.annotationAssets(),
+                                                  for: item.url, image: image, scale: self.editorView.imageScale)
         }
         editorView.onSelectionChanged = { [weak self] annotation in
             guard let self, let annotation else { return }
             if case .mosaic = annotation.kind { return }
+            if annotation.isImage { return }         // 얹은 이미지는 색·굵기가 없다
             self.editorView.strokeColor = annotation.color
             self.editorView.strokeWidth = annotation.width
             self.colorWell.color = annotation.color
@@ -715,6 +723,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             return hasImage
         case #selector(saveSelected), #selector(revealSelected), #selector(deleteSelected):
             return selectedItem != nil
+        case #selector(insertImageFromMenu(_:)):
+            return canInsertImage
         default:
             return true
         }
@@ -891,9 +901,9 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         CaptureLibrary.shared.loadDocument(at: item.url) { [weak self] result in
             guard let self, self.previewGeneration == generation, self.selectedItem?.url == item.url else { return }
             switch result {
-            case .success(let (image, annotations)):
+            case .success(let (image, annotations, assets)):
                 self.editorView.image = image
-                if let annotations { self.editorView.restoreAnnotations(from: annotations) }
+                if let annotations { self.editorView.restoreAnnotations(from: annotations, assets: assets) }
             case .failure(let error):
                 OperationErrorPresenter.show(error, action: loc("Could not open the image", "이미지를 열지 못했습니다"))
             }
@@ -970,7 +980,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             switch CaptureLibrary.shared.loadDocumentData(at: item.url) {
             case .success(let document):
                 guard let annotations = document.annotations else { return item.url }
-                png = EditorImageView.flattenedPNG(imageData: document.image, annotations: annotations)
+                png = EditorImageView.flattenedPNG(imageData: document.image, annotations: annotations,
+                                                   assets: document.assets)
             case .failure(let error):
                 NSLog("Drag export failed for %@: %@", item.url.lastPathComponent, error.localizedDescription)
                 return nil
@@ -1032,6 +1043,28 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         CaptureCoordinator.shared.startAreaCapture()
     }
 
+    /// 편집 ▸ 이미지 넣기…(⇧⌘I): 이미지 파일을 골라 보이는 영역 가운데에 오브제로 얹는다.
+    @objc func insertImageFromMenu(_ sender: Any?) {
+        guard canInsertImage, let window else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = InsertableImage.acceptedTypes
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.prompt = loc("Insert", "넣기")
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            let source = (try? Data(contentsOf: url)).flatMap { InsertableImage.decode(data: $0) }
+            guard self.hasOpenImage, let source, self.editorView.insertImage(source) else {
+                self.showToast(loc("Could not insert the image", "이미지를 넣지 못했습니다"))
+                return
+            }
+        }
+    }
+
+    /// 라이브러리 창이 앞에 있고 이미지 항목이 열려 있을 때만.
+    private var canInsertImage: Bool { window?.isKeyWindow == true && hasOpenImage }
+    private var hasOpenImage: Bool { selectedItem?.kind == .image && editorView.image != nil }
+
     private func showToast(_ message: String) {
         guard let content = window?.contentView else { return }
         let pill = HUDSurfaceView(frame: .zero)
@@ -1087,7 +1120,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
               item.url.pathExtension.lowercased() == "png",
               let cg = editorView.baseCGImage() else { return }
         CaptureLibrary.shared.saveEdit(image: cg, scale: editorView.imageScale,
-                                       annotations: editorView.annotationsData(), at: item.url) { [weak self] result in
+                                       annotations: editorView.annotationsData(), assets: editorView.annotationAssets(),
+                                       at: item.url) { [weak self] result in
             switch result {
             case .success: self?.refreshThumbnail(for: item.url)
             case .failure(let error):

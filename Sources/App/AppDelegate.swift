@@ -91,7 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// 편집 단축키(⌘Z/⌘C)와 창 단축키(⌘W/⌘M)가 first responder로 라우팅되도록 표준 Edit/Window 메뉴를 둔다.
-    private func setupMainMenu() {
+    @MainActor private func setupMainMenu() {
         let mainMenu = NSMenu()
 
         let appItem = NSMenuItem()
@@ -106,6 +106,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(withTitle: loc("Undo", "되돌리기"), action: #selector(EditorImageView.undo(_:)), keyEquivalent: "z")
         editMenu.addItem(withTitle: loc("Redo", "다시 실행"), action: #selector(EditorImageView.redo(_:)), keyEquivalent: "Z")   // 대문자 = ⇧⌘Z
         editMenu.addItem(withTitle: loc("Copy", "복사"), action: #selector(EditorImageView.copy(_:)), keyEquivalent: "c")
+        // 붙여넣기: 텍스트 입력 중엔 필드로, 편집기에선 클립보드 이미지를 오브제로 얹는다.
+        editMenu.addItem(withTitle: loc("Paste", "붙여넣기"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(.separator())
+        let insertImage = editMenu.addItem(withTitle: loc("Insert Image…", "이미지 넣기…"),
+                                           action: #selector(LibraryWindowController.insertImageFromMenu(_:)),
+                                           keyEquivalent: "I")   // 대문자 = ⇧⌘I
+        insertImage.target = LibraryWindowController.shared
         editItem.submenu = editMenu
 
         // 라이브러리·설정 창을 ⌘W로 닫고 ⌘M으로 최소화할 수 있도록 표준 Window 메뉴를 둔다.

@@ -1,7 +1,9 @@
 import AppKit
+import ImageIO
 
 /// 라이브러리 미리보기 겸 간단 편집 뷰.
 /// 도구: 크롭(핸들 방식) / 중간 잘라내기 / 번호(➊–➒) / 텍스트 / 말풍선 / 화살표 / 사각형 / 원. 좌상단 원점(isFlipped).
+/// 이미지 얹기: 드롭·⌘V·메뉴로 다른 이미지를 원본 픽셀을 건드리지 않는 오브제로 올린다(바탕 바로 위, 다른 주석 아래).
 /// 좌표는 이미지 픽셀과 1:1. 로드 시 DPI 메타데이터와 무관하게 실제 픽셀 크기로 정규화한다.
 /// ⌘Z 되돌리기는 스냅샷 스택으로 크롭 포함 모든 편집에 적용된다.
 final class EditorImageView: NSView {
@@ -9,7 +11,8 @@ final class EditorImageView: NSView {
     enum Tool { case none, crop, cutHorizontal, cutVertical, number, text, callout, arrow, rectangle, ellipse, mosaic }
 
     struct Annotation {
-        enum Kind { case number(Int), text(String), callout(String), arrow, rectangle, ellipse, mosaic }
+        /// `image`는 얹은 이미지 — 값은 자산 ID(UUID). start/end가 좌상단/우하단 픽셀 좌표.
+        enum Kind { case number(Int), text(String), callout(String), arrow, rectangle, ellipse, mosaic, image(String) }
         var kind: Kind
         var start: CGPoint
         var end: CGPoint
@@ -28,6 +31,11 @@ final class EditorImageView: NSView {
             self.color = color
             self.width = width
             self.mosaicImage = mosaicImage
+        }
+
+        var isImage: Bool {
+            if case .image = kind { return true }
+            return false
         }
     }
 
@@ -145,6 +153,8 @@ final class EditorImageView: NSView {
         var bubble: [CGFloat]?
         var color: [CGFloat]
         var width: CGFloat
+        /// 얹은 이미지의 자산 ID. 이전 버전 JSON에는 없다(선택 필드).
+        var asset: String?
     }
 
     private struct AnnotationDocument: Codable {
@@ -169,18 +179,33 @@ final class EditorImageView: NSView {
             case .rectangle: record.kind = "rectangle"
             case .ellipse: record.kind = "ellipse"
             case .mosaic: record.kind = "mosaic"
+            case .image(let id): record.kind = "image"; record.asset = id
             }
             return record
         }
         return try? JSONEncoder().encode(AnnotationDocument(version: 1, nextNumber: nextNumber, annotations: records))
     }
 
+    /// 현재 주석이 참조하는 얹은 이미지 원본(PNG). 사이드카와 함께 저장하며, 여기 없는 자산은 저장 때 정리된다.
+    func annotationAssets() -> [String: Data] {
+        var result: [String: Data] = [:]
+        for annotation in annotations {
+            if case .image(let id) = annotation.kind, let asset = imageAssets[id] { result[id] = asset.data }
+        }
+        return result
+    }
+
+    /// 마지막 복원에서 자산이 없거나 읽을 수 없어 건너뛴 얹은 이미지 수.
+    private(set) var missingImageAssetCount = 0
+
     /// 사이드카에서 주석을 복원한다. 되돌리기 스택에는 넣지 않고, 저장 알림도 내지 않는다.
     /// 해석하지 못하면 false — 합성 내보내기가 주석(가림) 없이 나가지 않게 호출자가 판단한다.
+    /// 얹은 이미지의 자산이 없으면 그 오브제만 건너뛴다(로그만 남기고 나머지는 연다).
     @discardableResult
-    func restoreAnnotations(from data: Data) -> Bool {
+    func restoreAnnotations(from data: Data, assets: [String: Data] = [:]) -> Bool {
         guard let document = try? JSONDecoder().decode(AnnotationDocument.self, from: data) else { return false }
         var restored: [Annotation] = []
+        var missing = 0
         for r in document.annotations {
             guard r.start.count == 2, r.end.count == 2, r.color.count == 4 else { continue }
             let start = CGPoint(x: r.start[0], y: r.start[1])
@@ -189,7 +214,6 @@ final class EditorImageView: NSView {
             let bubble: CGRect? = (r.bubble?.count == 4)
                 ? CGRect(x: r.bubble![0], y: r.bubble![1], width: r.bubble![2], height: r.bubble![3]) : nil
             let kind: Annotation.Kind
-            var mosaic: CGImage? = nil
             switch r.kind {
             case "number": kind = .number(r.number ?? 1)
             case "text": kind = .text(r.text ?? "")
@@ -197,18 +221,26 @@ final class EditorImageView: NSView {
             case "arrow": kind = .arrow
             case "rectangle": kind = .rectangle
             case "ellipse": kind = .ellipse
-            case "mosaic":
-                kind = .mosaic
-                mosaic = makeMosaicSmall(rect: Self.rect(start, end))
+            case "mosaic": kind = .mosaic
+            case "image":
+                guard let id = r.asset, cachedImageAsset(id: id, data: assets[id]) != nil else {
+                    NSLog("Skipping inserted image %@: asset missing or unreadable", r.asset ?? "(none)")
+                    missing += 1
+                    continue
+                }
+                kind = .image(id)
             default: continue
             }
             restored.append(Annotation(kind: kind, start: start, end: end, color: color, width: r.width,
-                                       calloutBubble: bubble, mosaicImage: mosaic))
+                                       calloutBubble: bubble))
         }
         suppressAnnotationsChanged = true
         annotations = restored
+        // 모자이크는 얹은 이미지까지 합성한 바탕에서 샘플링하므로 전부 놓은 뒤에 만든다.
+        resampleAllMosaics()
         nextNumber = max(1, min(9, document.nextNumber))
         suppressAnnotationsChanged = false
+        missingImageAssetCount = missing
         needsDisplay = true
         return true
     }
@@ -230,6 +262,7 @@ final class EditorImageView: NSView {
         if activeTextField != nil { commitActiveTextField() }
         guard let index = selectedAnnotationIndex, annotations.indices.contains(index) else { return }
         if case .mosaic = annotations[index].kind { return }
+        if annotations[index].isImage { return }
         let current = annotations[index]
         let colorChanged = color.map { $0 != current.color } ?? false
         let widthChanged = width.map { abs($0 - current.width) > 0.01 } ?? false
@@ -262,9 +295,20 @@ final class EditorImageView: NSView {
     }
 
     // MARK: 내부 상태
-    private var backingImage: NSImage? { didSet { backingCG = nil } }
+    private var backingImage: NSImage? { didSet { backingCG = nil; mosaicSourceCache = nil } }
     /// 모자이크 샘플링용 backingImage의 CGImage 캐시.
     private var backingCG: CGImage?
+    /// 모자이크 샘플 원천(바탕 + 얹은 이미지 합성) 캐시. 키는 얹은 이미지의 자산·위치.
+    private var mosaicSourceCache: (key: String, image: CGImage)?
+
+    /// 얹은 이미지 원본(PNG 바이트)과 한 번 해석해 둔 이미지. 그릴 때마다 다시 디코딩하지 않는다.
+    private struct ImageAsset {
+        let data: Data
+        let image: NSImage
+    }
+    /// 문서(항목)를 여는 동안 유지한다 — 지운 오브제도 되돌리기로 돌아올 수 있어서다.
+    /// 디스크에서는 저장할 때 현재 참조 기준으로 정리하고, 다시 참조되면 여기서 다시 쓴다.
+    private var imageAssets: [String: ImageAsset] = [:]
     private var annotations: [Annotation] = [] {
         didSet { scheduleAnnotationsChanged() }
     }
@@ -338,6 +382,8 @@ final class EditorImageView: NSView {
                 .map { PNGEncoding.scale(pixelWidth: $0.width, logicalWidth: image.size.width) }
         } ?? 1
         backingImage = pixelSizedImage(image)
+        imageAssets.removeAll()
+        missingImageAssetCount = 0
         suppressAnnotationsChanged = true
         annotations.removeAll()
         suppressAnnotationsChanged = false
@@ -628,6 +674,9 @@ final class EditorImageView: NSView {
         switch key {
         case "z": if event.modifierFlags.contains(.shift) { redo() } else { undo() }; return true
         case "c": copyToClipboard(); return true
+        case "v" where !event.modifierFlags.contains(.shift) && window?.firstResponder === self:
+            // 편집기에 포커스가 있고 클립보드에 이미지가 있을 때만 가로챈다. 아니면 기존 흐름(메뉴의 붙여넣기) 그대로.
+            return pasteImage() || super.performKeyEquivalent(with: event)
         case "=", "+": scroll?.zoomBy(1.25); return true
         case "-", "_": scroll?.zoomBy(0.8); return true
         case "0": scroll?.zoomToFit(); return true
@@ -681,7 +730,7 @@ final class EditorImageView: NSView {
         if let bubble = annotation.calloutBubble {
             annotations[index].calloutBubble = bubble.offsetBy(dx: offset.x, dy: offset.y)
         }
-        resampleMosaic(at: index)
+        if annotation.isImage { resampleAllMosaics() } else { resampleMosaic(at: index) }
         needsDisplay = true
     }
 
@@ -705,6 +754,7 @@ final class EditorImageView: NSView {
         redo()
     }
     @objc func copy(_ sender: Any?) { copyToClipboard() }
+    @objc func paste(_ sender: Any?) { pasteImage() }
     @objc func delete(_ sender: Any?) { deleteSelectedAnnotation() }
 
     // MARK: 크롭
@@ -799,14 +849,14 @@ final class EditorImageView: NSView {
         return true
     }
 
-    /// 선택된 주석의 조절 핸들: 도형·모자이크는 네 모서리, 화살표는 양 끝, 말풍선은 머리.
+    /// 선택된 주석의 조절 핸들: 도형·모자이크·얹은 이미지는 네 모서리, 화살표는 양 끝, 말풍선은 머리.
     private func hitSelectedHandle(at point: CGPoint) -> AnnotationDrag.Kind? {
         guard let index = selectedAnnotationIndex, annotations.indices.contains(index) else { return nil }
         let a = annotations[index]
         let radius = max(8, 10 / zoomScale)
         func near(_ p: CGPoint) -> Bool { hypot(point.x - p.x, point.y - p.y) <= radius }
         switch a.kind {
-        case .rectangle, .ellipse, .mosaic:
+        case .rectangle, .ellipse, .mosaic, .image:
             let r = Self.rect(a.start, a.end)
             let corners: [(Handle, CGPoint)] = [
                 (.topLeft, CGPoint(x: r.minX, y: r.minY)), (.topRight, CGPoint(x: r.maxX, y: r.minY)),
@@ -880,8 +930,15 @@ final class EditorImageView: NSView {
             case .bottomLeft: fixed = CGPoint(x: r.maxX, y: r.minY)
             default: fixed = CGPoint(x: r.minX, y: r.minY)
             }
-            annotations[drag.index].start = CGPoint(x: min(fixed.x, point.x), y: min(fixed.y, point.y))
-            annotations[drag.index].end = CGPoint(x: max(fixed.x, point.x), y: max(fixed.y, point.y))
+            if annotations[drag.index].isImage {
+                // 얹은 이미지는 항상 비율을 지킨다(찌그러진 스크린샷은 쓸 일이 없다). 뒤집히지 않고 캔버스 안에 머문다.
+                let resized = ImageInsertionLayout.aspectResizedRect(r, fixed: fixed, toward: point, within: bounds)
+                annotations[drag.index].start = resized.origin
+                annotations[drag.index].end = CGPoint(x: resized.maxX, y: resized.maxY)
+            } else {
+                annotations[drag.index].start = CGPoint(x: min(fixed.x, point.x), y: min(fixed.y, point.y))
+                annotations[drag.index].end = CGPoint(x: max(fixed.x, point.x), y: max(fixed.y, point.y))
+            }
         case .arrowStart:
             annotations[drag.index].start = point
         case .arrowEnd:
@@ -916,7 +973,11 @@ final class EditorImageView: NSView {
         annotationDrag = nil
         // 모자이크를 옮기거나 크기를 바꿨으면 새 영역의 픽셀로 다시 샘플링
         // (그대로 두면 이전 자리의 블록이 새 자리에 보이고 내보내기에도 그렇게 나간다)
-        if drag.didMove { resampleMosaic(at: drag.index) }
+        // 얹은 이미지가 움직였으면 그 위의 모자이크가 모두 새 합성본을 가려야 한다.
+        if drag.didMove {
+            if annotations.indices.contains(drag.index), annotations[drag.index].isImage { resampleAllMosaics() }
+            else { resampleMosaic(at: drag.index) }
+        }
         needsDisplay = true
         return true
     }
@@ -925,6 +986,11 @@ final class EditorImageView: NSView {
         guard annotations.indices.contains(index), case .mosaic = annotations[index].kind else { return }
         let a = annotations[index]
         annotations[index].mosaicImage = makeMosaicSmall(rect: Self.rect(a.start, a.end))
+    }
+
+    /// 얹은 이미지가 생기거나 옮겨지거나 사라지면 모든 모자이크의 원천이 바뀐다.
+    private func resampleAllMosaics() {
+        for index in annotations.indices { resampleMosaic(at: index) }
     }
 
     private func editSelectedAnnotation() {
@@ -945,9 +1011,10 @@ final class EditorImageView: NSView {
               annotations.indices.contains(index)
         else { return }
         pushUndo()
-        annotations.remove(at: index)
+        let removed = annotations.remove(at: index)
         selectedAnnotationIndex = nil
         annotationDrag = nil
+        if removed.isImage { resampleAllMosaics() }
         needsDisplay = true
     }
 
@@ -971,7 +1038,8 @@ final class EditorImageView: NSView {
 
     private func hitAnnotation(at point: CGPoint) -> (index: Int, kind: AnnotationDrag.Kind)? {
         let hitInset = max(6, 8 / zoomScale)
-        for index in annotations.indices.reversed() {
+        // 보이는 순서의 맨 위부터: 다른 주석이 얹은 이미지보다 먼저 잡힌다.
+        for index in stackingOrder.reversed() {
             let annotation = annotations[index]
             switch annotation.kind {
             case .text(let value):
@@ -1004,13 +1072,18 @@ final class EditorImageView: NSView {
                 if ellipseHit(point, in: Self.rect(annotation.start, annotation.end), tolerance: hitInset + annotation.width) {
                     return (index, .object)
                 }
-            case .mosaic:
+            case .mosaic, .image:
                 if Self.rect(annotation.start, annotation.end).insetBy(dx: -hitInset, dy: -hitInset).contains(point) {
                     return (index, .object)
                 }
             }
         }
         return nil
+    }
+
+    /// 화면에 쌓이는 순서(아래 → 위). 얹은 이미지가 바탕 바로 위, 나머지 주석이 그 위.
+    private var stackingOrder: [Int] {
+        annotations.indices.filter { annotations[$0].isImage } + annotations.indices.filter { !annotations[$0].isImage }
     }
 
     private func handle(at point: CGPoint) -> Handle? {
@@ -1071,12 +1144,14 @@ final class EditorImageView: NSView {
     }
 
     /// 편집기 밖(드래그 내보내기)에서 파일과 사이드카 주석을 합성한다. 주석을 해석하지 못하면 nil —
-    /// 모자이크 등 가림이 빠진 원본이 나가지 않게 한다.
-    static func flattenedPNG(imageData: Data, annotations: Data) -> Data? {
+    /// 모자이크 등 가림이 빠진 원본이 나가지 않게 한다. 얹은 이미지의 자산이 빠져도 nil이다
+    /// (가리개로 얹은 이미지가 빠진 채 아래 원본이 드러나면 안 된다).
+    static func flattenedPNG(imageData: Data, annotations: Data, assets: [String: Data] = [:]) -> Data? {
         guard let image = NSImage(data: imageData) else { return nil }
         let renderer = EditorImageView(frame: .zero)
         renderer.image = image
-        guard renderer.restoreAnnotations(from: annotations) else { return nil }
+        guard renderer.restoreAnnotations(from: annotations, assets: assets),
+              renderer.missingImageAssetCount == 0 else { return nil }
         return renderer.renderedPNGData()
     }
 
@@ -1085,8 +1160,92 @@ final class EditorImageView: NSView {
         backingImage?.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 
+    // MARK: 이미지 얹기
+    /// 이미지 한 장을 선택된 오브제로 얹는다. `point`(이미지 좌표)를 중심으로, 없으면 보이는 영역 가운데.
+    /// 크기는 원본의 논리 크기를 이 캡처의 배율로 옮긴 것(캔버스 60% 상한). 원본 픽셀은 건드리지 않는다.
+    @discardableResult
+    func insertImage(_ source: InsertableImage, centeredAt point: CGPoint? = nil) -> Bool {
+        guard let canvas = backingImage?.size,
+              let data = PNGEncoding.data(from: source.cgImage, scale: source.scale) else { return false }
+        if activeTextField != nil { commitActiveTextField() }
+        // 이미지를 자르는 도구 중이면 선택 도구로 — 얹은 오브제를 바로 옮기거나 키울 수 있게.
+        if tool == .crop || tool == .cutHorizontal || tool == .cutVertical { tool = .none }
+        let id = UUID().uuidString
+        let pixelSize = CGSize(width: source.cgImage.width, height: source.cgImage.height)
+        imageAssets[id] = ImageAsset(data: data, image: NSImage(cgImage: source.cgImage, size: pixelSize))
+        let size = ImageInsertionLayout.size(pixelSize: pixelSize, sourceScale: source.scale,
+                                             targetScale: imageScale, canvas: canvas)
+        let visible = visibleRect.isEmpty ? CGRect(origin: .zero, size: canvas) : visibleRect
+        let rect = ImageInsertionLayout.rect(size: size, centeredAt: point ?? CGPoint(x: visible.midX, y: visible.midY),
+                                             canvas: canvas)
+        pushUndo()
+        annotations.append(Annotation(kind: .image(id), start: rect.origin, end: CGPoint(x: rect.maxX, y: rect.maxY),
+                                      color: .clear, width: 0))
+        selectedAnnotationIndex = annotations.count - 1
+        resampleAllMosaics()
+        window?.makeFirstResponder(self)
+        needsDisplay = true
+        return true
+    }
+
+    /// ⌘V: 클립보드의 이미지(또는 이미지 파일)를 보이는 영역 가운데에 얹는다.
+    /// 텍스트 입력 중이거나 이미지가 없으면 false — 호출자가 기존 동작을 이어 간다.
+    @discardableResult
+    func pasteImage(from pasteboard: NSPasteboard = .general) -> Bool {
+        guard backingImage != nil, activeTextField == nil,
+              let source = InsertableImage.read(from: pasteboard) else { return false }
+        return insertImage(source)
+    }
+
+    /// 자산 캐시에서 찾고, 없으면 바이트를 한 번 해석해 넣는다. ID는 UUID만 받는다.
+    private func cachedImageAsset(id: String, data: Data?) -> ImageAsset? {
+        if let cached = imageAssets[id] { return cached }
+        guard UUID(uuidString: id) != nil, let data,
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cg = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+        else { return nil }
+        let asset = ImageAsset(data: data, image: NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height)))
+        imageAssets[id] = asset
+        return asset
+    }
+
+    // MARK: 드롭 (라이브러리 썸네일 · Finder 이미지 파일 · 이미지 데이터)
+    private var dropAccepted = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // 화면에 붙은 편집기만 드롭을 받는다(합성 전용 렌더러는 등록하지 않는다).
+        if window != nil, registeredDraggedTypes.isEmpty {
+            registerForDraggedTypes([.fileURL] + NSImage.imageTypes.map { NSPasteboard.PasteboardType($0) })
+        }
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        dropAccepted = backingImage != nil && InsertableImage.canRead(from: sender.draggingPasteboard)
+        return dropAccepted ? .copy : []
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        dropAccepted ? .copy : []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        dropAccepted = false
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        defer { dropAccepted = false }
+        guard dropAccepted, let source = InsertableImage.read(from: sender.draggingPasteboard) else { return false }
+        return insertImage(source, centeredAt: clamp(convert(sender.draggingLocation, from: nil)))
+    }
+
     // MARK: 렌더 (이미지 + 주석 합성, 픽셀 정확)
     func renderedCGImage() -> CGImage? {
+        renderComposite(includeAnnotations: true)
+    }
+
+    /// `includeAnnotations`가 false면 바탕 + 얹은 이미지만 — 모자이크가 샘플링하는 원천이다.
+    private func renderComposite(includeAnnotations: Bool) -> CGImage? {
         guard let image = backingImage else { return nil }
         let width = Int(image.size.width.rounded())
         let height = Int(image.size.height.rounded())
@@ -1105,9 +1264,23 @@ final class EditorImageView: NSView {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = nsCtx
         image.draw(in: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
-        for annotation in annotations { draw(annotation) }
+        drawImageLayers()
+        if includeAnnotations { drawAnnotationLayers() }
         NSGraphicsContext.restoreGraphicsState()
         return ctx.makeImage()
+    }
+
+    /// 얹은 이미지는 바탕 바로 위, 모든 주석(번호·텍스트·화살표·도형·모자이크) 아래에 그린다 — 화면·합성 공통.
+    private func drawImageLayers(skipping skipped: Int? = nil) {
+        for (index, annotation) in annotations.enumerated() where annotation.isImage && index != skipped {
+            draw(annotation)
+        }
+    }
+
+    private func drawAnnotationLayers(skipping skipped: Int? = nil) {
+        for (index, annotation) in annotations.enumerated() where !annotation.isImage && index != skipped {
+            draw(annotation)
+        }
     }
 
     // MARK: 그리기
@@ -1115,9 +1288,8 @@ final class EditorImageView: NSView {
         Self.transparencyPattern.setFill()
         dirtyRect.fill()
         backingImage?.draw(in: bounds)
-        for (index, annotation) in annotations.enumerated() where index != pendingTextAnnotation?.editingIndex {
-            draw(annotation)
-        }
+        drawImageLayers(skipping: pendingTextAnnotation?.editingIndex)
+        drawAnnotationLayers(skipping: pendingTextAnnotation?.editingIndex)
 
         if let pending = pendingTextAnnotation, pending.kind == .callout, let field = activeTextField {
             drawCallout(text: field.stringValue, head: pending.start, bubbleAnchor: pending.end,
@@ -1245,6 +1417,12 @@ final class EditorImageView: NSView {
             if let small = annotation.mosaicImage {
                 drawMosaic(rect: Self.rect(annotation.start, annotation.end), small: small)
             }
+        case .image(let id):
+            guard let asset = imageAssets[id] else { return }
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current?.imageInterpolation = .high
+            asset.image.draw(in: Self.rect(annotation.start, annotation.end))
+            NSGraphicsContext.restoreGraphicsState()
         }
     }
 
@@ -1268,9 +1446,9 @@ final class EditorImageView: NSView {
         NSColor.white.withAlphaComponent(0.95).setStroke()
         path.stroke()
 
-        // 핸들은 실제로 잡히는 것만: 도형·모자이크는 모서리, 화살표는 양 끝. 텍스트·번호는 굵기로 크기를 바꾼다.
+        // 핸들은 실제로 잡히는 것만: 도형·모자이크·얹은 이미지는 모서리, 화살표는 양 끝. 텍스트·번호는 굵기로 크기를 바꾼다.
         switch annotation.kind {
-        case .rectangle, .ellipse, .mosaic:
+        case .rectangle, .ellipse, .mosaic, .image:
             let r = Self.rect(annotation.start, annotation.end)
             drawSelectionHandle(at: CGPoint(x: r.minX, y: r.minY))
             drawSelectionHandle(at: CGPoint(x: r.maxX, y: r.minY))
@@ -1297,7 +1475,7 @@ final class EditorImageView: NSView {
         case .arrow:
             return Self.rect(annotation.start, annotation.end)
                 .insetBy(dx: -max(8, annotation.width * 2), dy: -max(8, annotation.width * 2))
-        case .rectangle, .ellipse, .mosaic:
+        case .rectangle, .ellipse, .mosaic, .image:
             return Self.rect(annotation.start, annotation.end)
         }
     }
@@ -1322,8 +1500,9 @@ final class EditorImageView: NSView {
     }
 
     /// 영역을 블록 격자 수만큼 다운샘플한 작은 CGImage를 만든다(블록당 평균색).
+    /// 원천은 바탕 + 얹은 이미지 합성본 — 얹은 이미지 위를 가려도 그 픽셀이 뭉개진다.
     private func makeMosaicSmall(rect: CGRect) -> CGImage? {
-        guard let cg = backingImageCG() else { return nil }
+        guard let cg = mosaicSourceCG() else { return nil }
         let imageBounds = CGRect(x: 0, y: 0, width: cg.width, height: cg.height)
         let r = rect.integral.intersection(imageBounds)
         guard r.width >= 2, r.height >= 2, let cropped = cg.cropping(to: r) else { return nil }
@@ -1355,6 +1534,21 @@ final class EditorImageView: NSView {
         if let backingCG { return backingCG }
         backingCG = backingImage?.cgImage(forProposedRect: nil, context: nil, hints: nil)
         return backingCG
+    }
+
+    /// 모자이크 샘플 원천. 얹은 이미지가 없으면 바탕 그대로, 있으면 배치가 바뀔 때만 합성본을 다시 만든다.
+    /// (얹은 이미지는 모두 모자이크 아래에 깔리므로 전부 합성한다.)
+    private func mosaicSourceCG() -> CGImage? {
+        let layers = annotations.filter(\.isImage)
+        guard !layers.isEmpty else { return backingImageCG() }
+        let key = layers.map { a -> String in
+            guard case .image(let id) = a.kind else { return "" }
+            return "\(id)@\(Self.rect(a.start, a.end))"
+        }.joined(separator: "|")
+        if let cache = mosaicSourceCache, cache.key == key { return cache.image }
+        guard let composite = renderComposite(includeAnnotations: false) else { return backingImageCG() }
+        mosaicSourceCache = (key, composite)
+        return composite
     }
 
     /// 동글 번호 하나를 그린다. `alpha < 1`이면 커서를 따라다니는 스탬프 미리보기 용도.

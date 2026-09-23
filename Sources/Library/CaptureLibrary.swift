@@ -142,12 +142,12 @@ final class CaptureLibrary: @unchecked Sendable {
         }
     }
 
-    private func recovery(image: CGImage, scale: CGFloat, annotations: Data?) -> LibraryWriteBuffer.Recovery {
+    private func recovery(image: CGImage, scale: CGFloat, annotations: Data?, assets: [String: Data]?) -> LibraryWriteBuffer.Recovery {
         { destination in
             guard let png = PNGEncoding.data(from: image, scale: scale) else {
                 throw CocoaError(.fileWriteUnknown)
             }
-            try self.store.saveRecovered(image: png, annotations: annotations, at: destination)
+            try self.store.saveRecovered(image: png, annotations: annotations, assets: assets, at: destination)
         }
     }
 
@@ -211,28 +211,30 @@ final class CaptureLibrary: @unchecked Sendable {
         }
     }
 
-    /// 이미지와 주석을 같은 큐 작업에서 읽어 서로 다른 편집 상태가 섞이지 않게 한다.
-    func loadDocument(at url: URL, completion: @escaping (Result<(NSImage, Data?), Error>) -> Void) {
+    /// 이미지와 주석(+ 얹은 이미지 원본)을 같은 큐 작업에서 읽어 서로 다른 편집 상태가 섞이지 않게 한다.
+    func loadDocument(at url: URL, completion: @escaping (Result<(NSImage, Data?, [String: Data]), Error>) -> Void) {
         ioQueue.async {
-            let result = Result { () throws -> (NSImage, Data?) in
+            let result = Result { () throws -> (NSImage, Data?, [String: Data]) in
                 try self.drainWrites(at: url)
                 let document = try self.store.load(at: url)
                 guard let image = NSImage(data: document.image) else { throw CocoaError(.fileReadCorruptFile) }
-                return (image, document.annotations)
+                return (image, document.annotations, document.assets)
             }
             DispatchQueue.main.async { completion(result) }
         }
     }
 
     /// `scale`은 원본 캡처의 Retina 배율 — DPI로 기록해 편집 후에도 붙여넣기 크기가 유지된다.
-    func saveEdit(image: CGImage, scale: CGFloat, annotations: Data?, at url: URL,
+    /// `assets`는 주석이 참조하는 얹은 이미지 원본 전부(없는 자산은 저장 뒤 정리된다).
+    func saveEdit(image: CGImage, scale: CGFloat, annotations: Data?, assets: [String: Data], at url: URL,
                   completion: @escaping (Result<Void, Error>) -> Void) {
         ioQueue.async {
-            let result = self.performWrite(at: url, recovery: self.recovery(image: image, scale: scale, annotations: annotations)) {
+            let recovery = self.recovery(image: image, scale: scale, annotations: annotations, assets: assets)
+            let result = self.performWrite(at: url, recovery: recovery) {
                 guard let png = PNGEncoding.data(from: image, scale: scale) else {
                     throw CocoaError(.fileWriteUnknown)
                 }
-                try self.store.saveEdit(image: png, annotations: annotations, at: url)
+                try self.store.saveEdit(image: png, annotations: annotations, assets: assets, at: url)
             }
             DispatchQueue.main.async {
                 if case .success = result { self.thumbnailCache.removeObject(forKey: url as NSURL) }
@@ -241,10 +243,11 @@ final class CaptureLibrary: @unchecked Sendable {
         }
     }
 
-    func saveAnnotations(_ data: Data?, for imageURL: URL, image: CGImage, scale: CGFloat) {
+    func saveAnnotations(_ data: Data?, assets: [String: Data], for imageURL: URL, image: CGImage, scale: CGFloat) {
         ioQueue.async {
-            let result = self.performWrite(at: imageURL, recovery: self.recovery(image: image, scale: scale, annotations: data)) {
-                try self.store.saveAnnotations(data, at: imageURL)
+            let recovery = self.recovery(image: image, scale: scale, annotations: data, assets: assets)
+            let result = self.performWrite(at: imageURL, recovery: recovery) {
+                try self.store.saveAnnotations(data, assets: assets, at: imageURL)
             }
             if case .failure(let error) = result {
                 DispatchQueue.main.async {
@@ -269,7 +272,7 @@ final class CaptureLibrary: @unchecked Sendable {
 
     /// 드래그처럼 즉시 파일이 필요할 때 동기로 읽는다. 보류 중인 쓰기를 먼저 반영해
     /// 디스크의 주석이 최신이게 하고, 반영하지 못하면 실패로 돌려 오래된 상태가 나가지 않게 한다.
-    func loadDocumentData(at url: URL) -> Result<(image: Data, annotations: Data?), Error> {
+    func loadDocumentData(at url: URL) -> Result<(image: Data, annotations: Data?, assets: [String: Data]), Error> {
         ioQueue.sync {
             Result {
                 try drainWrites(at: url)

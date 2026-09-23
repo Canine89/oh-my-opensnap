@@ -30,6 +30,7 @@ targets:
         excludes: ["**/*.py", "**/__pycache__/**"]
       - path: Sources/Library/EditHistory.swift
       - path: Sources/Library/EditorImageView.swift
+      - path: Sources/Library/ImageInsertion.swift
       - path: Sources/Library/PNGEncoding.swift
       - path: Sources/Library/MiddleCutRenderer.swift
       - path: Sources/Library/ZoomableScrollView.swift
