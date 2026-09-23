@@ -6,19 +6,16 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.96</title>
-      <pubDate>Wed, 23 Sep 2026 00:41:07 +0000</pubDate>
-      <sparkle:version>97</sparkle:version>
-      <sparkle:shortVersionString>1.0.96</sparkle:shortVersionString>
+      <title>1.0.97</title>
+      <pubDate>Wed, 23 Sep 2026 13:24:34 +0000</pubDate>
+      <sparkle:version>98</sparkle:version>
+      <sparkle:shortVersionString>1.0.97</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.96</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.97</h2>
 <ul>
-<li>보관함 편집기에서 캡처 위에 다른 이미지를 얹어 편집 — 보관함 썸네일·Finder 이미지 파일을 끌어다 놓거나, 복사한 이미지를 ⌘V로 붙여넣거나, 편집 메뉴의 "이미지 넣기…"(⇧⌘I)로 추가</li>
-<li>얹은 이미지는 다른 주석처럼 선택·이동·모서리로 비율 유지 크기 조절·삭제·되돌리기가 되고, 원본 캡처는 그대로 보존</li>
-<li>얹은 이미지는 화살표·도형·텍스트 아래에 깔리고, 모자이크로 그 위를 가릴 수 있으며 복사·저장·끌어 내보내기에 그대로 반영</li>
-<li>Retina 해상도에 맞는 크기로 들어가고, 캡처보다 크면 알맞게 줄여서 배치</li>
+<li>앱 아이콘을 새 캐릭터 디자인으로 교체 — 따뜻한 피치 배경 위에서 캐릭터가 캡처 프레임 안을 들여다보는 모습</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.96.zip" type="application/octet-stream" sparkle:edSignature="5VZkixCBmuX/KEhUj7WG2NKHINiicquo6yUEpS0uhrLmG49+clzH8sPP66dpByVu+1ad7/NtOXG2i9aJCQWrAw==" length="4396445" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.97.zip" type="application/octet-stream" sparkle:edSignature="029Ub8/rAxI9aqoz5jw9RBIL/qjFO7vtG5T9NbWXPqDEuOm5V47pPhQ2yVxtXu2q/IkPJTA5ShanE4WZ4aG7DQ==" length="5274283" />
     </item>
   </channel>
 </rss>
