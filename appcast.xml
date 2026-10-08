@@ -6,16 +6,18 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.97</title>
-      <pubDate>Wed, 23 Sep 2026 13:24:34 +0000</pubDate>
-      <sparkle:version>98</sparkle:version>
-      <sparkle:shortVersionString>1.0.97</sparkle:shortVersionString>
+      <title>1.0.98</title>
+      <pubDate>Thu, 08 Oct 2026 14:04:40 +0000</pubDate>
+      <sparkle:version>99</sparkle:version>
+      <sparkle:shortVersionString>1.0.98</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.97</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.98</h2>
 <ul>
-<li>앱 아이콘을 새 캐릭터 디자인으로 교체 — 따뜻한 피치 배경 위에서 캐릭터가 캡처 프레임 안을 들여다보는 모습</li>
+<li>보관함 영상 편집기에 "내보내기 배속" 슬라이더 추가 — 1×·1.5×·2×·4×·8×·16× 중 골라 선택 구간을 빠르게 재생되는 MP4/GIF로 저장</li>
+<li>배속을 고르면 아래 상태 줄에 내보낸 뒤의 길이가 함께 보이고, 내보내기 메뉴 항목에도 "· 2×"처럼 배속이 표시됨</li>
+<li>배속 MP4는 원본 프레임레이트(최대 60fps)를 유지해 어디서나 부드럽게 재생되고, 구간을 따로 자르지 않은 전체 영상도 배속으로 내보낼 수 있음</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.97.zip" type="application/octet-stream" sparkle:edSignature="029Ub8/rAxI9aqoz5jw9RBIL/qjFO7vtG5T9NbWXPqDEuOm5V47pPhQ2yVxtXu2q/IkPJTA5ShanE4WZ4aG7DQ==" length="5274283" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.98.zip" type="application/octet-stream" sparkle:edSignature="0kAUVfuxKmBXvZFF9LA4+7V7HRQBmmrb8TfEVtiIJ3iAN7APz/ZS6QUcRkXJq5XBBAjYS4hC8nge3vLEoviwAA==" length="5286170" />
     </item>
   </channel>
 </rss>
