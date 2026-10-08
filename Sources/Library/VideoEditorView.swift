@@ -25,6 +25,12 @@ final class VideoEditorView: NSView {
     private let setEndButton = NSButton(title: loc("Set End", "끝점"), target: nil, action: nil)
     private let exportButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private let resetButton = NSButton(title: loc("Reset Range", "구간 초기화"), target: nil, action: nil)
+    private let speedTitleLabel = NSTextField(labelWithString: loc("Export Speed", "내보내기 배속"))
+    private let speedSlider = NSSlider(value: 0, minValue: 0, maxValue: Double(VideoExportService.speedSteps.count - 1),
+                                       target: nil, action: nil)
+    private let speedValueLabel = NSTextField(labelWithString: "1×")
+    private var mp4ExportItem: NSMenuItem?
+    private var gifExportItems: [(item: NSMenuItem, frames: Int)] = []
 
     private var loadTask: Task<Void, Never>?
     private var representedURL: URL?
@@ -119,16 +125,28 @@ final class VideoEditorView: NSView {
         exportButton.controlSize = .regular
         exportButton.addItem(withTitle: loc("Export", "내보내기"))
         exportButton.item(at: 0)?.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: nil)
-        let exportItems: [(String, Selector)] = [
-            (loc("Save Range as MP4", "선택 구간을 MP4로 저장"), #selector(exportTrimmedMP4)),
-            (loc("Save Range as GIF · Light (30 frames)", "선택 구간을 GIF로 · 가볍게 (30프레임)"), #selector(exportGIF30)),
-            (loc("Save Range as GIF · Smooth (45 frames)", "선택 구간을 GIF로 · 부드럽게 (45프레임)"), #selector(exportGIF45))
-        ]
-        for (title, action) in exportItems {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        let exportItems: [(Selector, Int?)] = [(#selector(exportTrimmedMP4), nil), (#selector(exportGIF30), 30), (#selector(exportGIF45), 45)]
+        for (action, frames) in exportItems {
+            let item = NSMenuItem(title: "", action: action, keyEquivalent: "")
             item.target = self
             exportButton.menu?.addItem(item)
+            if let frames { gifExportItems.append((item, frames)) } else { mp4ExportItem = item }
         }
+
+        // 배속은 내보내기에만 적용된다. 눈금에만 멈춰 1.5·2·4·8·16배 외의 값이 나오지 않게 한다.
+        speedTitleLabel.textColor = .secondaryLabelColor
+        speedTitleLabel.font = .systemFont(ofSize: 11)
+        speedSlider.numberOfTickMarks = VideoExportService.speedSteps.count
+        speedSlider.allowsTickMarkValuesOnly = true
+        speedSlider.controlSize = .small
+        speedSlider.target = self
+        speedSlider.action = #selector(speedChanged)
+        speedSlider.toolTip = loc("Speed applied to MP4 and GIF exports", "MP4·GIF 내보내기에 적용할 배속")
+        speedSlider.widthAnchor.constraint(equalToConstant: 140).isActive = true
+        speedValueLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        speedValueLabel.alignment = .right
+        speedValueLabel.widthAnchor.constraint(equalToConstant: 34).isActive = true
+        updateExportTitles()
         playButton.bezelStyle = .texturedRounded
         playButton.controlSize = .large
         playButton.widthAnchor.constraint(equalToConstant: 44).isActive = true
@@ -172,7 +190,13 @@ final class VideoEditorView: NSView {
         transportRow.translatesAutoresizingMaskIntoConstraints = false
         transportRow.setHuggingPriority(.defaultLow, for: .horizontal)
 
-        let content = NSStackView(views: [timelineRow, transportRow, statusLabel])
+        let statusRow = NSStackView(views: [statusLabel, NSView(), speedTitleLabel, speedSlider, speedValueLabel])
+        statusRow.orientation = .horizontal
+        statusRow.alignment = .centerY
+        statusRow.spacing = 8
+        statusRow.translatesAutoresizingMaskIntoConstraints = false
+
+        let content = NSStackView(views: [timelineRow, transportRow, statusRow])
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = 8
@@ -206,8 +230,8 @@ final class VideoEditorView: NSView {
             transportRow.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 14),
             transportRow.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -14),
 
-            statusLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 14),
-            statusLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -14)
+            statusRow.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 14),
+            statusRow.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -14)
         ])
     }
 
@@ -245,16 +269,50 @@ final class VideoEditorView: NSView {
         resetRange()
     }
 
+    @objc private func speedChanged() {
+        updateExportTitles()
+        updateLabels()
+    }
+
+    private var exportSpeed: Double {
+        let steps = VideoExportService.speedSteps
+        return steps[min(max(Int(speedSlider.doubleValue.rounded()), 0), steps.count - 1)]
+    }
+
+    /// 배속을 고르면 메뉴 항목에도 "· 2×"처럼 붙여 무엇이 나갈지 바로 보이게 한다.
+    private func updateExportTitles() {
+        let speed = exportSpeed
+        let tag = speed > 1 ? " · " + VideoExportService.speedLabel(speed) : ""
+        speedValueLabel.stringValue = VideoExportService.speedLabel(speed)
+        mp4ExportItem?.title = loc("Save Range as MP4", "선택 구간을 MP4로 저장") + tag
+        for (item, frames) in gifExportItems {
+            item.title = frames == 30
+                ? loc("Save Range as GIF · Light (30 frames)", "선택 구간을 GIF로 · 가볍게 (30프레임)") + tag
+                : loc("Save Range as GIF · Smooth (45 frames)", "선택 구간을 GIF로 · 부드럽게 (45프레임)") + tag
+        }
+    }
+
     @objc private func exportTrimmedMP4() {
         guard let url = representedURL, !isBusy else { return }
         let range = selectedRange()
-        guard range.duration.seconds > 0.05, range.duration.seconds < max(duration - 0.05, 0) else {
+        let speed = exportSpeed
+        // 1×는 자르기만 하므로 구간이 전체면 내보낼 의미가 없다. 배속은 전체 영상도 내보낼 수 있다.
+        let isWholeVideo = range.duration.seconds >= max(duration - 0.05, 0)
+        guard range.duration.seconds > 0.05, speed > 1 || !isWholeVideo else {
             onToast?(loc("Set the start and end points first", "시작점과 끝점을 먼저 지정하세요"))
             return
         }
-        setBusy(true, message: loc("Saving range as MP4...", "선택 구간 MP4 저장 중..."))
-        VideoExportService.trimmedMP4(source: url, timeRange: range) { [weak self] result in
-            self?.handleExport(result, successMessage: loc("Range saved as MP4", "선택 구간 MP4 저장됨"))
+        if speed > 1 {
+            let label = VideoExportService.speedLabel(speed)
+            setBusy(true, message: loc("Saving range as MP4 at \(label)...", "선택 구간 \(label) MP4 저장 중..."))
+            VideoExportService.trimmedMP4(source: url, timeRange: range, speed: speed) { [weak self] result in
+                self?.handleExport(result, successMessage: loc("Range saved as MP4 at \(label)", "선택 구간 \(label) MP4 저장됨"))
+            }
+        } else {
+            setBusy(true, message: loc("Saving range as MP4...", "선택 구간 MP4 저장 중..."))
+            VideoExportService.trimmedMP4(source: url, timeRange: range) { [weak self] result in
+                self?.handleExport(result, successMessage: loc("Range saved as MP4", "선택 구간 MP4 저장됨"))
+            }
         }
     }
 
@@ -268,9 +326,11 @@ final class VideoEditorView: NSView {
 
     private func exportGIF(frameCount: Int) {
         guard let url = representedURL, !isBusy else { return }
-        setBusy(true, message: loc("Exporting GIF (\(frameCount) frames)...", "GIF \(frameCount)프레임 내보내는 중..."))
-        VideoExportService.gif(source: url, timeRange: selectedRange(), frameCount: frameCount) { [weak self] result in
-            self?.handleExport(result, successMessage: loc("GIF saved (\(frameCount) frames)", "GIF \(frameCount)프레임 저장됨"))
+        let speed = exportSpeed
+        let tag = speed > 1 ? " · " + VideoExportService.speedLabel(speed) : ""
+        setBusy(true, message: loc("Exporting GIF (\(frameCount) frames\(tag))...", "GIF \(frameCount)프레임\(tag) 내보내는 중..."))
+        VideoExportService.gif(source: url, timeRange: selectedRange(), frameCount: frameCount, speed: speed) { [weak self] result in
+            self?.handleExport(result, successMessage: loc("GIF saved (\(frameCount) frames\(tag))", "GIF \(frameCount)프레임\(tag) 저장됨"))
         }
     }
 
@@ -311,13 +371,20 @@ final class VideoEditorView: NSView {
         startLabel.stringValue = formatTime(timelineView.startTime)
         endLabel.stringValue = formatTime(timelineView.endTime)
         let range = selectedRange()
-        statusLabel.stringValue = loc("Range \(formatTime(range.duration.seconds)) / total \(formatTime(duration))", "선택 구간 \(formatTime(range.duration.seconds)) / 전체 \(formatTime(duration))")
+        var status = loc("Range \(formatTime(range.duration.seconds)) / total \(formatTime(duration))", "선택 구간 \(formatTime(range.duration.seconds)) / 전체 \(formatTime(duration))")
+        let speed = exportSpeed
+        if speed > 1 {
+            status += loc(" → \(formatTime(range.duration.seconds / speed)) at \(VideoExportService.speedLabel(speed))",
+                          " → \(VideoExportService.speedLabel(speed)) \(formatTime(range.duration.seconds / speed))")
+        }
+        statusLabel.stringValue = status
     }
 
     private func setBusy(_ busy: Bool, message: String) {
         isBusy = busy
         [setStartButton, setEndButton, resetButton, playButton, backButton, forwardButton].forEach { $0.isEnabled = !busy }
         exportButton.isEnabled = !busy
+        speedSlider.isEnabled = !busy
         timelineView.isEnabled = !busy
         if busy {
             statusLabel.stringValue = message

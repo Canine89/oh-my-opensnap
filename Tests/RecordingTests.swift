@@ -137,6 +137,35 @@ final class RecordingTests: XCTestCase {
         XCTAssertFalse(files.contains { $0.hasPrefix(".export-") }, "실패/완료 후 임시 파일이 남으면 안 된다")
     }
 
+    func testSpeedExportShortensDurationAndKeepsFrameRate() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let url = directory.appendingPathComponent("capture.mp4")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let clock = TestClock(seconds: 60.0 / 30)
+        let frames = VideoFrameWriter(outputURL: url, clock: clock.read)
+        try await frames.start(width: 128, height: 128)
+        for frame in 0..<60 { try await Self.append(frames, at: Double(frame) / 30) }
+        try await frames.finish(streamError: nil)
+        let duration = try await AVURLAsset(url: url).load(.duration)
+        let range = CMTimeRange(start: .zero, duration: duration)
+
+        let fast = try await VideoExportService.exportMP4(source: url, timeRange: range, speed: 4)
+        XCTAssertTrue(fast.lastPathComponent.contains("-4x-"))
+        let fastDuration = try await AVURLAsset(url: fast).load(.duration).seconds
+        XCTAssertEqual(fastDuration, duration.seconds / 4, accuracy: 0.1, "4배속은 길이가 1/4이어야 한다")
+        let fastTracks = try await AVURLAsset(url: fast).loadTracks(withMediaType: .video)
+        let track = try XCTUnwrap(fastTracks.first)
+        let fps = try await track.load(.nominalFrameRate)
+        XCTAssertLessThanOrEqual(fps, 61, "배속해도 프레임레이트가 원본 이상으로 치솟으면 안 된다")
+
+        let gif = try await VideoExportService.exportGIF(source: url, timeRange: range, frameCount: 10, speed: 2)
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(gif as CFURL, nil))
+        let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+        let gifInfo = try XCTUnwrap(properties[kCGImagePropertyGIFDictionary] as? [CFString: Any])
+        let delay = try XCTUnwrap(gifInfo[kCGImagePropertyGIFDelayTime] as? Double)
+        XCTAssertEqual(delay, duration.seconds / 10 / 2, accuracy: 0.011, "2배속 GIF는 프레임 지연이 절반이어야 한다")
+    }
+
     func testCancelledWriterCannotFinishSuccessfully() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
         defer { try? FileManager.default.removeItem(at: url) }
