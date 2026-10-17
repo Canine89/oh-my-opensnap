@@ -33,7 +33,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
     // 편집 도구 (세그먼트 인덱스 → 도구). 두 그룹으로 나눠 "이미지를 자르는 것"과 "위에 그리는 것"을 구분한다.
     private let editTools: [EditorImageView.Tool] = [.none, .crop, .cutHorizontal, .cutVertical]
-    private let annotateTools: [EditorImageView.Tool] = [.number, .text, .callout, .arrow, .line, .rectangle, .ellipse, .mosaic]
+    private let annotateTools: [EditorImageView.Tool] = [.number, .text, .callout, .arrow, .rectangle, .ellipse, .mosaic]
 
     /// 날짜별 섹션(오늘 / 어제 / 최근 7일 / 이전).
     private struct Section {
@@ -49,7 +49,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
     private var menuStyleView: NSView?
     private static let toolShortcuts: [String: EditorImageView.Tool] = [
         "v": .none, "c": .crop, "n": .number, "t": .text, "b": .callout,
-        "a": .arrow, "l": .line, "r": .rectangle, "o": .ellipse, "m": .mosaic
+        "a": .arrow, "r": .rectangle, "o": .ellipse, "m": .mosaic
     ]
     private var selectedItem: LibraryItem?
     private var keyMonitor: Any?
@@ -144,13 +144,6 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, let window = self.window, window.isVisible, window.isKeyWindow else { return event }
             let significantFlags = event.modifierFlags.intersection([.command, .option, .control])
-            if event.keyCode == 53, significantFlags.isEmpty, event.window === window, window.attachedSheet == nil {
-                if self.selectedItem?.kind == .image, self.editorView.cancelEditingWithEscape() { return nil }
-                // 다른 입력 필드의 Esc 처리는 해당 필드에 맡긴다.
-                if window.firstResponder is NSTextView { return event }
-                window.performClose(nil)
-                return nil
-            }
             if event.keyCode == 49, significantFlags.isEmpty, self.videoEditorView.isHidden == false {
                 self.videoEditorView.togglePlayback()
                 return nil
@@ -161,7 +154,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
                 self.deleteSelected()
                 return nil
             }
-            // 도구 단축키 (텍스트 입력 중이 아닐 때): V 선택 · C 크롭 · N 번호 · T 텍스트 · B 말풍선 · A 화살표 · L 직선 · R 사각형 · O 원 · M 모자이크
+            // 도구 단축키 (텍스트 입력 중이 아닐 때): V 선택 · C 크롭 · N 번호 · T 텍스트 · B 말풍선 · A 화살표 · R 사각형 · O 원 · M 모자이크
             if significantFlags.isEmpty, !event.modifierFlags.contains(.shift),
                !(window.firstResponder is NSTextView), self.selectedItem?.kind == .image,
                let key = event.charactersIgnoringModifiers?.lowercased(),
@@ -576,8 +569,8 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             return viewItem(itemIdentifier, view: editToolControl, label: loc("Edit", "편집"))
         case ToolbarID.annotateTools:
             configure(annotateToolControl,
-                      symbols: ["1.circle", "textformat", "text.bubble", "arrow.up.right", "line.diagonal", "rectangle", "circle", "checkerboard.rectangle"],
-                      tips: [loc("Numbers ➊–➒ (N · click)", "번호 ➊–➒ (N · 클릭)"), loc("Text (T · click, then type)", "텍스트 (T · 클릭 후 입력)"), loc("Callout (B · drag from the point of interest)", "말풍선 (B · 가리킬 곳에서 드래그)"), loc("Arrow (A · ⇧ snaps to 45°)", "화살표 (A · ⇧ 45° 스냅)"), loc("Line (L · ⇧ snaps to 45°)", "직선 (L · ⇧ 45° 스냅)"), loc("Rectangle (R · ⇧ square)", "사각형 (R · ⇧ 정사각형)"), loc("Ellipse (O · ⇧ circle)", "원 (O · ⇧ 정원)"), loc("Mosaic (M · drag)", "모자이크 (M · 드래그)")])
+                      symbols: ["1.circle", "textformat", "text.bubble", "arrow.up.right", "rectangle", "circle", "checkerboard.rectangle"],
+                      tips: [loc("Numbers ➊–➒ (N · click)", "번호 ➊–➒ (N · 클릭)"), loc("Text (T · click, then type)", "텍스트 (T · 클릭 후 입력)"), loc("Callout (B · drag from the point of interest)", "말풍선 (B · 가리킬 곳에서 드래그)"), loc("Arrow (A · ⇧ snaps to 45°)", "화살표 (A · ⇧ 45° 스냅)"), loc("Rectangle (R · ⇧ square)", "사각형 (R · ⇧ 정사각형)"), loc("Ellipse (O · ⇧ circle)", "원 (O · ⇧ 정원)"), loc("Mosaic (M · drag)", "모자이크 (M · 드래그)")])
             return viewItem(itemIdentifier, view: annotateToolControl, label: loc("Annotate", "주석"))
         case ToolbarID.style:
             if styleControls == nil { styleControls = buildStyleControls() }
@@ -646,7 +639,6 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
             toolEntry(loc("Text", "텍스트") + "  T", .text)
             toolEntry(loc("Callout", "말풍선") + "  B", .callout)
             toolEntry(loc("Arrow", "화살표") + "  A", .arrow)
-            toolEntry(loc("Line", "직선") + "  L", .line)
             toolEntry(loc("Rectangle", "사각형") + "  R", .rectangle)
             toolEntry(loc("Ellipse", "원") + "  O", .ellipse)
             toolEntry(loc("Mosaic", "모자이크") + "  M", .mosaic)
@@ -666,7 +658,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate, NSCollectionVie
 
     /// 더보기 메뉴의 tag ↔ 도구 매핑 (편집 도구 + 주석 도구 순서).
     private static let menuTools: [EditorImageView.Tool] = [.none, .crop, .cutHorizontal, .cutVertical,
-                                                            .number, .text, .callout, .arrow, .line, .rectangle, .ellipse, .mosaic]
+                                                            .number, .text, .callout, .arrow, .rectangle, .ellipse, .mosaic]
 
     @objc private func selectToolFromMenu(_ sender: NSMenuItem) {
         guard Self.menuTools.indices.contains(sender.tag) else { return }
