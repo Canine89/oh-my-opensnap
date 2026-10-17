@@ -2,17 +2,17 @@ import AppKit
 import ImageIO
 
 /// 라이브러리 미리보기 겸 간단 편집 뷰.
-/// 도구: 크롭(핸들 방식) / 중간 잘라내기 / 번호(➊–➒) / 텍스트 / 말풍선 / 화살표 / 사각형 / 원. 좌상단 원점(isFlipped).
+/// 도구: 크롭(핸들 방식) / 중간 잘라내기 / 번호(➊–➒) / 텍스트 / 말풍선 / 화살표 / 직선 / 사각형 / 원. 좌상단 원점(isFlipped).
 /// 이미지 얹기: 드롭·⌘V·메뉴로 다른 이미지를 원본 픽셀을 건드리지 않는 오브제로 올린다(바탕 바로 위, 다른 주석 아래).
 /// 좌표는 이미지 픽셀과 1:1. 로드 시 DPI 메타데이터와 무관하게 실제 픽셀 크기로 정규화한다.
 /// ⌘Z 되돌리기는 스냅샷 스택으로 크롭 포함 모든 편집에 적용된다.
 final class EditorImageView: NSView {
 
-    enum Tool { case none, crop, cutHorizontal, cutVertical, number, text, callout, arrow, rectangle, ellipse, mosaic }
+    enum Tool { case none, crop, cutHorizontal, cutVertical, number, text, callout, arrow, line, rectangle, ellipse, mosaic }
 
     struct Annotation {
         /// `image`는 얹은 이미지 — 값은 자산 ID(UUID). start/end가 좌상단/우하단 픽셀 좌표.
-        enum Kind { case number(Int), text(String), callout(String), arrow, rectangle, ellipse, mosaic, image(String) }
+        enum Kind { case number(Int), text(String), callout(String), arrow, line, rectangle, ellipse, mosaic, image(String) }
         var kind: Kind
         var start: CGPoint
         var end: CGPoint
@@ -176,6 +176,7 @@ final class EditorImageView: NSView {
             case .text(let t): record.kind = "text"; record.text = t
             case .callout(let t): record.kind = "callout"; record.text = t
             case .arrow: record.kind = "arrow"
+            case .line: record.kind = "line"
             case .rectangle: record.kind = "rectangle"
             case .ellipse: record.kind = "ellipse"
             case .mosaic: record.kind = "mosaic"
@@ -219,6 +220,7 @@ final class EditorImageView: NSView {
             case "text": kind = .text(r.text ?? "")
             case "callout": kind = .callout(r.text ?? "")
             case "arrow": kind = .arrow
+            case "line": kind = .line
             case "rectangle": kind = .rectangle
             case "ellipse": kind = .ellipse
             case "mosaic": kind = .mosaic
@@ -546,7 +548,7 @@ final class EditorImageView: NSView {
             dragStart = point
             dragCurrent = point
             needsDisplay = true
-        case .cutHorizontal, .cutVertical, .arrow, .rectangle, .ellipse, .mosaic:
+        case .cutHorizontal, .cutVertical, .arrow, .line, .rectangle, .ellipse, .mosaic:
             dragStart = point
             dragCurrent = point
         case .none:
@@ -564,9 +566,9 @@ final class EditorImageView: NSView {
             cropLoupePoint = (handle != .center) ? point : nil
             notifyCropProgress()
             needsDisplay = true
-        case .arrow, .rectangle, .ellipse, .callout:
+        case .arrow, .line, .rectangle, .ellipse, .callout:
             guard let start = dragStart else { return }
-            // Shift: 사각형/원은 1:1, 화살표는 45° 단위로 반듯하게. 말풍선은 자유 배치.
+            // Shift: 사각형/원은 1:1, 화살표·직선은 45° 단위로 반듯하게. 말풍선은 자유 배치.
             dragCurrent = (tool != .callout && event.modifierFlags.contains(.shift)) ? constrained(from: start, to: point) : point
             needsDisplay = true
         case .cutHorizontal, .cutVertical, .mosaic:
@@ -587,13 +589,13 @@ final class EditorImageView: NSView {
             // 범위가 실제로 바뀌었으면 드래그 직전 상태를 기록 → Cmd+Z로 범위 되돌리기
             if let cr = cropRect, cr != cropStartRect { pushCropSnapshot(cropStartRect) }
             needsDisplay = true
-        case .arrow, .rectangle, .ellipse:
+        case .arrow, .line, .rectangle, .ellipse:
             defer { dragStart = nil; dragCurrent = nil }
             guard let start = dragStart else { return }
             let raw = clamp(convert(event.locationInWindow, from: nil))
             let end = event.modifierFlags.contains(.shift) ? constrained(from: start, to: raw) : raw
             guard hypot(end.x - start.x, end.y - start.y) > 2 else { return }
-            let kind: Annotation.Kind = tool == .arrow ? .arrow : (tool == .rectangle ? .rectangle : .ellipse)
+            let kind: Annotation.Kind = tool == .arrow ? .arrow : (tool == .line ? .line : (tool == .rectangle ? .rectangle : .ellipse))
             pushUndo()
             annotations.append(Annotation(kind: kind, start: start, end: end,
                                           color: strokeColor, width: strokeWidth))
@@ -684,6 +686,21 @@ final class EditorImageView: NSView {
         }
     }
 
+    /// Esc는 진행 중인 편집을 먼저 취소한다. 취소할 상태가 없으면 창에서 닫기를 처리한다.
+    @discardableResult
+    func cancelEditingWithEscape() -> Bool {
+        if activeTextField != nil {
+            cancelActiveTextField()
+            return true
+        }
+        guard tool != .none || selectedAnnotationIndex != nil || dragStart != nil || annotationDrag != nil else {
+            return false
+        }
+        selectedAnnotationIndex = nil
+        tool = .none
+        return true
+    }
+
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
         case 53 where activeTextField != nil:
@@ -699,8 +716,7 @@ final class EditorImageView: NSView {
         case 51, 117:
             deleteSelectedAnnotation()
         case 53:
-            selectedAnnotationIndex = nil
-            tool = .none                 // Esc → 선택/크롭 취소
+            if !cancelEditingWithEscape() { window?.performClose(nil) }
         case 123, 124, 125, 126:
             guard selectedAnnotationIndex != nil, activeTextField == nil else {
                 super.keyDown(with: event)
@@ -863,7 +879,7 @@ final class EditorImageView: NSView {
                 (.bottomRight, CGPoint(x: r.maxX, y: r.maxY)), (.bottomLeft, CGPoint(x: r.minX, y: r.maxY))
             ]
             return corners.first { near($0.1) }.map { .corner($0.0) }
-        case .arrow:
+        case .arrow, .line:
             if near(a.end) { return .arrowEnd }
             if near(a.start) { return .arrowStart }
             return nil
@@ -1060,7 +1076,7 @@ final class EditorImageView: NSView {
                 if selectionRect(for: annotation).insetBy(dx: -hitInset, dy: -hitInset).contains(point) {
                     return (index, .object)
                 }
-            case .arrow:
+            case .arrow, .line:
                 if distanceFromPoint(point, toSegmentFrom: annotation.start, to: annotation.end) <= hitInset + annotation.width {
                     return (index, .object)
                 }
@@ -1313,6 +1329,8 @@ final class EditorImageView: NSView {
                             alpha: 0.55)
             case .arrow:
                 draw(Annotation(kind: .arrow, start: start, end: current, color: strokeColor, width: strokeWidth))
+            case .line:
+                draw(Annotation(kind: .line, start: start, end: current, color: strokeColor, width: strokeWidth))
             case .rectangle:
                 draw(Annotation(kind: .rectangle, start: start, end: current, color: strokeColor, width: strokeWidth))
             case .ellipse:
@@ -1405,6 +1423,13 @@ final class EditorImageView: NSView {
                         bubble: annotation.calloutBubble)
         case .arrow:
             drawArrow(from: annotation.start, to: annotation.end, width: annotation.width)
+        case .line:
+            let path = NSBezierPath()
+            path.move(to: annotation.start)
+            path.line(to: annotation.end)
+            path.lineWidth = annotation.width
+            path.lineCapStyle = .round
+            path.stroke()
         case .rectangle:
             let path = NSBezierPath(rect: Self.rect(annotation.start, annotation.end))
             path.lineWidth = annotation.width
@@ -1454,7 +1479,7 @@ final class EditorImageView: NSView {
             drawSelectionHandle(at: CGPoint(x: r.maxX, y: r.minY))
             drawSelectionHandle(at: CGPoint(x: r.maxX, y: r.maxY))
             drawSelectionHandle(at: CGPoint(x: r.minX, y: r.maxY))
-        case .arrow:
+        case .arrow, .line:
             drawSelectionHandle(at: annotation.start, fill: annotation.color, stroke: .white)
             drawSelectionHandle(at: annotation.end, fill: annotation.color, stroke: .white)
         default:
@@ -1472,7 +1497,7 @@ final class EditorImageView: NSView {
             return textRect(value, at: annotation.start, width: annotation.width)
         case .callout(let value):
             return calloutRect(for: annotation, text: value)
-        case .arrow:
+        case .arrow, .line:
             return Self.rect(annotation.start, annotation.end)
                 .insetBy(dx: -max(8, annotation.width * 2), dy: -max(8, annotation.width * 2))
         case .rectangle, .ellipse, .mosaic, .image:
@@ -1892,7 +1917,7 @@ final class EditorImageView: NSView {
 
     /// Shift 제약을 적용한 끝점.
     /// - 사각형/원: 시작점에서 가로·세로 변 길이를 같게(1:1) 맞춘다.
-    /// - 화살표: 시작점 기준 각도를 45° 단위로 스냅해 수평/수직/대각선으로 반듯하게.
+    /// - 화살표·직선: 시작점 기준 각도를 45° 단위로 스냅해 수평/수직/대각선으로 반듯하게.
     private func constrained(from start: CGPoint, to end: CGPoint) -> CGPoint {
         let dx = end.x - start.x
         let dy = end.y - start.y
@@ -1901,7 +1926,7 @@ final class EditorImageView: NSView {
             let side = max(abs(dx), abs(dy))
             return clamp(CGPoint(x: start.x + (dx < 0 ? -side : side),
                                  y: start.y + (dy < 0 ? -side : side)))
-        case .arrow:
+        case .arrow, .line:
             let length = hypot(dx, dy)
             let snapped = (atan2(dy, dx) / (.pi / 4)).rounded() * (.pi / 4)
             return clamp(CGPoint(x: start.x + cos(snapped) * length,

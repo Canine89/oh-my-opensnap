@@ -81,6 +81,57 @@ final class EditorInteractionTests: XCTestCase {
         XCTAssertTrue(isBlue(try pixel(editor, x: 98, y: 28)), "방향키로 옮긴 자리의 픽셀로 다시 샘플링해야 한다")
     }
 
+    @MainActor
+    func testLineDrawResizeUndoAndReload() throws {
+        let (editor, window) = try makeEditor()
+        defer { window.close() }
+        editor.strokeColor = .green
+        editor.strokeWidth = 4
+        editor.tool = .line
+        editor.mouseDown(with: mouse(.leftMouseDown, at: CGPoint(x: 20, y: 60), in: editor))
+        editor.mouseDragged(with: mouse(.leftMouseDragged, at: CGPoint(x: 90, y: 60), in: editor))
+        editor.mouseUp(with: mouse(.leftMouseUp, at: CGPoint(x: 90, y: 60), in: editor))
+        XCTAssertEqual(try annotationRecords(editor).first?["kind"] as? String, "line")
+        let drawn = try pixel(editor, x: 50, y: 60)
+        XCTAssertGreaterThan(drawn.greenComponent, 0.8, "수평 직선도 합성 이미지에 그려져야 한다")
+
+        editor.tool = .none
+        click(editor, at: CGPoint(x: 50, y: 60))
+        editor.mouseDown(with: mouse(.leftMouseDown, at: CGPoint(x: 90, y: 60), in: editor))
+        editor.mouseDragged(with: mouse(.leftMouseDragged, at: CGPoint(x: 100, y: 80), in: editor))
+        editor.mouseUp(with: mouse(.leftMouseUp, at: CGPoint(x: 100, y: 80), in: editor))
+        XCTAssertEqual(try annotationRecords(editor).first?["end"] as? [Double], [100, 80])
+        editor.undo()
+        XCTAssertEqual(try annotationRecords(editor).first?["end"] as? [Double], [90, 60])
+        editor.redo()
+        let saved = try XCTUnwrap(editor.annotationsData())
+        let (reopened, reopenedWindow) = try makeEditor()
+        defer { reopenedWindow.close() }
+        XCTAssertTrue(reopened.restoreAnnotations(from: saved))
+        XCTAssertEqual(try annotationRecords(reopened).first?["kind"] as? String, "line")
+        XCTAssertEqual(try annotationRecords(reopened).first?["end"] as? [Double], [100, 80])
+    }
+
+    @MainActor
+    func testEscapeCancelsEditingBeforeAllowingWindowClose() throws {
+        let (editor, window) = try makeEditor()
+        defer { window.close() }
+        XCTAssertFalse(editor.cancelEditingWithEscape())
+        editor.tool = .crop
+        XCTAssertTrue(editor.cancelEditingWithEscape())
+        XCTAssertEqual(editor.tool, .none)
+        XCTAssertFalse(editor.cancelEditingWithEscape())
+
+        editor.tool = .text
+        click(editor, at: CGPoint(x: 20, y: 20))
+        XCTAssertFalse(editor.subviews.compactMap { $0 as? NSTextField }.isEmpty)
+        XCTAssertTrue(editor.cancelEditingWithEscape())
+        XCTAssertTrue(editor.subviews.compactMap { $0 as? NSTextField }.isEmpty)
+        XCTAssertNil(editor.annotationsData(), "Esc로 취소한 텍스트는 저장하지 않는다")
+        XCTAssertTrue(editor.cancelEditingWithEscape())
+        XCTAssertFalse(editor.cancelEditingWithEscape())
+    }
+
     // MARK: 도우미
     @MainActor
     private func makeEditor() throws -> (EditorImageView, NSWindow) {
