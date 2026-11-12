@@ -6,18 +6,18 @@
     <description>oh-my-opensnap 업데이트</description>
     <language>ko</language>
     <item>
-      <title>1.0.98</title>
-      <pubDate>Thu, 08 Oct 2026 14:04:40 +0000</pubDate>
-      <sparkle:version>99</sparkle:version>
-      <sparkle:shortVersionString>1.0.98</sparkle:shortVersionString>
+      <title>1.0.99</title>
+      <pubDate>목, 12 11월 2026 05:41:23 +0000</pubDate>
+      <sparkle:version>100</sparkle:version>
+      <sparkle:shortVersionString>1.0.99</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<h2>oh-my-opensnap 1.0.98</h2>
+      <description><![CDATA[<h2>oh-my-opensnap 1.0.99</h2>
 <ul>
-<li>보관함 영상 편집기에 "내보내기 배속" 슬라이더 추가 — 1×·1.5×·2×·4×·8×·16× 중 골라 선택 구간을 빠르게 재생되는 MP4/GIF로 저장</li>
-<li>배속을 고르면 아래 상태 줄에 내보낸 뒤의 길이가 함께 보이고, 내보내기 메뉴 항목에도 "· 2×"처럼 배속이 표시됨</li>
-<li>배속 MP4는 원본 프레임레이트(최대 60fps)를 유지해 어디서나 부드럽게 재생되고, 구간을 따로 자르지 않은 전체 영상도 배속으로 내보낼 수 있음</li>
+<li>창 자동 스냅에서 상단 탭바·패널 헤더·2단 툴바와 본문 경계를 정확히 구분하도록 개선 — Rex Beta 등 다단 헤더 앱에서 본문만 스냅할 때 상단 헤더가 애매하게 걸치던 문제 해결</li>
+<li>좌우로 분할된 터미널·에디터 창에서도 본문 시작 높이를 정확히 찾고, 다크 모드의 옅은 구분선과 신호등 여백까지 반영해 타이틀바 중간이 잘리지 않도록 보정</li>
+<li>창 전체(헤더) 위에 마우스를 올렸을 때도 헤더와 본문이 나뉘는 경계선을 점선 가이드로 함께 보여주고, 경계 정밀 측정 직후 바로 클릭한 선택 영역도 자동으로 맞춰지도록 개선</li>
 </ul>]]></description>
-      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.98.zip" type="application/octet-stream" sparkle:edSignature="0kAUVfuxKmBXvZFF9LA4+7V7HRQBmmrb8TfEVtiIJ3iAN7APz/ZS6QUcRkXJq5XBBAjYS4hC8nge3vLEoviwAA==" length="5286170" />
+      <enclosure url="https://raw.githubusercontent.com/Canine89/oh-my-opensnap/main/updates/oh-my-opensnap-1.0.99.zip" type="application/octet-stream" sparkle:edSignature="fqlgtUWI0RbXYFQDxnDiZcyqff3v/LHN0ONrDcMdYIIpYg4DeY/RLp74k+KGJqgpfFpHKR1g2l7s1AiIVWfFDA==" length="5308674" />
     </item>
   </channel>
 </rss>
