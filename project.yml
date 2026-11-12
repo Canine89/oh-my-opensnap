@@ -44,6 +44,9 @@ targets:
       - path: Sources/CaptureCore/DisplaySnapshot.swift
       - path: Sources/CaptureCore/DisplaySnapshotRequest.swift
       - path: Sources/CaptureCore/PixelSampling.swift
+      - path: Sources/CaptureCore/WindowChromeDetector.swift
+      - path: Sources/CaptureCore/HeaderEdgeRefiner.swift
+      - path: Sources/Geometry/ScreenGeometry.swift
       - path: Sources/Geometry/SelectionDamage.swift
       - path: Sources/Geometry/LoupeLayout.swift
       - path: Sources/Geometry/WindowCrop.swift

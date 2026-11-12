@@ -115,6 +115,7 @@ final class OverlayView: NSView {
     private var moveOffset: CGPoint = .zero
     private var cursorInside = false
     private var didDrag = false
+    private var userAdjustedSelection = false
     private var suppressed = false           // 다른 디스플레이에서 선택 진행 중 → 이 뷰의 표시 억제
     private var dashPhase: CGFloat = 0       // 점선 행진(marching ants) 위상
     private let dragThreshold: CGFloat = 5
@@ -125,6 +126,7 @@ final class OverlayView: NSView {
     private var hoveredWindow: SCWindow?
     private var hoveredWindowRect: CGRect?     // 클릭 시 선택될 영역. 이 뷰의 로컬 좌표(좌상단 기준)
     private var hoveredFullWindowRect: CGRect? // 실제 윈도우 전체 영역. 헤더/본문 구분 가이드용.
+    private var hoveredContentRect: CGRect?    // 헤더 아래 본문 영역. 창 전체 호버 시 경계선 표시용.
     /// 캡처 세션 동안 창별 경계를 기억한다. 창 사이를 오가도 같은 창은 같은 경계를 보여 준다.
     private var hoverCaches: [CGWindowID: HoverCache] = [:]
     private let accessibilityQueue = DispatchQueue(label: "com.goldenrabbit.ohmyopensnap.accessibility-hover", qos: .userInitiated)
@@ -195,6 +197,7 @@ final class OverlayView: NSView {
         let oldWindowID = hoveredWindow?.windowID
         let oldWindowRect = hoveredWindowRect
         let oldFullRect = hoveredFullWindowRect
+        let oldContentRect = hoveredContentRect
         cursor = convert(event.locationInWindow, from: nil)
         cursorInside = true
         onBecomeActiveDisplay?()
@@ -207,7 +210,7 @@ final class OverlayView: NSView {
         }
         if !suppressed { updateHoveredWindow() }
         if !wasInside || oldWindowID != hoveredWindow?.windowID || oldWindowRect != hoveredWindowRect
-            || oldFullRect != hoveredFullWindowRect {
+            || oldFullRect != hoveredFullWindowRect || oldContentRect != hoveredContentRect {
             needsDisplay = true
         } else if !suppressed {
             // 같은 창 위에서는 정적인 배경 대신 조준점이 바뀐 부분만 갱신한다.
@@ -282,12 +285,16 @@ final class OverlayView: NSView {
                 if didDrag { windowSelection = nil }
             }
         case .resizing(let handle):
+            userAdjustedSelection = true
             // 화면 밖으로 못 나가게 클램프 — 선택이 디스플레이를 벗어나는 걸 막는다.
             let clamped = CGPoint(x: max(0, min(point.x, bounds.width)),
                                   y: max(0, min(point.y, bounds.height)))
             selection = resize(resizeBase, handle: handle, to: clamped, square: square)
             if let sel = selection { onSelectionChanged?(sel) }   // HUD가 실시간으로 따라오게
         case .moving:
+            if hypot(point.x - downPoint.x, point.y - downPoint.y) >= dragThreshold {
+                userAdjustedSelection = true
+            }
             if let sel = selection {
                 var origin = CGPoint(x: point.x - moveOffset.x, y: point.y - moveOffset.y)
                 origin.x = max(0, min(origin.x, bounds.width - sel.width))
@@ -325,6 +332,7 @@ final class OverlayView: NSView {
             if didDrag {
                 let rect = makeRect(start, point, square: event.modifierFlags.contains(.shift))
                 if rect.width > 2, rect.height > 2 {
+                    userAdjustedSelection = true
                     selection = rect
                     enterAdjusting()
                 } else if let previous = previousSelection {
@@ -367,6 +375,7 @@ final class OverlayView: NSView {
     private func selectInitialRegion(_ rect: CGRect, windowSelection: WindowSelection?) {
         let clipped = rect.intersection(bounds)
         guard clipped.width > 2, clipped.height > 2 else { return }
+        userAdjustedSelection = false
         selection = clipped
         self.windowSelection = windowSelection
         phase = .adjusting
@@ -426,6 +435,7 @@ final class OverlayView: NSView {
     func deactivateSelection() {
         suppressed = true
         phase = .idle
+        userAdjustedSelection = false
         selection = nil
         windowSelection = nil
         previousSelection = nil
@@ -453,6 +463,7 @@ final class OverlayView: NSView {
             hoveredWindow = candidate.scWindow
             let cached = cachedHoverRegion(for: candidate)
             hoveredFullWindowRect = cached.localFullRect
+            hoveredContentRect = cached.localContentRect
 
             // 두 구역뿐이다: 헤더 위면 창 전체, 그 외엔 본문.
             let headerRect = cached.localHeaderRect
@@ -487,6 +498,7 @@ final class OverlayView: NSView {
         hoveredWindow = nil
         hoveredWindowRect = nil
         hoveredFullWindowRect = nil
+        hoveredContentRect = nil
     }
 
     private func cachedHoverRegion(for candidate: WindowCandidate) -> HoverCache {
@@ -515,7 +527,10 @@ final class OverlayView: NSView {
     }
 
     private func contentRect(for window: SCWindow, localFullRect: CGRect) -> CGRect {
-        Self.contentRect(from: localFullRect, topInset: fallbackChromeTopInset(for: window, windowHeight: localFullRect.height))
+        let profile = WindowChromeProfile.forApp(bundleID: window.owningApplication?.bundleIdentifier,
+                                                 appName: window.owningApplication?.applicationName,
+                                                 windowHeight: localFullRect.height)
+        return Self.contentRect(from: localFullRect, topInset: profile.defaultInset)
     }
 
     private static func contentRect(from fullRect: CGRect, topInset: CGFloat) -> CGRect {
@@ -526,8 +541,8 @@ final class OverlayView: NSView {
                       height: fullRect.height - topInset)
     }
 
-    /// 창 구조(접근성)로 헤더 높이를 재고, 못 재면 앱별 추정값을 정지 화면의 실제
-    /// 경계선에 맞춘다. 결과는 창 구조에만 의존하므로 커서 위치는 넘기지 않는다.
+    /// 창 구조(접근성)와 화면 픽셀 경계를 함께 읽어 헤더와 본문 경계를 확정한다.
+    /// 결과는 창 구조·픽셀에만 의존하며 커서 위치와 무관하다.
     private func scheduleContentRefinement(for candidate: WindowCandidate, localFullRect: CGRect) {
         let windowID = candidate.scWindow.windowID
         guard !pendingAccessibilityWindowIDs.contains(windowID),
@@ -537,28 +552,28 @@ final class OverlayView: NSView {
         pendingAccessibilityWindowIDs.insert(windowID)
         let globalFrame = candidate.cgFrame
         let primaryHeight = ScreenGeometry.primaryHeight
-        let fallbackInset = fallbackChromeTopInset(for: candidate.scWindow, windowHeight: localFullRect.height)
+        let bundleID = candidate.scWindow.owningApplication?.bundleIdentifier
+        let appName = candidate.scWindow.owningApplication?.applicationName
         let snapshot = frozenImage
         let snapshotScale = self.scale
+        let liveBuffer = snapshot == nil ? provider?.latestBuffer() : nil
+        let liveScale = provider?.bufferScale ?? self.scale
 
         accessibilityQueue.async { [weak self] in
-            // 접근성 기반 크롬 트림 대신 아래 폴백(HeaderEdgeRefiner)만 사용한다.
-            let measured = AccessibilityPermission.isGranted
-                ? WindowChromeDetector.topInset(pid: pid,
-                                                windowFrame: globalFrame,
-                                                primaryHeight: primaryHeight)
+            let axMeasurement = AccessibilityPermission.isGranted
+                ? WindowChromeDetector.measure(pid: pid,
+                                               windowFrame: globalFrame,
+                                               primaryHeight: primaryHeight)
                 : nil
-            let refined = measured == nil && fallbackInset > 0
-                ? snapshot.flatMap {
-                    HeaderEdgeRefiner.refine(in: $0,
-                                             windowRect: localFullRect,
-                                             candidateInset: fallbackInset,
-                                             tolerance: 40,
-                                             scale: snapshotScale)
-                }
-                : nil
-            let inset = measured ?? refined ?? fallbackInset
-            let content = Self.contentRect(from: localFullRect, topInset: inset)
+            let resolved = WindowHeaderResolver.resolve(windowRect: localFullRect,
+                                                        bundleID: bundleID,
+                                                        appName: appName,
+                                                        axMeasurement: axMeasurement,
+                                                        snapshot: snapshot,
+                                                        snapshotScale: snapshotScale,
+                                                        liveBuffer: liveBuffer,
+                                                        liveScale: liveScale)
+            let content = Self.contentRect(from: localFullRect, topInset: resolved.inset)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.pendingAccessibilityWindowIDs.remove(windowID)
@@ -568,57 +583,34 @@ final class OverlayView: NSView {
                                                         globalFrame: globalFrame,
                                                         localFullRect: localFullRect,
                                                         localContentRect: content,
-                                                        isPrecise: measured != nil || refined != nil)
+                                                        isPrecise: resolved.isPrecise)
                 if !self.selectionLocked, !self.suppressed {
                     self.updateHoveredWindow()
                     self.needsDisplay = true
+                } else if case .adjusting = self.phase,
+                          !self.userAdjustedSelection,
+                          let winSel = self.windowSelection,
+                          winSel.window.windowID == windowID {
+                    // 정밀 측정이 끝나기 직전에 창을 클릭한 경우, 사용자가 직접 크기를 조절하기
+                    // 전이라면 클릭 지점(헤더 vs 본문)에 맞춰 정밀 경계로 바로잡는다.
+                    let headerHeight = max(0, content.minY - localFullRect.minY)
+                    let clickedHeader = headerHeight > 0
+                        && CGRect(x: localFullRect.minX, y: localFullRect.minY,
+                                  width: localFullRect.width, height: headerHeight).contains(self.downPoint)
+                    let target = (clickedHeader ? localFullRect : content).intersection(self.bounds)
+                    if target.width > 2, target.height > 2, self.selection != target {
+                        self.selection = target
+                        self.windowSelection = WindowSelection(window: winSel.window,
+                                                               rect: target,
+                                                               fullRect: winSel.fullRect,
+                                                               windowFrame: winSel.windowFrame,
+                                                               displayID: self.displayID)
+                        self.onSelectionChanged?(target)
+                        self.needsDisplay = true
+                    }
                 }
             }
         }
-    }
-
-    private func fallbackChromeTopInset(for window: SCWindow, windowHeight: CGFloat) -> CGFloat {
-        guard windowHeight >= 120 else { return 0 }
-        let bundleID = (window.owningApplication?.bundleIdentifier ?? "").lowercased()
-        let appName = (window.owningApplication?.applicationName ?? "").lowercased()
-
-        let preferred: CGFloat
-        if bundleID.contains("com.apple.safari") {
-            preferred = 108
-        } else if bundleID.contains("com.google.chrome") || bundleID.contains("com.microsoft.edgemac") || bundleID.contains("org.mozilla.firefox") {
-            preferred = 124
-        } else if bundleID.contains("com.brave.browser") || bundleID.contains("com.operasoftware.opera") || bundleID.contains("company.thebrowser.browser") {
-            preferred = 124
-        } else if bundleID.contains("com.apple.finder") {
-            preferred = 72
-        } else if bundleID.contains("com.apple.dt.xcode") {
-            preferred = 104
-        } else if isVSCodeFamily(bundleID: bundleID, appName: appName) {
-            // custom titlebar 35 + tabs 35. 78은 브레드크럼/에디터를 가로지른다.
-            preferred = 70
-        } else if bundleID.contains("com.kakao.kakaotalk") || bundleID.contains("com.kakao.talk") {
-            // 네이티브 타이틀바(~28) + 대화방 헤더. 32만 빼면 프로필/검색 줄을 관통한다.
-            preferred = 88
-        } else if bundleID.contains("com.apple.terminal") || bundleID.contains("com.googlecode.iterm2") {
-            preferred = 34
-        } else if bundleID.contains("com.apple.preview") {
-            preferred = 64
-        } else {
-            // Tahoe 기본 타이틀바(~32pt). 접근성이 헤더를 재기 전에도 헤더/본문을 나눈다.
-            preferred = 32
-        }
-
-        return min(preferred, windowHeight * 0.35)
-    }
-
-    private func isVSCodeFamily(bundleID: String, appName: String) -> Bool {
-        bundleID.contains("com.microsoft.vscode")
-            || bundleID.contains("com.todesktop")
-            || bundleID.contains("vscodium")
-            || bundleID.contains("cursor")
-            || bundleID.contains("windsurf")
-            || appName == "code"
-            || appName == "cursor"
     }
 
     override func keyDown(with event: NSEvent) {
@@ -834,7 +826,8 @@ final class OverlayView: NSView {
     }
 
     private func drawWindowSelectionGuide(selectedRect: CGRect, fullRect: CGRect?, _ ctx: CGContext) {
-        if let full = fullRect?.intersection(bounds), !full.isEmpty, full != selectedRect.intersection(bounds) {
+        let clippedSelected = selectedRect.intersection(bounds)
+        if let full = fullRect?.intersection(bounds), !full.isEmpty, full != clippedSelected {
             Brand.red.withAlphaComponent(0.6).setStroke()
             let fullBorder = NSBezierPath(rect: full.insetBy(dx: 0.75, dy: 0.75))
             fullBorder.lineWidth = 1
@@ -842,6 +835,23 @@ final class OverlayView: NSView {
             fullBorder.stroke()
         }
         drawWindowHighlight(selectedRect, ctx)
+
+        // 헤더 위에 커서가 있을 때(창 전체 선택)도 헤더와 본문이 갈리는 경계선을 점선으로 표시해
+        // 어디서부터 본문 스냅으로 바뀌는지 한눈에 보이게 한다.
+        if let full = fullRect?.intersection(bounds),
+           full == clippedSelected,
+           let content = hoveredContentRect?.intersection(bounds),
+           content.minY > full.minY + 4,
+           content.minY < full.maxY - 4 {
+            let splitY = floor(content.minY) + 0.5
+            let divider = NSBezierPath()
+            divider.move(to: CGPoint(x: full.minX + 1.5, y: splitY))
+            divider.line(to: CGPoint(x: full.maxX - 1.5, y: splitY))
+            divider.lineWidth = 1
+            divider.setLineDash([4, 4], count: 2, phase: 0)
+            Brand.red.withAlphaComponent(0.55).setStroke()
+            divider.stroke()
+        }
     }
 
     /// 크로스헤어: 픽셀에 정렬한 1px 흰 선 + 어두운 밑선(밝은 배경에서도 보임),
